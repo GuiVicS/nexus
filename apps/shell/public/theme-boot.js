@@ -1,0 +1,1 @@
+try{var p=JSON.parse(localStorage.getItem("nexus-theme")||"{}"),t=p.theme||"dark";if(t==="auto")t=matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";document.documentElement.dataset.theme=t}catch(e){}

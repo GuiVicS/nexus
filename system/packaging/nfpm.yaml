@@ -1,0 +1,53 @@
+# Gera .deb e .rpm:  nfpm package -p deb -f system/packaging/nfpm.yaml
+name: nexus
+arch: amd64
+platform: linux
+version: ${NEXUS_VERSION}
+section: games
+priority: optional
+maintainer: Nexus <contato@stellarprint.com.br>
+description: Interface de console (TV + controle) para jogos no Linux.
+license: GPL-3.0-or-later
+depends:
+  - sway
+  - xwayland
+  - systemd
+  - dbus
+recommends:
+  - steam
+  - pipewire
+contents:
+  - src: target/release/nexus-core
+    dst: /usr/bin/nexus-core
+  - src: target/release/nexus-installer
+    dst: /usr/bin/nexus-installer
+  - src: apps/shell/dist/
+    dst: /opt/nexus/shell/dist/
+    type: tree
+  - src: apps/remote/dist/
+    dst: /usr/share/nexus/remote/
+    type: tree
+  - src: system/session/nexus.desktop
+    dst: /usr/share/wayland-sessions/nexus.desktop
+  - src: system/session/nexus-session
+    dst: /usr/bin/nexus-session
+    file_info: { mode: 0755 }
+  - src: system/session/nexus-launch-desktop
+    dst: /usr/bin/nexus-launch-desktop
+    file_info: { mode: 0755 }
+  - src: system/sway/nexus-kiosk.conf
+    dst: /usr/share/nexus/sway-kiosk.conf
+  - src: system/systemd/
+    dst: /usr/lib/systemd/user/
+    type: tree
+    file_info: { mode: 0644 }
+  - src: system/polkit/br.nexus.sysd.policy
+    dst: /usr/share/polkit-1/actions/br.nexus.sysd.policy
+  - src: system/udev/70-nexus-uinput.rules
+    dst: /usr/lib/udev/rules.d/70-nexus-uinput.rules
+  - src: system/udev/nexus-uinput.conf
+    dst: /usr/lib/modules-load.d/nexus-uinput.conf
+  - src: system/apparmor/opt.nexus.shell.nexus-shell
+    dst: /etc/apparmor.d/opt.nexus.shell.nexus-shell
+scripts:
+  postinstall: system/packaging/postinstall.sh

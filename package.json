@@ -1,0 +1,13 @@
+{
+  "name": "nexus",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10",
+  "scripts": {
+    "gen": "cargo test -p nexus-protocol && node tools/gen-protocol-index.mjs",
+    "build:shell": "pnpm --filter @nexus/shell build",
+    "build:remote": "pnpm --filter @nexus/remote build",
+    "typecheck": "pnpm -r typecheck",
+    "test:e2e": "node tests/e2e/run.mjs"
+  }
+}

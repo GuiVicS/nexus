@@ -1,0 +1,5 @@
+[Unit]
+Description=Sessão Nexus
+Requires=nexus-core.service nexus-shell.service
+After=nexus-core.service
+StopWhenUnneeded=yes

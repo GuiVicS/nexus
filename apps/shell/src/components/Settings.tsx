@@ -1,0 +1,265 @@
+import { createEffect, createMemo, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { api } from '../lib/api';
+import { ACT, THEME_LABEL, cycHandlers, editProfile } from '../lib/actions';
+import { askConfirm, askPin, fail, guarded, isKid, me, prefs, S, setS, toast } from '../lib/state';
+import { fmtBytes, ratingLabel } from '../lib/format';
+import { Avatar, Icon, Switch } from './ui';
+import { sfx } from '@nexus/ui';
+
+interface Cat { id: string; label: string; icon: string; adult?: boolean }
+const CATS: Cat[] = [
+  { id: 'som', label: 'Tela e som', icon: 'vol' },
+  { id: 'acess', label: 'Acessibilidade', icon: 'access' },
+  { id: 'ctrl', label: 'Controles', icon: 'pad' },
+  { id: 'remote', label: 'Controle no celular', icon: 'tv', adult: true },
+  { id: 'conta', label: 'Conta e perfis', icon: 'user', adult: true },
+  { id: 'parental', label: 'Controle parental', icon: 'lock', adult: true },
+  { id: 'steam', label: 'Steam', icon: 'download', adult: true },
+  { id: 'sis', label: 'Sistema', icon: 'gear', adult: true },
+];
+
+const cats = () => CATS.filter((c) => !c.adult || !isKid());
+
+function SwRow(p: { k: 'sfx' | 'reduce' | 'hc' | 'subs' | 'vib' | 'invy'; label: string; desc: string }) {
+  return (
+    <div class="srow f" data-k={`s-${p.k}`} data-r="22" data-a={`tog:${p.k}`} data-verb="Alternar">
+      <div><b>{p.label}</b><small>{p.desc}</small></div>
+      <Switch on={prefs()[p.k]} />
+    </div>
+  );
+}
+
+function ActRow(p: { a: string; label: string; desc?: string; icon: string; danger?: boolean; verb?: string; k?: string }) {
+  return (
+    <div class="srow f" data-k={p.k ?? `s-${p.a}`} data-r="22" data-a={p.a} data-verb={p.verb ?? 'Abrir'} style={p.danger ? { color: 'var(--danger)' } : {}}>
+      <div><b>{p.label}</b><Show when={p.desc}><small>{p.desc}</small></Show></div>
+      <Icon n={p.icon} />
+    </div>
+  );
+}
+
+function Info(p: { label: string; desc: string }) {
+  return <div class="srow info"><div><b>{p.label}</b><small>{p.desc}</small></div></div>;
+}
+
+function Pane(p: { title: string; children: JSX.Element }) {
+  return (
+    <>
+      <h2>{p.title}</h2>
+      {p.children}
+    </>
+  );
+}
+
+function PaneSom() {
+  return (
+    <Pane title="Tela e som">
+      <div class="srow f" data-k="s-theme" data-r="22" data-cyc="theme" data-a="cyc:theme" data-verb="Alterar">
+        <div><b>Tema</b><small>Escuro, claro ou automático (segue o sistema)</small></div>
+        <div class="cv"><Icon n="left" /><span>{THEME_LABEL[prefs().theme]}</span><Icon n="right" /></div>
+      </div>
+      <SwRow k="sfx" label="Sons de navegação" desc="Retorno sonoro ao mover o foco e selecionar" />
+      <div class="srow f slider" data-k="s-vol" data-r="22" data-slider="vol" data-a="noop" data-verb="Ajustar">
+        <b>Volume</b><div class="tr"><i style={{ width: `${prefs().vol}%` }} /></div><span class="v">{prefs().vol}</span>
+      </div>
+      <Info label="Efeitos visuais" desc={{ full: 'Completos', reduced: 'Reduzidos (aparelho de desempenho médio)', minimal: 'Mínimos (economiza recursos)' }[S.hw?.effects ?? 'full'] ?? 'Completos'} />
+      <Info label="Resolução" desc={`${screen.width} × ${screen.height}`} />
+    </Pane>
+  );
+}
+
+function PaneAcess() {
+  return (
+    <Pane title="Acessibilidade">
+      <SwRow k="reduce" label="Reduzir animações" desc="Remove transições e movimentos" />
+      <SwRow k="hc" label="Foco em alto contraste" desc="Contorno amarelo grosso" />
+      <SwRow k="subs" label="Legendas sempre ativas" desc="Quando o jogo ou app oferecer" />
+    </Pane>
+  );
+}
+
+function PaneCtrl() {
+  return (
+    <Pane title="Controles">
+      <SwRow k="vib" label="Vibração" desc="Retorno tátil nos controles" />
+      <SwRow k="invy" label="Inverter eixo Y" desc="Para câmeras em terceira pessoa" />
+      <Info label="Mapa de botões" desc="A selecionar · B voltar · Y busca · ≡ opções · LB/RB seções · LT/RT página · Guia central" />
+      <Show when={!isKid()}><ActRow a="remote" icon="tv" label="Usar o celular como controle" desc="Gamepad, mouse e teclado no celular" k="s-remote" /></Show>
+    </Pane>
+  );
+}
+
+function PaneRemote() {
+  const load = () => void api.pairing().then((p) => setS('pairing', p)).catch(fail);
+  onMount(load);
+  onCleanup(() => setS('pairing', null));
+  return (
+    <Pane title="Controle no celular">
+      <Show when={S.pairing} fallback={<Info label="Gerando código…" desc="Aguarde um instante" />}>
+        {(p) => (
+          <>
+            <div class="qrcard">
+              <div class="qr" innerHTML={p().qrSvg} role="img" aria-label="QR code para abrir o controle no celular" />
+              <div class="qrinfo">
+                <h3>Escaneie com a câmera do celular</h3>
+                <ol>
+                  <li>Conecte o celular na mesma rede Wi-Fi do console</li>
+                  <li>Aponte a câmera para o QR code e abra o link</li>
+                  <li>Escolha <b>Controle</b>, <b>Mouse</b> ou <b>Teclado</b></li>
+                </ol>
+                <code>{p().url.replace(/\?t=.*/, '')}</code>
+                <small>{p().uinput ? 'Aparece como um controle Xbox 360 para os jogos e funciona como mouse e teclado do sistema.' : 'Modo compatível: o celular controla o Nexus. Para usar nos jogos, o sistema precisa liberar /dev/uinput.'}</small>
+              </div>
+            </div>
+            <h3 class="sh2">Aparelhos conectados</h3>
+            <For each={p().devices} fallback={<Info label="Nenhum aparelho conectado" desc="Ele aparece aqui assim que você abrir o link" />}>
+              {(d) => (
+                <div class="srow f" data-k={`rd-${d.id}`} data-r="22" data-a={`rdisc:${d.id}`} data-verb="Desconectar">
+                  <div><b>{d.name}</b><small>{d.mode === 'gamepad' ? `Controle · jogador ${d.player}` : 'Mouse e teclado'}</small></div>
+                  <Icon n="x" />
+                </div>
+              )}
+            </For>
+            <ActRow a="rrotate" icon="refresh" label="Gerar novo código" desc="Desconecta todos os aparelhos e invalida o QR atual" verb="Gerar" k="s-rrotate" />
+          </>
+        )}
+      </Show>
+    </Pane>
+  );
+}
+
+function PaneConta() {
+  const p = () => me()!;
+  return (
+    <Pane title="Conta e perfis">
+      <div class="srow f acct" data-k="s-me" data-r="22" data-a={`profedit:${p().id}`} data-verb="Editar">
+        <Avatar p={p()} size={84} />
+        <div><b>{p().name}</b><small>{p().kind === 'kid' ? 'Perfil infantil' : 'Perfil'}{p().hasPin ? ' · protegido por PIN' : ''}</small></div>
+        <Icon n="right" />
+      </div>
+      <ActRow a="switch" icon="user" label="Trocar de perfil" desc="Volta à escolha de perfis" />
+      <h3 class="sh2">Todos os perfis</h3>
+      <For each={S.profiles}>
+        {(x) => (
+          <div class="srow f" data-k={`pr-${x.id}`} data-r="22" data-a={`profedit:${x.id}`} data-verb="Editar">
+            <Avatar p={x} size={64} />
+            <div><b>{x.name}</b><small>{x.kind === 'kid' ? `Infantil · até ${ratingLabel(x.ageLimit)}${x.dailyLimitMin ? ` · ${x.dailyLimitMin} min/dia` : ''}` : 'Adulto'}{x.hasPin ? ' · PIN' : ''}</small></div>
+            <Icon n="gear" />
+          </div>
+        )}
+      </For>
+      <ActRow a="profadd" icon="plus" label="Adicionar perfil" desc="Para outra pessoa ou para uma criança" />
+    </Pane>
+  );
+}
+
+function PaneParental() {
+  const kids = () => S.profiles.filter((p) => p.kind === 'kid');
+  return (
+    <Pane title="Controle parental">
+      <ActRow a="parentalpin" icon="lock" label="PIN dos responsáveis" desc={S.parental.hasPin ? 'Definido · toque para alterar' : 'Não definido · toque para criar'} verb="Alterar" k="s-ppin" />
+      <Show when={S.parental.hasPin}><ActRow a="parentalrm" icon="trash" label="Remover PIN" desc="Desativa a proteção por PIN" danger verb="Remover" k="s-prm" /></Show>
+      <h3 class="sh2">Perfis infantis</h3>
+      <For each={kids()} fallback={<Info label="Nenhum perfil infantil" desc="Crie um em Conta e perfis → Adicionar perfil" />}>
+        {(k) => (
+          <>
+            <div class="srow f" data-k={`kd-${k.id}`} data-r="22" data-a={`profedit:${k.id}`} data-verb="Editar">
+              <Avatar p={k} size={64} />
+              <div><b>{k.name}</b><small>Classificação até {ratingLabel(k.ageLimit)} · {k.dailyLimitMin ? `${k.dailyLimitMin} min por dia` : 'sem limite de tempo'}</small></div>
+              <Icon n="gear" />
+            </div>
+            <ActRow a={`allowsheet:${k.id}`} icon="check" label={`Apps e jogos liberados para ${k.name}`} desc="Escolha o que a criança pode abrir" verb="Escolher" k={`al-${k.id}`} />
+          </>
+        )}
+      </For>
+    </Pane>
+  );
+}
+
+function PaneSteam() {
+  onMount(() => void api.steamAccount().then((a) => setS('steam', a)).catch(() => {}));
+  return (
+    <Pane title="Steam">
+      <Show when={S.steam} fallback={<Info label="Verificando…" desc="" />}>
+        {(s) => (
+          <>
+            <Info label="Cliente Steam" desc={s().installed ? 'Instalado' : 'Não encontrado — instale a Steam para listar e abrir seus jogos'} />
+            <Show when={s().installed}>
+              <Info label="Conta" desc={s().persona ? `${s().persona}${s().account ? ` (${s().account})` : ''}` : 'Nenhuma conta conectada. Abra a Steam uma vez para entrar.'} />
+              <Info label="Jogos na biblioteca" desc={String(s().libraryGames)} />
+              <ActRow a="steamsync" icon="refresh" label="Sincronizar biblioteca" desc="Busca os jogos da conta que ainda não estão instalados" verb="Sincronizar" k="s-sync" />
+              <ActRow a="steamkey" icon="lock" label="Chave da Web API" desc="Necessária para listar jogos não instalados (perfil Steam público)" verb="Informar" k="s-key" />
+            </Show>
+          </>
+        )}
+      </Show>
+    </Pane>
+  );
+}
+
+function PaneSis() {
+  const hw = () => S.hw;
+  return (
+    <Pane title="Sistema">
+      <ActRow a="fs" icon="tv" label="Tela cheia" desc="Alterna entre janela e tela cheia (tecla F)" />
+      <Show when={hw()}>
+        {(h) => (
+          <>
+            <Info label="Armazenamento" desc={`${fmtBytes(h().diskFreeBytes)} livres de ${fmtBytes(h().diskTotalBytes)}`} />
+            <Info label="Sistema" desc={`${h().os} · ${h().architecture}`} />
+            <Info label="Hardware" desc={`${Math.round(h().memoryMb / 1024)} GB de memória · GPU ${h().gpuVendor.toUpperCase()} · desempenho ${{ high: 'alto', mid: 'médio', low: 'básico' }[h().performanceTier] ?? h().performanceTier}`} />
+          </>
+        )}
+      </Show>
+      <ActRow a="switch" icon="user" label="Trocar perfil" desc="Volta à escolha de perfis" />
+      <ActRow a="restart" icon="refresh" label="Reiniciar" desc="Reinicia o console" />
+      <ActRow a="off" icon="power" label="Desligar" desc="Desliga o console" />
+      <Info label="Nexus" desc={`Versão ${S.hello?.version ?? '—'}${S.hello?.demo ? ' · modo demonstração' : ''}`} />
+    </Pane>
+  );
+}
+
+export function Settings() {
+  const list = createMemo(cats);
+  createEffect(() => {
+    if (!list().some((c) => c.id === S.setCat)) setS('setCat', 'som');
+  });
+  createEffect(on(() => S.setCat, () => {
+    document.querySelector('#ovs .setpane')?.scrollTo({ top: 0 });
+  }, { defer: true }));
+  onMount(() => {
+    const set = (e: Event) => {
+      const v = (e as CustomEvent<number>).detail;
+      document.querySelector<HTMLElement>('#ovs [data-slider="vol"].focus') ?? null;
+      void v;
+    };
+    document.addEventListener('nexus:slider-set', set);
+    onCleanup(() => document.removeEventListener('nexus:slider-set', set));
+  });
+  return (
+    <>
+      <div class="stitle">Ajustes</div>
+      <nav class="setrail">
+        <For each={list()}>
+          {(c) => (
+            <div class={`ri f ${S.setCat === c.id ? 'on' : ''}`} data-k={`sc-${c.id}`} data-rail={`cat:${c.id}`} data-r="22" data-a={`rail:cat:${c.id}`} data-verb="Abrir">
+              <Icon n={c.icon} /> {c.label}
+            </div>
+          )}
+        </For>
+      </nav>
+      <div class="setpane" id="setpane">
+        <Show when={S.setCat === 'som'}><PaneSom /></Show>
+        <Show when={S.setCat === 'acess'}><PaneAcess /></Show>
+        <Show when={S.setCat === 'ctrl'}><PaneCtrl /></Show>
+        <Show when={S.setCat === 'remote' && !isKid()}><PaneRemote /></Show>
+        <Show when={S.setCat === 'conta' && !isKid()}><PaneConta /></Show>
+        <Show when={S.setCat === 'parental' && !isKid()}><PaneParental /></Show>
+        <Show when={S.setCat === 'steam' && !isKid()}><PaneSteam /></Show>
+        <Show when={S.setCat === 'sis' && !isKid()}><PaneSis /></Show>
+      </div>
+    </>
+  );
+}
+
+export { ACT, cycHandlers, editProfile, guarded, sfx };

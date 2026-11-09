@@ -1,0 +1,42 @@
+#!/bin/sh
+# Líder da sessão Nexus: prepara o ambiente, sobe os serviços de usuário e executa o compositor kiosk.
+# Se a sessão cair 3 vezes em 5 minutos, desfaz o autologin e volta ao desktop original (guarda de loop).
+set -eu
+
+STATE="${XDG_RUNTIME_DIR:?}/nexus"
+mkdir -p "$STATE"
+chmod 700 "$STATE"
+
+if [ -e /etc/nexus/force-desktop ] || [ -e "$HOME/.config/nexus/force-desktop" ]; then
+  logger -t nexus-session "force-desktop presente: abrindo o desktop original"
+  exec /usr/bin/nexus-launch-desktop
+fi
+
+# guarda de loop
+now=$(date +%s)
+log="$STATE/starts"
+touch "$log"
+recent=$(awk -v now="$now" 'now - $1 < 300' "$log" | wc -l)
+if [ "$recent" -ge 3 ]; then
+  logger -t nexus-session "3 falhas em 5 min: restaurando o login normal"
+  /usr/bin/nexus-installer revert-autologin >/dev/null 2>&1 || true
+  : > "$log"
+  exec /usr/bin/nexus-launch-desktop
+fi
+echo "$now" >> "$log"
+
+export XDG_SESSION_TYPE=wayland
+export XDG_CURRENT_DESKTOP=Nexus
+export XDG_SESSION_DESKTOP=Nexus
+export MOZ_ENABLE_WAYLAND=1
+export SDL_VIDEODRIVER=wayland,x11
+export QT_QPA_PLATFORM=wayland
+export NEXUS_COMPOSITOR=sway
+
+# o ambiente do compositor vai para o systemd --user para os serviços herdarem
+systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP NEXUS_COMPOSITOR PATH HOME
+dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP 2>/dev/null || true
+
+systemctl --user start nexus-session.target &
+# sway é o líder: quando ele sai, a sessão acaba e os serviços param
+exec /usr/bin/sway --unsupported-gpu -c /usr/share/nexus/sway-kiosk.conf

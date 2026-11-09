@@ -1,0 +1,8 @@
+# Ubuntu 24.04 restringe user namespaces sem perfil; o sandbox do Chromium (Electron) precisa deles.
+abi <abi/4.0>,
+include <tunables/global>
+
+profile nexus-shell /opt/nexus/shell/nexus-shell flags=(unconfined) {
+  userns,
+  include if exists <local/nexus-shell>
+}

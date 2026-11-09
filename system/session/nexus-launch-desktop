@@ -1,0 +1,8 @@
+#!/bin/sh
+# Saída de emergência: abre o desktop que o usuário tinha antes (primeira sessão que não seja a do Nexus).
+for f in /usr/share/wayland-sessions/*.desktop /usr/share/xsessions/*.desktop; do
+  [ "$(basename "$f")" = "nexus.desktop" ] && continue
+  cmd=$(sed -n 's/^Exec=//p' "$f" | head -1)
+  [ -n "$cmd" ] && exec sh -c "$cmd"
+done
+exec /usr/bin/foot

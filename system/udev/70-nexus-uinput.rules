@@ -1,0 +1,2 @@
+# Permite que o usuário da sessão ativa crie o gamepad/mouse/teclado virtuais do celular.
+KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"

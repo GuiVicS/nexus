@@ -1,0 +1,2230 @@
+{
+ "items": [
+  {
+   "id": "demo:g1",
+   "provider": "demo",
+   "kind": "game",
+   "title": "Ecos de Vênus",
+   "subtitle": "Ficção científica · Ação",
+   "description": "Uma tripulação presa na órbita de Vênus precisa reconstruir a estação antes que a tempestade de ácido alcance o último abrigo.",
+   "studio": "Estúdio Meridiano",
+   "year": 2026,
+   "rating": 14,
+   "state": "installed",
+   "sizeBytes": 86000000000,
+   "art": {
+    "cover": true,
+    "hero": true,
+    "icon": false
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 115200,
+   "lastPlayed": 1700000000,
+   "progress": 64,
+   "chapter": "Capítulo 4 · A Fenda Dourada",
+   "achievements": {
+    "got": 18,
+    "total": 42
+   },
+   "price": null,
+   "offer": null,
+   "category": null,
+   "tags": [
+    "lib"
+   ],
+   "hue": [
+    275,
+    25
+   ],
+   "brand": null,
+   "logo": "sci",
+   "install": null
+  },
+  {
+   "id": "demo:g2",
+   "provider": "demo",
+   "kind": "game",
+   "title": "Rota Neon",
+   "subtitle": "Corrida arcade",
+   "description": "Corridas noturnas em rodovias infinitas, com trilha sonora que reage a cada ultrapassagem.",
+   "studio": "Pulso Games",
+   "year": 2025,
+   "rating": 0,
+   "state": "installed",
+   "sizeBytes": 42000000000,
+   "art": {
+    "cover": true,
+    "hero": true,
+    "icon": false
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 32400,
+   "lastPlayed": 1699913600,
+   "progress": 21,
+   "chapter": "Copa Meia-noite · Etapa 3",
+   "achievements": {
+    "got": 7,
+    "total": 30
+   },
+   "price": null,
+   "offer": null,
+   "category": null,
+   "tags": [
+    "lib"
+   ],
+   "hue": [
+    300,
+    45
+   ],
+   "brand": null,
+   "logo": "neon",
+   "install": null
+  },
+  {
+   "id": "demo:g3",
+   "provider": "demo",
+   "kind": "game",
+   "title": "Pequeno Farol",
+   "subtitle": "Quebra-cabeça · Indie",
+   "description": "Guie a luz de um farol solitário para trazer barcos perdidos de volta para casa.",
+   "studio": "Casa Bruma",
+   "year": 2024,
+   "rating": 0,
+   "state": "installed",
+   "sizeBytes": 3000000000,
+   "art": {
+    "cover": true,
+    "hero": true,
+    "icon": false
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 21600,
+   "lastPlayed": 1699827200,
+   "progress": 88,
+   "chapter": "Ilha 9 · A maré invertida",
+   "achievements": {
+    "got": 22,
+    "total": 24
+   },
+   "price": null,
+   "offer": null,
+   "category": null,
+   "tags": [
+    "lib"
+   ],
+   "hue": [
+    215,
+    45
+   ],
+   "brand": null,
+   "logo": "serif",
+   "install": null
+  },
+  {
+   "id": "demo:g4",
+   "provider": "demo",
+   "kind": "game",
+   "title": "Lâmina do Norte",
+   "subtitle": "Ação · RPG",
+   "description": "Uma guerreira exilada atravessa reinos congelados em combates precisos e brutais.",
+   "studio": "Ferro & Runa",
+   "year": 2026,
+   "rating": 16,
+   "state": "installed",
+   "sizeBytes": 112000000000,
+   "art": {
+    "cover": true,
+    "hero": true,
+    "icon": false
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 183600,
+   "lastPlayed": 1699740800,
+   "progress": 40,
+   "chapter": "Fiorde das Cinzas",
+   "achievements": {
+    "got": 12,
+    "total": 50
+   },
+   "price": null,
+   "offer": null,
+   "category": null,
+   "tags": [
+    "update",
+    "lib"
+   ],
+   "hue": [
+    5,
+    200
+   ],
+   "brand": null,
+   "logo": "gold",
+   "install": null
+  },
+  {
+   "id": "demo:g5",
+   "provider": "demo",
+   "kind": "game",
+   "title": "Jardim Orbital",
+   "subtitle": "Simulação · Relaxante",
+   "description": "Cultive um ecossistema inteiro dentro de uma estação espacial abandonada.",
+   "studio": "Botânica Interativa",
+   "year": 2025,
+   "rating": 0,
+   "state": "installed",
+   "sizeBytes": 9000000000,
+   "art": {
+    "cover": true,
+    "hero": true,
+    "icon": false
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 10800,
+   "lastPlayed": 1699654400,
+   "progress": 12,
+   "chapter": "Estufa 2",
+   "achievements": {
+    "got": 3,
+    "total": 20
+   },
+   "price": null,
+   "offer": null,
+   "category": null,
+   "tags": [
+    "lib"
+   ],
+   "hue": [
+    150,
+    190
+   ],
+   "brand": null,
+   "logo": "ice",
+   "install": null
+  },
+  {
+   "id": "demo:g6",
+   "provider": "demo",
+   "kind": "game",
+   "title": "Cidade Submersa",
+   "subtitle": "Aventura · Exploração",
+   "description": "Mergulhe nas ruínas de uma metrópole engolida pelo oceano. Jogue agora pela nuvem, sem download.",
+   "studio": "Abismo Azul",
+   "year": 2026,
+   "rating": 12,
+   "state": "installed",
+   "sizeBytes": null,
+   "art": {
+    "cover": true,
+    "hero": true,
+    "icon": false
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 0,
+   "lastPlayed": 1699568000,
+   "progress": null,
+   "chapter": null,
+   "achievements": {
+    "got": 0,
+    "total": 36
+   },
+   "price": null,
+   "offer": null,
+   "category": null,
+   "tags": [
+    "cloud",
+    "lib"
+   ],
+   "hue": [
+    200,
+    170
+   ],
+   "brand": null,
+   "logo": "ice",
+   "install": null
+  },
+  {
+   "id": "demo:g7",
+   "provider": "demo",
+   "kind": "game",
+   "title": "Arena Pro 26",
+   "subtitle": "Esporte · Multijogador",
+   "description": "Temporada completa com clubes fictícios, modo carreira e partidas online cruzadas.",
+   "studio": "Liga Digital",
+   "year": 2026,
+   "rating": 0,
+   "state": "installed",
+   "sizeBytes": null,
+   "art": {
+    "cover": true,
+    "hero": true,
+    "icon": false
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 0,
+   "lastPlayed": 1699481600,
+   "progress": null,
+   "chapter": null,
+   "achievements": {
+    "got": 0,
+    "total": 40
+   },
+   "price": null,
+   "offer": null,
+   "category": null,
+   "tags": [
+    "cloud",
+    "lib"
+   ],
+   "hue": [
+    110,
+    60
+   ],
+   "brand": null,
+   "logo": "sport",
+   "install": null
+  },
+  {
+   "id": "demo:g8",
+   "provider": "demo",
+   "kind": "game",
+   "title": "Coleção Arcade",
+   "subtitle": "Clássicos · 16-bit",
+   "description": "Sua coleção de cartuchos, organizada com capas, estados salvos e filtros de tela CRT.",
+   "studio": "Emulação · RetroPad",
+   "year": 1994,
+   "rating": 0,
+   "state": "installed",
+   "sizeBytes": 1200000000,
+   "art": {
+    "cover": true,
+    "hero": true,
+    "icon": false
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 50400,
+   "lastPlayed": 1699395200,
+   "progress": 55,
+   "chapter": "Salvamento rápido · slot 2",
+   "achievements": {
+    "got": 9,
+    "total": 20
+   },
+   "price": null,
+   "offer": null,
+   "category": null,
+   "tags": [
+    "classic",
+    "lib"
+   ],
+   "hue": [
+    30,
+    260
+   ],
+   "brand": null,
+   "logo": "pixel",
+   "install": null
+  },
+  {
+   "id": "demo:g9",
+   "provider": "demo",
+   "kind": "game",
+   "title": "Picos de Cristal",
+   "subtitle": "Clássicos · Plataforma 8-bit",
+   "description": "Plataforma clássica restaurada com rebobinar, salvamento instantâneo e modo 60 Hz.",
+   "studio": "Emulação · RetroPad",
+   "year": 1989,
+   "rating": 0,
+   "state": "installed",
+   "sizeBytes": 256000,
+   "art": {
+    "cover": true,
+    "hero": true,
+    "icon": false
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 14400,
+   "lastPlayed": 1699308800,
+   "progress": 30,
+   "chapter": "Mundo 3-2",
+   "achievements": {
+    "got": 2,
+    "total": 12
+   },
+   "price": null,
+   "offer": null,
+   "category": null,
+   "tags": [
+    "classic",
+    "lib"
+   ],
+   "hue": [
+    230,
+    330
+   ],
+   "brand": null,
+   "logo": "pixel",
+   "install": null
+  },
+  {
+   "id": "demo:g10",
+   "provider": "demo",
+   "kind": "game",
+   "title": "Céu Fraturado",
+   "subtitle": "Mundo aberto · Fantasia",
+   "description": "Ilhas flutuantes, dragões de vidro e um céu que se reorganiza a cada noite.",
+   "studio": "Nimbus Lab",
+   "year": 2026,
+   "rating": 14,
+   "state": "installed",
+   "sizeBytes": null,
+   "art": {
+    "cover": true,
+    "hero": true,
+    "icon": false
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 0,
+   "lastPlayed": 1699222400,
+   "progress": null,
+   "chapter": null,
+   "achievements": {
+    "got": 0,
+    "total": 60
+   },
+   "price": null,
+   "offer": null,
+   "category": null,
+   "tags": [
+    "cloud",
+    "lib"
+   ],
+   "hue": [
+    260,
+    330
+   ],
+   "brand": null,
+   "logo": "gold",
+   "install": null
+  },
+  {
+   "id": "demo:s1",
+   "provider": "demo",
+   "kind": "game",
+   "title": "Vale Silencioso",
+   "subtitle": "Aventura · Mistério",
+   "description": "Uma cartógrafa mapeia um vale onde o som simplesmente não existe.",
+   "studio": "Norte Claro",
+   "year": 2026,
+   "rating": 12,
+   "state": "not_installed",
+   "sizeBytes": 54000000000,
+   "art": {
+    "cover": true,
+    "hero": true,
+    "icon": false
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": {
+    "got": 0,
+    "total": 30
+   },
+   "price": "R$ 199,90",
+   "offer": null,
+   "category": null,
+   "tags": [
+    "store:jogos"
+   ],
+   "hue": [
+    150,
+    40
+   ],
+   "brand": null,
+   "logo": "serif",
+   "install": null
+  },
+  {
+   "id": "demo:s2",
+   "provider": "demo",
+   "kind": "game",
+   "title": "Protocolo Ômega",
+   "subtitle": "Ação tática",
+   "description": "Operações noturnas em uma megacidade controlada por uma IA instável.",
+   "studio": "Vértice",
+   "year": 2026,
+   "rating": 16,
+   "state": "not_installed",
+   "sizeBytes": 98000000000,
+   "art": {
+    "cover": true,
+    "hero": true,
+    "icon": false
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": {
+    "got": 0,
+    "total": 45
+   },
+   "price": "R$ 249,90",
+   "offer": {
+    "old": "R$ 249,90",
+    "new": "R$ 199,90",
+    "pct": "-20%"
+   },
+   "category": null,
+   "tags": [
+    "store:jogos"
+   ],
+   "hue": [
+    190,
+    320
+   ],
+   "brand": null,
+   "logo": "sci",
+   "install": null
+  },
+  {
+   "id": "demo:s3",
+   "provider": "demo",
+   "kind": "game",
+   "title": "Ilha dos Ventos",
+   "subtitle": "Multijogador · Casual",
+   "description": "Velejadas cooperativas entre ilhas que mudam a cada temporada.",
+   "studio": "Brisa Studio",
+   "year": 2025,
+   "rating": 0,
+   "state": "not_installed",
+   "sizeBytes": 12000000000,
+   "art": {
+    "cover": true,
+    "hero": true,
+    "icon": false
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": {
+    "got": 0,
+    "total": 25
+   },
+   "price": "Grátis",
+   "offer": null,
+   "category": null,
+   "tags": [
+    "store:jogos"
+   ],
+   "hue": [
+    170,
+    60
+   ],
+   "brand": null,
+   "logo": "ice",
+   "install": null
+  },
+  {
+   "id": "demo:s4",
+   "provider": "demo",
+   "kind": "game",
+   "title": "Forja Estelar",
+   "subtitle": "Estratégia",
+   "description": "Construa frotas e negocie com civilizações em um setor esquecido da galáxia.",
+   "studio": "Bigorna",
+   "year": 2025,
+   "rating": 10,
+   "state": "not_installed",
+   "sizeBytes": 21000000000,
+   "art": {
+    "cover": true,
+    "hero": true,
+    "icon": false
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": {
+    "got": 0,
+    "total": 40
+   },
+   "price": "R$ 89,90",
+   "offer": {
+    "old": "R$ 149,90",
+    "new": "R$ 89,90",
+    "pct": "-40%"
+   },
+   "category": null,
+   "tags": [
+    "store:jogos"
+   ],
+   "hue": [
+    20,
+    280
+   ],
+   "brand": null,
+   "logo": "gold",
+   "install": null
+  },
+  {
+   "id": "demo:r1",
+   "provider": "demo",
+   "kind": "game",
+   "title": "Cavaleiro de Bits",
+   "subtitle": "Clássicos · Plataforma 8-bit",
+   "description": "Um cavaleiro minúsculo atravessa 40 fases feitas para o hardware 8-bit original.",
+   "studio": "Pixel Forja · homebrew",
+   "year": 2024,
+   "rating": 0,
+   "state": "not_installed",
+   "sizeBytes": 512000,
+   "art": {
+    "cover": true,
+    "hero": true,
+    "icon": false
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": {
+    "got": 0,
+    "total": 10
+   },
+   "price": "R$ 14,90",
+   "offer": {
+    "old": "R$ 19,90",
+    "new": "R$ 14,90",
+    "pct": "-25%"
+   },
+   "category": "8-bit",
+   "tags": [
+    "store:classicos",
+    "classic"
+   ],
+   "hue": [
+    120,
+    30
+   ],
+   "brand": null,
+   "logo": null,
+   "install": null
+  },
+  {
+   "id": "demo:r2",
+   "provider": "demo",
+   "kind": "game",
+   "title": "Nave 1987",
+   "subtitle": "Clássicos · Tiro 16-bit",
+   "description": "Shoot ’em up de rolagem vertical com chefes enormes e trilha em chip de som FM.",
+   "studio": "Fliperama Novo · homebrew",
+   "year": 2025,
+   "rating": 0,
+   "state": "not_installed",
+   "sizeBytes": 2000000,
+   "art": {
+    "cover": true,
+    "hero": true,
+    "icon": false
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": {
+    "got": 0,
+    "total": 12
+   },
+   "price": "R$ 19,90",
+   "offer": null,
+   "category": "16-bit",
+   "tags": [
+    "store:classicos",
+    "classic"
+   ],
+   "hue": [
+    250,
+    320
+   ],
+   "brand": null,
+   "logo": null,
+   "install": null
+  },
+  {
+   "id": "demo:r3",
+   "provider": "demo",
+   "kind": "game",
+   "title": "Dojo Arcade",
+   "subtitle": "Clássicos · Luta Arcade",
+   "description": "Relançamento licenciado do clássico de fliperama, com modo online e rebobinar.",
+   "studio": "Golpe Certo · licenciado",
+   "year": 1993,
+   "rating": 12,
+   "state": "not_installed",
+   "sizeBytes": 14000000,
+   "art": {
+    "cover": true,
+    "hero": true,
+    "icon": false
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": {
+    "got": 0,
+    "total": 18
+   },
+   "price": "R$ 24,90",
+   "offer": {
+    "old": "R$ 39,90",
+    "new": "R$ 24,90",
+    "pct": "-38%"
+   },
+   "category": "Arcade",
+   "tags": [
+    "store:classicos",
+    "classic"
+   ],
+   "hue": [
+    5,
+    40
+   ],
+   "brand": null,
+   "logo": null,
+   "install": null
+  },
+  {
+   "id": "demo:r4",
+   "provider": "demo",
+   "kind": "game",
+   "title": "Labirinto Lunar",
+   "subtitle": "Clássicos · Quebra-cabeça portátil",
+   "description": "Quebra-cabeças em tela verde monocromática, feito por fãs para o portátil clássico.",
+   "studio": "Clube do Cartucho · homebrew",
+   "year": 2023,
+   "rating": 0,
+   "state": "not_installed",
+   "sizeBytes": 256000,
+   "art": {
+    "cover": true,
+    "hero": true,
+    "icon": false
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": {
+    "got": 0,
+    "total": 8
+   },
+   "price": "Grátis",
+   "offer": null,
+   "category": "Portátil",
+   "tags": [
+    "store:classicos",
+    "classic"
+   ],
+   "hue": [
+    200,
+    60
+   ],
+   "brand": null,
+   "logo": null,
+   "install": null
+  },
+  {
+   "id": "demo:r5",
+   "provider": "demo",
+   "kind": "game",
+   "title": "Turbo 16",
+   "subtitle": "Clássicos · Corrida 16-bit",
+   "description": "Corrida pseudo-3D com efeito de estrada infinita e trilha sintetizada.",
+   "studio": "Asfalto Retrô · licenciado",
+   "year": 1992,
+   "rating": 0,
+   "state": "not_installed",
+   "sizeBytes": 1500000,
+   "art": {
+    "cover": true,
+    "hero": true,
+    "icon": false
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": {
+    "got": 0,
+    "total": 15
+   },
+   "price": "R$ 9,90",
+   "offer": null,
+   "category": "16-bit",
+   "tags": [
+    "store:classicos",
+    "classic"
+   ],
+   "hue": [
+    160,
+    20
+   ],
+   "brand": null,
+   "logo": null,
+   "install": null
+  },
+  {
+   "id": "demo:a1",
+   "provider": "demo",
+   "kind": "app",
+   "title": "YouTube",
+   "subtitle": "Vídeo",
+   "description": "Vídeos, criadores e transmissões ao vivo.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "installed",
+   "sizeBytes": null,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": null,
+   "offer": null,
+   "category": "Vídeo",
+   "tags": [
+    "lib"
+   ],
+   "hue": [
+    0,
+    350
+   ],
+   "brand": {
+    "bg": "#f4f4f5",
+    "mode": "l"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "logo-youtube.svg"
+  },
+  {
+   "id": "demo:a2",
+   "provider": "demo",
+   "kind": "app",
+   "title": "Netflix",
+   "subtitle": "Streaming",
+   "description": "Séries e filmes por assinatura.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "installed",
+   "sizeBytes": null,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": null,
+   "offer": null,
+   "category": "Streaming",
+   "tags": [
+    "lib"
+   ],
+   "hue": [
+    355,
+    340
+   ],
+   "brand": {
+    "bg": "#0b0b0b",
+    "mode": "l"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "logo-netflix.svg"
+  },
+  {
+   "id": "demo:a13",
+   "provider": "demo",
+   "kind": "app",
+   "title": "Disney+",
+   "subtitle": "Streaming",
+   "description": "Filmes, séries e animações.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "installed",
+   "sizeBytes": null,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": null,
+   "offer": null,
+   "category": "Streaming",
+   "tags": [
+    "lib"
+   ],
+   "hue": [
+    225,
+    240
+   ],
+   "brand": {
+    "bg": "radial-gradient(120% 120% at 50% 0%,#2849c9,#0a1546)",
+    "mode": "lw"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "logo-disneyplus.svg"
+  },
+  {
+   "id": "demo:a14",
+   "provider": "demo",
+   "kind": "app",
+   "title": "Prime Video",
+   "subtitle": "Streaming",
+   "description": "Filmes, séries e esportes ao vivo.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "installed",
+   "sizeBytes": null,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": null,
+   "offer": null,
+   "category": "Streaming",
+   "tags": [
+    "lib"
+   ],
+   "hue": [
+    205,
+    215
+   ],
+   "brand": {
+    "bg": "linear-gradient(135deg,#1fb5ef,#0a79c9)",
+    "mode": "lw"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "logo-primevideo.svg"
+  },
+  {
+   "id": "demo:a3",
+   "provider": "demo",
+   "kind": "app",
+   "title": "Lumière+",
+   "subtitle": "Streaming",
+   "description": "Serviço de streaming fictício usado no protótipo.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "installed",
+   "sizeBytes": null,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": false
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": null,
+   "offer": null,
+   "category": "Streaming",
+   "tags": [
+    "lib"
+   ],
+   "hue": [
+    180,
+    220
+   ],
+   "brand": null,
+   "logo": null,
+   "install": null
+  },
+  {
+   "id": "demo:a4",
+   "provider": "demo",
+   "kind": "app",
+   "title": "Jellyfin",
+   "subtitle": "Mídia local",
+   "description": "Sua biblioteca de filmes e séries no servidor de casa.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "installed",
+   "sizeBytes": null,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": null,
+   "offer": null,
+   "category": "Mídia local",
+   "tags": [
+    "lib"
+   ],
+   "hue": [
+    275,
+    200
+   ],
+   "brand": {
+    "bg": "linear-gradient(135deg,#AA5CC3,#00A4DC)",
+    "mode": "i"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "jellyfin.svg"
+  },
+  {
+   "id": "demo:a5",
+   "provider": "demo",
+   "kind": "app",
+   "title": "Plex",
+   "subtitle": "Mídia local",
+   "description": "Mídia pessoal em qualquer tela.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "installed",
+   "sizeBytes": null,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": null,
+   "offer": null,
+   "category": "Mídia local",
+   "tags": [
+    "lib"
+   ],
+   "hue": [
+    42,
+    30
+   ],
+   "brand": {
+    "bg": "#1f1f1f",
+    "mode": "i"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "plex.svg"
+  },
+  {
+   "id": "demo:a6",
+   "provider": "demo",
+   "kind": "app",
+   "title": "Spotify",
+   "subtitle": "Música",
+   "description": "Músicas, podcasts e playlists.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "installed",
+   "sizeBytes": null,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": null,
+   "offer": null,
+   "category": "Música",
+   "tags": [
+    "lib"
+   ],
+   "hue": [
+    140,
+    160
+   ],
+   "brand": {
+    "bg": "#121212",
+    "mode": "l"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "logo-spotify.svg"
+  },
+  {
+   "id": "demo:a7",
+   "provider": "demo",
+   "kind": "app",
+   "title": "Twitch",
+   "subtitle": "Ao vivo",
+   "description": "Transmissões de jogos ao vivo.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "installed",
+   "sizeBytes": null,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": null,
+   "offer": null,
+   "category": "Ao vivo",
+   "tags": [
+    "lib"
+   ],
+   "hue": [
+    265,
+    290
+   ],
+   "brand": {
+    "bg": "#9146FF",
+    "mode": "i"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "twitch.svg"
+  },
+  {
+   "id": "demo:a8",
+   "provider": "demo",
+   "kind": "app",
+   "title": "Navegador",
+   "subtitle": "Internet",
+   "description": "Navegação web otimizada para TV.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "installed",
+   "sizeBytes": null,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": null,
+   "offer": null,
+   "category": "Internet",
+   "tags": [
+    "lib"
+   ],
+   "hue": [
+    205,
+    230
+   ],
+   "brand": {
+    "bg": "linear-gradient(135deg,#FF7139,#9059FF)",
+    "mode": "i"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "firefoxbrowser.svg"
+  },
+  {
+   "id": "demo:a9",
+   "provider": "demo",
+   "kind": "app",
+   "title": "RetroPad",
+   "subtitle": "Emulação",
+   "description": "Central de emuladores e ROMs integrada ao sistema.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "installed",
+   "sizeBytes": null,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": false
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": null,
+   "offer": null,
+   "category": "Emulação",
+   "tags": [
+    "lib"
+   ],
+   "hue": [
+    30,
+    10
+   ],
+   "brand": null,
+   "logo": null,
+   "install": null
+  },
+  {
+   "id": "demo:a10",
+   "provider": "demo",
+   "kind": "app",
+   "title": "Arquivos",
+   "subtitle": "Ferramentas",
+   "description": "Gerencie armazenamento interno e USB.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "installed",
+   "sizeBytes": null,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": false
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": null,
+   "offer": null,
+   "category": "Ferramentas",
+   "tags": [
+    "lib"
+   ],
+   "hue": [
+    50,
+    70
+   ],
+   "brand": null,
+   "logo": null,
+   "install": null
+  },
+  {
+   "id": "demo:a11",
+   "provider": "demo",
+   "kind": "app",
+   "title": "Discord",
+   "subtitle": "Social",
+   "description": "Converse por voz com seu grupo.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "installed",
+   "sizeBytes": null,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": null,
+   "offer": null,
+   "category": "Social",
+   "tags": [
+    "lib"
+   ],
+   "hue": [
+    235,
+    250
+   ],
+   "brand": {
+    "bg": "#5865F2",
+    "mode": "i"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "discord.svg"
+  },
+  {
+   "id": "demo:a12",
+   "provider": "demo",
+   "kind": "app",
+   "title": "Cine Orbe",
+   "subtitle": "Streaming",
+   "description": "Serviço de streaming fictício usado no protótipo.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "installed",
+   "sizeBytes": null,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": false
+   },
+   "caps": {
+    "install": false,
+    "pause": false,
+    "cancel": false,
+    "uninstall": false
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": null,
+   "offer": null,
+   "category": "Streaming",
+   "tags": [
+    "lib"
+   ],
+   "hue": [
+    330,
+    280
+   ],
+   "brand": null,
+   "logo": null,
+   "install": null
+  },
+  {
+   "id": "demo:sa1",
+   "provider": "demo",
+   "kind": "app",
+   "title": "Crunchyroll",
+   "subtitle": "Anime",
+   "description": "Animes simultâneos com o Japão, legendados e dublados.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "not_installed",
+   "sizeBytes": 180000000,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": "Grátis",
+   "offer": null,
+   "category": "Anime",
+   "tags": [
+    "store:apps"
+   ],
+   "hue": [
+    180,
+    200
+   ],
+   "brand": {
+    "bg": "#F47521",
+    "mode": "i"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "crunchyroll.svg"
+  },
+  {
+   "id": "demo:sa2",
+   "provider": "demo",
+   "kind": "app",
+   "title": "Steam Link",
+   "subtitle": "Jogos",
+   "description": "Transmita os jogos do seu PC para a TV pela rede local.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "not_installed",
+   "sizeBytes": 60000000,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": "Grátis",
+   "offer": null,
+   "category": "Jogos",
+   "tags": [
+    "store:apps"
+   ],
+   "hue": [
+    180,
+    200
+   ],
+   "brand": {
+    "bg": "linear-gradient(135deg,#171a21,#2a475e)",
+    "mode": "i"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "steam.svg"
+  },
+  {
+   "id": "demo:sa3",
+   "provider": "demo",
+   "kind": "app",
+   "title": "GeForce NOW",
+   "subtitle": "Jogos na nuvem",
+   "description": "Jogue sua biblioteca de PC na nuvem, em até 4K.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "not_installed",
+   "sizeBytes": 95000000,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": "Grátis",
+   "offer": null,
+   "category": "Jogos na nuvem",
+   "tags": [
+    "store:apps"
+   ],
+   "hue": [
+    180,
+    200
+   ],
+   "brand": {
+    "bg": "linear-gradient(135deg,#1a1a1a,#3d5a00)",
+    "mode": "i"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "nvidia.svg"
+  },
+  {
+   "id": "demo:sa4",
+   "provider": "demo",
+   "kind": "app",
+   "title": "Kodi",
+   "subtitle": "Mídia local",
+   "description": "Central de mídia de código aberto para filmes, séries e música.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "not_installed",
+   "sizeBytes": 120000000,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": "Grátis",
+   "offer": null,
+   "category": "Mídia local",
+   "tags": [
+    "store:apps"
+   ],
+   "hue": [
+    180,
+    200
+   ],
+   "brand": {
+    "bg": "linear-gradient(135deg,#17B2E7,#0b6f94)",
+    "mode": "i"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "kodi.svg"
+  },
+  {
+   "id": "demo:sa5",
+   "provider": "demo",
+   "kind": "app",
+   "title": "VLC",
+   "subtitle": "Player",
+   "description": "Reproduz praticamente qualquer formato de vídeo e áudio.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "not_installed",
+   "sizeBytes": 45000000,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": "Grátis",
+   "offer": null,
+   "category": "Player",
+   "tags": [
+    "store:apps"
+   ],
+   "hue": [
+    180,
+    200
+   ],
+   "brand": {
+    "bg": "linear-gradient(135deg,#FF8800,#e25e00)",
+    "mode": "i"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "vlcmediaplayer.svg"
+  },
+  {
+   "id": "demo:sa6",
+   "provider": "demo",
+   "kind": "app",
+   "title": "Deezer",
+   "subtitle": "Música",
+   "description": "Milhões de músicas, Flow personalizado e letras sincronizadas.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "not_installed",
+   "sizeBytes": 70000000,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": "Grátis",
+   "offer": null,
+   "category": "Música",
+   "tags": [
+    "store:apps"
+   ],
+   "hue": [
+    180,
+    200
+   ],
+   "brand": {
+    "bg": "linear-gradient(135deg,#A238FF,#5b1bb0)",
+    "mode": "i"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "deezer.svg"
+  },
+  {
+   "id": "demo:sa7",
+   "provider": "demo",
+   "kind": "app",
+   "title": "TIDAL",
+   "subtitle": "Música Hi‑Fi",
+   "description": "Música em alta fidelidade e áudio sem perdas.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "not_installed",
+   "sizeBytes": 65000000,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": "Grátis",
+   "offer": null,
+   "category": "Música Hi‑Fi",
+   "tags": [
+    "store:apps"
+   ],
+   "hue": [
+    180,
+    200
+   ],
+   "brand": {
+    "bg": "#000",
+    "mode": "i"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "tidal.svg"
+  },
+  {
+   "id": "demo:sa8",
+   "provider": "demo",
+   "kind": "app",
+   "title": "Apple TV",
+   "subtitle": "Streaming",
+   "description": "Séries e filmes originais, além de aluguel de lançamentos.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "not_installed",
+   "sizeBytes": 110000000,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": "Grátis",
+   "offer": null,
+   "category": "Streaming",
+   "tags": [
+    "store:apps"
+   ],
+   "hue": [
+    180,
+    200
+   ],
+   "brand": {
+    "bg": "linear-gradient(135deg,#2b2b2b,#0d0d0d)",
+    "mode": "i"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "appletv.svg"
+  },
+  {
+   "id": "demo:sa9",
+   "provider": "demo",
+   "kind": "app",
+   "title": "Apple Music",
+   "subtitle": "Música",
+   "description": "Catálogo completo com áudio espacial.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "not_installed",
+   "sizeBytes": 90000000,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": "Grátis",
+   "offer": null,
+   "category": "Música",
+   "tags": [
+    "store:apps"
+   ],
+   "hue": [
+    180,
+    200
+   ],
+   "brand": {
+    "bg": "linear-gradient(135deg,#fa233b,#fb5c74)",
+    "mode": "i"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "applemusic.svg"
+  },
+  {
+   "id": "demo:sa10",
+   "provider": "demo",
+   "kind": "app",
+   "title": "SoundCloud",
+   "subtitle": "Música",
+   "description": "Artistas independentes, remixes e sets ao vivo.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "not_installed",
+   "sizeBytes": 55000000,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": "Grátis",
+   "offer": null,
+   "category": "Música",
+   "tags": [
+    "store:apps"
+   ],
+   "hue": [
+    180,
+    200
+   ],
+   "brand": {
+    "bg": "linear-gradient(135deg,#FF5500,#ff8800)",
+    "mode": "i"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "soundcloud.svg"
+  },
+  {
+   "id": "demo:sa11",
+   "provider": "demo",
+   "kind": "app",
+   "title": "Pocket Casts",
+   "subtitle": "Podcasts",
+   "description": "Seus podcasts sincronizados em todos os dispositivos.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "not_installed",
+   "sizeBytes": 40000000,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": "Grátis",
+   "offer": null,
+   "category": "Podcasts",
+   "tags": [
+    "store:apps"
+   ],
+   "hue": [
+    180,
+    200
+   ],
+   "brand": {
+    "bg": "linear-gradient(135deg,#F43E37,#b8221d)",
+    "mode": "i"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "pocketcasts.svg"
+  },
+  {
+   "id": "demo:sa12",
+   "provider": "demo",
+   "kind": "app",
+   "title": "Epic Games",
+   "subtitle": "Jogos",
+   "description": "Sua biblioteca Epic e jogos grátis toda semana.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "not_installed",
+   "sizeBytes": 150000000,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": "Grátis",
+   "offer": null,
+   "category": "Jogos",
+   "tags": [
+    "store:apps"
+   ],
+   "hue": [
+    180,
+    200
+   ],
+   "brand": {
+    "bg": "linear-gradient(135deg,#2a2a2a,#121212)",
+    "mode": "i"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "epicgames.svg"
+  },
+  {
+   "id": "demo:sa13",
+   "provider": "demo",
+   "kind": "app",
+   "title": "itch.io",
+   "subtitle": "Jogos indie",
+   "description": "Milhares de jogos independentes e experimentais.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "not_installed",
+   "sizeBytes": 35000000,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": "Grátis",
+   "offer": null,
+   "category": "Jogos indie",
+   "tags": [
+    "store:apps"
+   ],
+   "hue": [
+    180,
+    200
+   ],
+   "brand": {
+    "bg": "linear-gradient(135deg,#FA5C5C,#c73b3b)",
+    "mode": "i"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "itchdotio.svg"
+  },
+  {
+   "id": "demo:sa14",
+   "provider": "demo",
+   "kind": "app",
+   "title": "Google Chrome",
+   "subtitle": "Internet",
+   "description": "Navegador com sincronização de favoritos e senhas.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "not_installed",
+   "sizeBytes": 130000000,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": "Grátis",
+   "offer": null,
+   "category": "Internet",
+   "tags": [
+    "store:apps"
+   ],
+   "hue": [
+    180,
+    200
+   ],
+   "brand": {
+    "bg": "linear-gradient(135deg,#4285F4,#1a5bd1)",
+    "mode": "i"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "googlechrome.svg"
+  },
+  {
+   "id": "demo:sa15",
+   "provider": "demo",
+   "kind": "app",
+   "title": "RetroArch",
+   "subtitle": "Emulação",
+   "description": "Interface avançada de emulação com centenas de núcleos.",
+   "studio": null,
+   "year": null,
+   "rating": null,
+   "state": "not_installed",
+   "sizeBytes": 220000000,
+   "art": {
+    "cover": false,
+    "hero": false,
+    "icon": true
+   },
+   "caps": {
+    "install": true,
+    "pause": false,
+    "cancel": true,
+    "uninstall": true
+   },
+   "playtimeSec": 0,
+   "lastPlayed": null,
+   "progress": null,
+   "chapter": null,
+   "achievements": null,
+   "price": "Grátis",
+   "offer": null,
+   "category": "Emulação",
+   "tags": [
+    "store:apps"
+   ],
+   "hue": [
+    180,
+    200
+   ],
+   "brand": {
+    "bg": "linear-gradient(135deg,#3a3a3a,#161616)",
+    "mode": "i"
+   },
+   "logo": null,
+   "install": null,
+   "iconFile": "retroarch.svg"
+  }
+ ],
+ "friends": [
+  {
+   "name": "Rafa",
+   "status": "Jogando Rota Neon",
+   "hue": 320,
+   "online": true
+  },
+  {
+   "name": "Bia",
+   "status": "Assistindo Maré Alta",
+   "hue": 200,
+   "online": true
+  },
+  {
+   "name": "Teo",
+   "status": "Online",
+   "hue": 40,
+   "online": true
+  },
+  {
+   "name": "Nina",
+   "status": "Visto há 2 h",
+   "hue": 280,
+   "online": false
+  }
+ ]
+}

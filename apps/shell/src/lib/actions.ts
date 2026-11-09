@@ -1,0 +1,543 @@
+import { createSignal } from 'solid-js';
+import { RpcError, E } from '@nexus/protocol';
+import type { Item } from '@nexus/protocol';
+import { audioInit, sfx } from '@nexus/ui';
+import { api } from './api';
+import { askConfirm, closeAllOv, fail, findItem, focusNow, fx, guarded, hasOv, isInstalled, isKid, me, ovs, popOv, prefs, pushOv, replaceTop, requireParental, S, setPref, setS, toast, topOv, upsertLib, setMode } from './state';
+import { enterProfile, leaveProfile, loadProfiles } from './session';
+import { effectivePrice, priceNum } from './format';
+import { removeParentalPin, setParentalPin } from './flows';
+
+export const TABS: [string, string][] = [['home', 'Início'], ['biblioteca', 'Biblioteca'], ['midia', 'Mídia'], ['loja', 'Loja']];
+export const kidTabs = (): [string, string][] => TABS.filter(([k]) => k !== 'loja');
+export const tabsNow = () => (isKid() ? kidTabs() : TABS);
+
+export const [hubTab, setHubTab] = createSignal<string>('');
+
+export const cycHandlers = new Map<string, (d: 1 | -1) => void>();
+export type TextEvent = { kind: 'char' | 'del' | 'clear' | 'enter' | 'shift'; ch?: string; screen?: boolean };
+/** Quem está digitando (busca, texto, PIN). `enter` = a tecla Enter envia (em vez de ativar o foco). */
+export const textSink: { cur: null | ((e: TextEvent) => void); enter: boolean } = { cur: null, enter: false };
+
+function focusSoon(fn: () => void) {
+  queueMicrotask(() => requestAnimationFrame(fn));
+}
+
+// ---------- navegação ----------
+export function tab(k: string, o: { focus?: boolean } = {}) {
+  if (k === 'loja' && isKid()) return;
+  setS('tab', k as never);
+  if (o.focus) focusSoon(() => fx.f?.set(firstFocus(k), { silent: true, snap: true }));
+}
+
+export function firstFocus(k: string): HTMLElement | null {
+  const q = (s: string) => document.querySelector<HTMLElement>(s);
+  if (k === 'home') return q(`#view .tl[data-k="${S.dockId}"]`) || q('#view .drow .tl') || q('.tab.on');
+  return q('#view .sc .tl') || q('#view .sc .cp') || q('#view .ri.on') || q('.tab.on');
+}
+
+export function tabStep(d: 1 | -1) {
+  if (S.scr !== 'shell' || ovs().length) return;
+  const t = tabsNow();
+  const i = t.findIndex((x) => x[0] === S.tab);
+  const n = t[(i + d + t.length) % t.length][0];
+  sfx('tab');
+  tab(n);
+  focusSoon(() => fx.f?.set(document.querySelector<HTMLElement>(`.tab[data-tab="${n}"]`), { silent: true }));
+}
+
+export function goHome() {
+  closeAllOv();
+  setS('dockId', null);
+  tab('home', { focus: true });
+}
+
+export function back() {
+  const top = topOv();
+  const cur = focusNow();
+  if (top) {
+    if (top.kind === 'launch') return goHome();
+    if (top.kind === 'timeup') return sfx('bump');
+    if (top.kind === 'settings' && cur?.closest('.setpane')) {
+      sfx('back');
+      return fx.f?.set(document.querySelector<HTMLElement>('#ovs .setrail .ri.on'), { silent: true });
+    }
+    if (top.kind === 'profile' && top.props.first) return sfx('bump');
+    return popOv(top.kind === 'pin' || top.kind === 'text' || top.kind === 'confirm' ? (top.kind === 'confirm' ? false : null) : undefined);
+  }
+  if (S.scr !== 'shell') return;
+  if (S.tab === 'home') {
+    if (cur?.closest('#acts')) {
+      sfx('back');
+      fx.f?.set(firstFocus('home'), { silent: true });
+    }
+    return;
+  }
+  sfx('back');
+  if (cur?.closest('.sc') && document.querySelector('#view .rail')) return fx.f?.set(document.querySelector<HTMLElement>('#view .rail .ri.on'), { silent: true });
+  tab('home', { focus: true });
+}
+
+// ---------- itens ----------
+export function verbOf(it: Item): string {
+  if (S.game?.itemId === it.id) return 'Retomar';
+  if (it.state === 'installing') return 'Aguarde';
+  if (it.state === 'not_installed') return it.caps.install ? (priceNum(effectivePrice(it)) > 0 ? 'Comprar' : 'Instalar') : 'Ver';
+  if (it.state === 'error') return 'Ver';
+  if (it.kind === 'app') return 'Abrir';
+  return it.progress ? 'Continuar' : 'Jogar';
+}
+
+export async function openHub(id: string, tk?: string) {
+  let it = findItem(id);
+  if (!it) {
+    try {
+      it = await api.item(id);
+      setS('extra', id, it);
+    } catch (e) {
+      return fail(e);
+    }
+  }
+  const top = topOv();
+  setHubTab(tk ?? '');
+  if (top?.kind === 'hub') {
+    top.props = { ...top.props, id };
+    setOvsRefresh();
+    return;
+  }
+  if (top?.kind === 'sheet') await replaceTop('hub', { id });
+  else void pushOv('hub', { id });
+}
+
+function setOvsRefresh() {
+  document.dispatchEvent(new CustomEvent('nexus:hub-refresh'));
+}
+
+export async function launch(id: string, resume = false) {
+  const it = findItem(id);
+  if (S.game) {
+    if (S.game.itemId === id) {
+      if (!hasOv('launch')) void pushOv('launch', { id });
+      void api.resumeGame().catch(() => {});
+      return;
+    }
+    return void toast('Já há algo em execução', `${S.game.title} — feche antes de abrir outro`, 'info');
+  }
+  if (it && !isInstalled(it)) return void openHub(id);
+  try {
+    const gs = await api.launch(id);
+    setS('game', gs);
+    sfx('launch');
+    for (const o of ovs()) if (o.kind === 'sheet' || o.kind === 'hub') popOv(undefined, true);
+    void pushOv('launch', { id });
+  } catch (e) {
+    if (e instanceof RpcError && e.code === E.LIMIT) return void showTimeUp();
+    fail(e);
+  }
+  void resume;
+}
+
+export async function resumeGame() {
+  if (!S.game) return;
+  const top = topOv();
+  if (top?.kind === 'guide') popOv(undefined, true);
+  if (!hasOv('launch')) void pushOv('launch', { id: S.game.itemId });
+  await api.resumeGame().catch(() => {});
+}
+
+export async function closeGame(force = false) {
+  try {
+    await api.closeGame(force);
+  } catch (e) {
+    fail(e);
+  }
+}
+
+export async function install(id: string) {
+  try {
+    await api.install(id);
+    toast('Download iniciado', findItem(id)?.title ?? '', 'download');
+  } catch (e) {
+    fail(e);
+  }
+}
+
+export function showTimeUp() {
+  if (hasOv('timeup')) return;
+  closeAllOv();
+  void pushOv('timeup', {});
+}
+
+// ---------- ajustes e cadastros ----------
+export function openSettings(cat?: string) {
+  if (cat) setS('setCat', cat);
+  if (!hasOv('settings')) void pushOv('settings', {});
+}
+
+export function openSearch() {
+  if (S.scr !== 'shell' || hasOv('search')) return;
+  void pushOv('search', {});
+}
+
+export async function toggleGuide() {
+  if (S.scr !== 'shell') return;
+  if (topOv()?.kind === 'guide') return popOv();
+  void pushOv('guide', {});
+}
+
+export function toggleNotif() {
+  if (S.scr !== 'shell') return;
+  if (topOv()?.kind === 'notif') return popOv();
+  setS('unread', false);
+  void pushOv('notif', {});
+}
+
+export function editProfile(id: string | null, opts: { first?: boolean } = {}) {
+  return pushOv('profile', { id, ...opts });
+}
+
+export async function powerAction(a: 'off' | 'restart') {
+  const ok = await askConfirm({ title: a === 'off' ? 'Desligar o console?' : 'Reiniciar o console?', sub: S.game ? `${S.game.title} será fechado.` : 'Salve o que estiver fazendo.', yes: a === 'off' ? 'Desligar' : 'Reiniciar', danger: true });
+  if (!ok) return;
+  try {
+    const r = await api.power(a);
+    if (r.simulated) {
+      closeAllOv();
+      setS({ session: null, scr: a === 'off' ? 'standby' : 'boot' });
+      void loadProfiles();
+    }
+  } catch (e) {
+    fail(e);
+  }
+}
+
+export function toggleFS() {
+  try {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void document.documentElement.requestFullscreen?.();
+  } catch { /* sem tela cheia */ }
+}
+
+export function cycle(k: string, d: 1 | -1) {
+  if (k === 'theme') {
+    const order = ['dark', 'light', 'auto'];
+    const i = order.indexOf(prefs().theme);
+    setPref({ theme: order[(i + d + order.length) % order.length] });
+    sfx('tab');
+    return;
+  }
+  cycHandlers.get(k)?.(d);
+}
+
+export function slide(delta: number) {
+  setPref({ vol: Math.max(0, Math.min(100, prefs().vol + delta)) });
+  sfx('tick');
+}
+
+export function adjust(el: HTMLElement, dir: 1 | -1): boolean {
+  if (el.dataset.slider) {
+    if (el.dataset.slider === 'vol') slide(dir * 5);
+    else cycHandlers.get(el.dataset.slider)?.(dir);
+    return true;
+  }
+  if (el.dataset.cyc) {
+    cycle(el.dataset.cyc, dir);
+    return true;
+  }
+  return false;
+}
+
+export const THEME_LABEL: Record<string, string> = { dark: 'Escuro', light: 'Claro', auto: 'Automático' };
+
+// ---------- tabela de ações (data-a="nome:arg") ----------
+type Fn = (arg: string) => void | Promise<void>;
+
+export const ACT: Record<string, Fn> = {
+  noop() {},
+  boot() {
+    setS('scr', 'boot');
+    sfx('boot');
+  },
+  prof(id) {
+    sfx('select');
+    void enterProfile(id);
+  },
+  profadd() {
+    void requireParental('Necessário para criar perfis').then((ok) => {
+      if (ok) void editProfile(null);
+    });
+  },
+  profedit(id) {
+    void editProfile(id);
+  },
+  tabgo(k) {
+    if (S.tab !== k) tab(k);
+    focusSoon(() => {
+      const f = firstFocus(k);
+      if (f) fx.f?.set(f, { silent: true });
+    });
+  },
+  tab(k) {
+    tab(k, { focus: true });
+  },
+  back() {
+    back();
+  },
+  goback() {
+    back();
+  },
+  guide() {
+    void toggleGuide();
+  },
+  search() {
+    openSearch();
+  },
+  notif() {
+    toggleNotif();
+  },
+  settings(cat) {
+    openSettings(cat || undefined);
+  },
+  toast(m) {
+    toast(m, '', 'info');
+  },
+  clearnotifs() {
+    void api.clearNotifications().then(() => {
+      setS('notifs', []);
+      popOv();
+    });
+  },
+  parentalpin() {
+    void setParentalPin();
+  },
+  parentalrm() {
+    void removeParentalPin();
+  },
+  allowsheet(pid) {
+    const top = topOv();
+    if (top?.kind === 'sheet') void replaceTop('sheet', { type: 'allow', profileId: pid });
+    else void pushOv('sheet', { type: 'allow', profileId: pid });
+  },
+  allowkid() {},
+  allowtoggle(id) {
+    document.dispatchEvent(new CustomEvent('nexus:allow-toggle', { detail: id }));
+  },
+  async rrotate() {
+    const ok = await askConfirm({ title: 'Gerar um novo código?', sub: 'Os aparelhos conectados serão desconectados e o QR atual deixa de funcionar.', yes: 'Gerar novo código' });
+    if (!ok) return;
+    try {
+      setS('pairing', await api.rotatePairing());
+      toast('Novo código gerado', '', 'refresh');
+    } catch (e) {
+      fail(e);
+    }
+  },
+  async rdisc(id) {
+    try {
+      setS('pairing', await api.disconnectRemote(id));
+    } catch (e) {
+      fail(e);
+    }
+  },
+  yes() {
+    popOv(true);
+  },
+  no() {
+    popOv(false);
+  },
+  timeup(a) {
+    document.dispatchEvent(new CustomEvent('nexus:timeup', { detail: a }));
+  },
+  pe(a) {
+    document.dispatchEvent(new CustomEvent('nexus:pe', { detail: a }));
+  },
+  onb(a) {
+    document.dispatchEvent(new CustomEvent('nexus:onb', { detail: a }));
+  },
+  remote() {
+    if (topOv()?.kind === 'guide') popOv(undefined, true);
+    openSettings('remote');
+  },
+  nt(a) {
+    popOv(undefined, true);
+    const i = a.indexOf(':');
+    const n = i < 0 ? a : a.slice(0, i);
+    ACT[n]?.(i < 0 ? '' : a.slice(i + 1));
+  },
+  open(id) {
+    void openHub(id);
+  },
+  hub(a) {
+    const i = a.lastIndexOf(':');
+    const maybeTab = a.slice(i + 1);
+    if (i > 0 && ['atv', 'ach', 'ami', 'sobre'].includes(maybeTab)) void openHub(a.slice(0, i), maybeTab);
+    else void openHub(a);
+  },
+  hubtab(t) {
+    setHubTab(t);
+  },
+  launch(id) {
+    void launch(id);
+  },
+  app(id) {
+    const it = findItem(id);
+    if (it && isInstalled(it)) void launch(id);
+    else void openHub(id);
+  },
+  resume() {
+    void resumeGame();
+  },
+  exitgame() {
+    goHome();
+  },
+  closegame() {
+    void closeGame();
+    if (topOv()?.kind === 'guide') popOv(undefined, true);
+  },
+  forceclose() {
+    void closeGame(true);
+  },
+  opts(id) {
+    const top = topOv();
+    if (top?.kind === 'sheet') return;
+    void pushOv('sheet', { type: 'opts', id });
+  },
+  buy(id) {
+    const it = findItem(id);
+    if (!it) return;
+    if (priceNum(effectivePrice(it)) > 0) {
+      const top = topOv();
+      if (top?.kind === 'sheet') void replaceTop('sheet', { type: 'buy', id });
+      else void pushOv('sheet', { type: 'buy', id });
+    } else {
+      if (topOv()?.kind === 'sheet') popOv(undefined, true);
+      void install(id);
+    }
+  },
+  async confirm(id) {
+    popOv(undefined, true);
+    await install(id);
+  },
+  async cancel(id) {
+    try {
+      await api.cancel(id);
+      toast('Download cancelado', findItem(id)?.title ?? '', 'x');
+    } catch (e) {
+      fail(e);
+    }
+  },
+  async uninstall(id) {
+    const it = findItem(id);
+    popOv(undefined, true);
+    if (!(await askConfirm({ title: `Desinstalar ${it?.title ?? 'item'}?`, sub: 'Você poderá instalar de novo depois.', yes: 'Desinstalar', danger: true }))) return;
+    try {
+      await api.uninstall(id);
+      toast('Desinstalado', it?.title ?? '', 'trash');
+      void api.items([id]).then(upsertLib).catch(() => {});
+    } catch (e) {
+      fail(e);
+    }
+  },
+  fav(id) {
+    const f = prefs().favs.includes(id);
+    setPref({ favs: f ? prefs().favs.filter((x) => x !== id) : [...prefs().favs, id] });
+    sfx(f ? 'off' : 'on');
+    toast(f ? 'Removido dos favoritos' : 'Adicionado aos favoritos', findItem(id)?.title ?? '', 'heart');
+    popOv(undefined, true);
+  },
+  pin(id) {
+    const f = prefs().pins.includes(id);
+    setPref({ pins: f ? prefs().pins.filter((x) => x !== id) : [...prefs().pins, id] });
+    sfx(f ? 'off' : 'on');
+    toast(f ? 'Removido do início' : 'Fixado no início', findItem(id)?.title ?? '', 'plus');
+    popOv(undefined, true);
+    setS('dockId', null);
+  },
+  rail(a) {
+    if (a.startsWith('shop:')) setS('shopCat', a.slice(5));
+    else if (a.startsWith('cat:')) {
+      setS('setCat', a.slice(4));
+    } else setS('libFilter', a);
+  },
+  key(k) {
+    const sink = textSink.cur;
+    if (!sink) return;
+    if (k === 'space') sink({ kind: 'char', ch: ' ', screen: true });
+    else if (k === 'del') sink({ kind: 'del' });
+    else if (k === 'clear') sink({ kind: 'clear' });
+    else if (k === 'ok') sink({ kind: 'enter' });
+    else if (k === 'shift') sink({ kind: 'shift' });
+    else sink({ kind: 'char', ch: k, screen: true });
+  },
+  tog(k) {
+    const cur = prefs()[k as 'sfx'];
+    setPref({ [k]: !cur } as never);
+    sfx(!cur ? 'on' : 'off');
+  },
+  cyc(k) {
+    cycle(k, 1);
+  },
+  fs() {
+    toggleFS();
+  },
+  switch() {
+    if (topOv()?.kind === 'guide') popOv(undefined, true);
+    void leaveProfile();
+  },
+  restart() {
+    void powerAction('restart');
+  },
+  off() {
+    void powerAction('off');
+  },
+  async steamsync() {
+    try {
+      const r = await api.steamSync();
+      toast(r.hasKey ? `${r.count} jogos na conta` : 'Chave da Web API não configurada', r.hasKey ? 'Biblioteca atualizada' : 'Informe a chave em Ajustes → Steam', 'download');
+      S.steam && setS('steam', await api.steamAccount());
+    } catch (e) {
+      fail(e);
+    }
+  },
+  async steamkey() {
+    const { askText } = await import('./state');
+    const k = await askText({ title: 'Chave da Web API da Steam', max: 32, kind: 'key' });
+    if (!k) return;
+    try {
+      await api.steamSetKey(k.trim());
+      toast('Chave salva', 'Sincronizando…', 'check');
+      await ACT.steamsync('');
+    } catch (e) {
+      fail(e);
+    }
+  },
+};
+
+const DEBUG = typeof localStorage !== 'undefined' && localStorage.getItem('nexus-debug') === '1';
+
+export function activate(el: HTMLElement | null) {
+  if (!el) return;
+  const a = el.dataset.a || '';
+  if (!a) return;
+  const i = a.indexOf(':');
+  const n = i < 0 ? a : a.slice(0, i);
+  const arg = i < 0 ? '' : a.slice(i + 1);
+  if (DEBUG) console.debug('[act]', n, arg);
+  if (n === 'tabgo' || n === 'tab') sfx('tab');
+  else if (!['tog', 'noop', 'fav', 'pin', 'key', 'rail', 'hubtab', 'cyc'].includes(n)) sfx('select');
+  void ACT[n]?.(arg);
+}
+
+export function optionsFor(el: HTMLElement | null) {
+  const id = el?.dataset.id;
+  if (!id || !el.dataset.opt || !findItem(id)) return;
+  const t = topOv();
+  if (t && t.kind !== 'hub') return;
+  ACT.opts(id);
+}
+
+export function hubStep(d: 1 | -1) {
+  document.dispatchEvent(new CustomEvent('nexus:hub-step', { detail: d }));
+}
+
+export { audioInit, me, setMode };

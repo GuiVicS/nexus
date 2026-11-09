@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD polkit Policy Configuration 1.0//EN" "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<policyconfig>
+  <vendor>Nexus</vendor>
+  <!-- Ações nomeadas, sem argumentos livres: o Sysd monta o comando. Só o usuário da sessão ativa local. -->
+  <action id="br.nexus.sysd.update">
+    <description>Atualizar o Nexus</description>
+    <message>Autenticação necessária para atualizar o Nexus</message>
+    <defaults><allow_any>no</allow_any><allow_inactive>no</allow_inactive><allow_active>auth_admin_keep</allow_active></defaults>
+  </action>
+  <action id="br.nexus.sysd.install-provider">
+    <description>Instalar um provedor (Steam, RetroArch)</description>
+    <message>Autenticação necessária para instalar componentes</message>
+    <defaults><allow_any>no</allow_any><allow_inactive>no</allow_inactive><allow_active>auth_admin_keep</allow_active></defaults>
+  </action>
+  <action id="br.nexus.sysd.power-profile">
+    <description>Alterar o perfil de energia</description>
+    <message>Autenticação necessária para alterar o perfil de energia</message>
+    <defaults><allow_any>no</allow_any><allow_inactive>no</allow_inactive><allow_active>yes</allow_active></defaults>
+  </action>
+  <action id="br.nexus.sysd.set-autologin">
+    <description>Configurar entrada automática no Nexus</description>
+    <message>Autenticação necessária para configurar a entrada automática</message>
+    <defaults><allow_any>no</allow_any><allow_inactive>no</allow_inactive><allow_active>auth_admin</allow_active></defaults>
+  </action>
+</policyconfig>

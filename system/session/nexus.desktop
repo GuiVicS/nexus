@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Nexus
+Comment=Interface de console para jogos
+Exec=/usr/bin/nexus-session
+Type=Application
+DesktopNames=Nexus
