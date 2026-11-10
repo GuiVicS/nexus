@@ -13,12 +13,18 @@ Shell (Electron + SolidJS) ⇄ Core (Rust) ⇄ Providers (Steam · Apps Linux ·
 Plano completo: [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) · estado atual: [docs/STATUS.md](docs/STATUS.md)
 
 ## Instalar (Debian/Ubuntu x86_64)
+Gere o pacote único e leve-o ao Linux:
 ```sh
-tools/build-deb.sh                       # gera dist/nexus_0.1.0_amd64.deb (precisa de Rust, Node 24, pnpm)
-sudo apt install ./dist/nexus_0.1.0_amd64.deb
-sudo nexus-installer install --steam --yes   # opcional: Steam; acrescente --autologin SEU_USUARIO
+tools/bundle.sh          # gera dist/nexus-0.1.0-linux-x86_64.tar.gz (precisa de Rust, Node 24, pnpm)
 ```
-Na tela de login escolha a sessão **Nexus**. Saída de emergência: Ctrl+Alt+F3 (terminal) ou `touch /etc/nexus/force-desktop`.
+No Linux:
+```sh
+tar xzf nexus-0.1.0-linux-x86_64.tar.gz && cd nexus-0.1.0
+sudo ./install.sh                                # Nexus + Steam
+sudo ./install.sh --autologin SEU_USUARIO        # opcional: entrar direto no Nexus
+sudo ./install.sh --emulation                    # opcional: RetroArch (Flatpak)
+```
+Na tela de login escolha a sessão **Nexus**. Emergência: Ctrl+Alt+F3 (terminal) ou `sudo touch /etc/nexus/force-desktop`.
 
 ## Rodar em desenvolvimento (qualquer máquina com Chromium)
 ```sh

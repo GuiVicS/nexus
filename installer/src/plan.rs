@@ -53,27 +53,51 @@ pub fn install_cmd(f: Family, pkgs: &[&str]) -> Vec<String> {
     v.into_iter().map(String::from).collect()
 }
 
+fn sh(title: &str, script: &str) -> Step {
+    Step { title: title.into(), action: Action::Cmd(vec!["sh".into(), "-c".into(), script.into()]) }
+}
+
 pub fn build(sys: &System, o: &Options) -> Vec<Step> {
     let mut s = vec![];
     let step = |title: &str, f: Family, pkgs: &[&str]| Step { title: title.into(), action: Action::Cmd(install_cmd(f, pkgs)) };
+    let installed = std::path::Path::new("/usr/bin/nexus-core").exists();
     if sys.family == Family::Debian {
         s.push(cmd("Atualizar a lista de pacotes", &["apt-get", "update"]));
     }
-    s.push(step("Instalar o Nexus (Shell, Core e sessão)", sys.family, &["nexus"]));
+    if !installed {
+        s.push(step("Instalar o Nexus (Shell, Core e sessão)", sys.family, &["nexus"]));
+    }
     if o.steam {
         match sys.family {
             Family::Debian => {
-                s.push(cmd("Habilitar arquitetura de 32 bits (necessária para a Steam)", &["dpkg", "--add-architecture", "i386"]));
+                s.push(cmd("Habilitar a arquitetura de 32 bits (necessária para a Steam)", &["dpkg", "--add-architecture", "i386"]));
+                if sys.id == "ubuntu" {
+                    s.push(step("Instalar o gerenciador de repositórios", sys.family, &["software-properties-common"]));
+                    s.push(cmd("Habilitar o repositório multiverse (onde fica a Steam)", &["add-apt-repository", "-y", "multiverse"]));
+                } else {
+                    s.push(sh("Habilitar contrib e non-free (onde fica a Steam)", "sed -i -E 's/^(deb .* main)( contrib)?( non-free)?( non-free-firmware)?$/\\1 contrib non-free non-free-firmware/' /etc/apt/sources.list 2>/dev/null || true"));
+                }
                 s.push(cmd("Atualizar a lista de pacotes", &["apt-get", "update"]));
+                s.push(step("Instalar a Steam", sys.family, &["steam-installer"]));
             }
-            Family::Fedora => s.push(cmd("Habilitar o RPM Fusion não livre (Steam)", &["dnf", "install", "-y", "rpmfusion-nonfree-release"])),
-            Family::Arch => {}
+            Family::Fedora => {
+                s.push(sh("Habilitar o RPM Fusion (livre e não livre)", "dnf install -y \"https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm\" \"https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm\""));
+                s.push(step("Instalar a Steam", sys.family, &["steam"]));
+            }
+            Family::Arch => {
+                s.push(sh("Habilitar o repositório multilib (32 bits)", "grep -q '^\\[multilib\\]' /etc/pacman.conf || printf '\\n[multilib]\\nInclude = /etc/pacman.d/mirrorlist\\n' >> /etc/pacman.conf"));
+                s.push(cmd("Atualizar a lista de pacotes", &["pacman", "-Sy"]));
+                s.push(step("Instalar a Steam", sys.family, &["steam"]));
+            }
             Family::Unknown => {}
         }
-        s.push(step("Instalar a Steam", sys.family, &["steam"]));
     }
     if o.emulation {
-        s.push(cmd("Instalar o RetroArch (Flatpak)", &["flatpak", "install", "-y", "flathub", "org.libretro.RetroArch"]));
+        if !sys.has_flatpak {
+            s.push(step("Instalar o Flatpak", sys.family, &["flatpak"]));
+        }
+        s.push(cmd("Adicionar o repositório Flathub", &["flatpak", "remote-add", "--if-not-exists", "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo"]));
+        s.push(cmd("Instalar o RetroArch (Flatpak)", &["flatpak", "install", "--system", "-y", "flathub", "org.libretro.RetroArch"]));
     }
     if let (Some(user), Some(dm)) = (&o.autologin_user, sys.display_manager.as_deref().and_then(autologin::dm_from_name)) {
         s.push(Step { title: format!("Entrar direto no Nexus ao ligar ({user})"), action: Action::Autologin { dm, user: user.clone() } });
@@ -108,26 +132,33 @@ mod tests {
     }
 
     #[test]
-    fn debian_plan_with_steam_and_autologin() {
-        let p = build(&sys(Family::Debian, Some("sddm")), &Options { steam: true, emulation: false, autologin_user: Some("lia".into()) });
+    fn ubuntu_plan_with_steam_and_autologin() {
+        let mut y = sys(Family::Debian, Some("sddm"));
+        y.id = "ubuntu".into();
+        let p = build(&y, &Options { steam: true, emulation: false, autologin_user: Some("lia".into()) });
         let t: Vec<String> = p.iter().map(|s| s.display()).collect();
-        assert!(t[0].starts_with("apt-get update"));
-        assert!(t.iter().any(|x| x == "apt-get install -y nexus"));
-        assert!(t.iter().any(|x| x == "dpkg --add-architecture i386"));
-        assert!(t.iter().any(|x| x == "apt-get install -y steam"));
+        let pos = |needle: &str| t.iter().position(|x| x.contains(needle)).unwrap_or_else(|| panic!("falta: {needle} em {t:?}"));
+        assert!(pos("dpkg --add-architecture i386") < pos("apt-get install -y steam-installer"));
+        assert!(pos("add-apt-repository -y multiverse") < pos("apt-get install -y steam-installer"));
         assert!(t.last().unwrap().contains("autologin"));
         assert!(!t.iter().any(|x| x.contains("RetroArch")), "só entra o que foi pedido");
     }
 
     #[test]
-    fn minimal_plan_and_other_families() {
-        let p = build(&sys(Family::Arch, None), &Options { steam: false, emulation: false, autologin_user: Some("lia".into()) });
+    fn arch_fedora_and_emulation_plans() {
+        let p = build(&sys(Family::Arch, None), &Options { steam: true, emulation: false, autologin_user: Some("lia".into()) });
         let t: Vec<String> = p.iter().map(|s| s.display()).collect();
-        assert!(t.contains(&"pacman -S --needed --noconfirm nexus".to_string()));
+        assert!(t.iter().any(|x| x.contains("multilib")));
+        assert!(t.iter().any(|x| x == "pacman -S --needed --noconfirm steam"));
         assert!(!t.iter().any(|x| x.contains("autologin")), "sem gerenciador de login conhecido não mexe no login");
-        assert!(!t.iter().any(|x| x.contains("steam")));
-        let f = build(&sys(Family::Fedora, None), &Options { steam: true, emulation: true, autologin_user: None });
-        assert!(f.iter().any(|s| s.display().contains("rpmfusion")));
-        assert!(f.iter().any(|s| s.display().contains("org.libretro.RetroArch")));
+        let mut nf = sys(Family::Fedora, None);
+        nf.has_flatpak = false;
+        let f = build(&nf, &Options { steam: true, emulation: true, autologin_user: None });
+        let t: Vec<String> = f.iter().map(|s| s.display()).collect();
+        assert!(t.iter().any(|x| x.contains("rpmfusion-nonfree-release")));
+        let fl = t.iter().position(|x| x == "dnf install -y flatpak").unwrap();
+        let hub = t.iter().position(|x| x.contains("remote-add")).unwrap();
+        let ra = t.iter().position(|x| x.contains("org.libretro.RetroArch")).unwrap();
+        assert!(fl < hub && hub < ra, "Flatpak, depois Flathub, depois RetroArch");
     }
 }
