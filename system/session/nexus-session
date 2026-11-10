@@ -45,7 +45,6 @@ fi
 export WLR_RENDERER_ALLOW_SOFTWARE=1
 
 systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP NEXUS_COMPOSITOR NEXUS_SHELL_FLAGS PATH HOME 2>&1 || echo "aviso: import-environment falhou"
-dbus-update-activation-environment --systemd XDG_CURRENT_DESKTOP 2>/dev/null || true
 
 run_sway() {
   /usr/bin/sway --unsupported-gpu -c /usr/share/nexus/sway-kiosk.conf

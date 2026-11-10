@@ -1,4 +1,5 @@
 [Unit]
+StartLimitIntervalSec=0
 Description=Nexus Shell (interface de TV)
 After=nexus-core.service
 PartOf=nexus-session.target
