@@ -26,6 +26,11 @@ sudo ./install.sh --emulation                    # opcional: RetroArch (Flatpak)
 ```
 Na tela de login escolha a sessão **Nexus**. Emergência: Ctrl+Alt+F3 (terminal) ou `sudo touch /etc/nexus/force-desktop`.
 
+## Atualizar
+```sh
+curl -fsSL https://nexus-download-psi.vercel.app/update.sh | sh
+```
+
 ## Rodar em desenvolvimento (qualquer máquina com Chromium)
 ```sh
 pnpm install && pnpm gen && make build
