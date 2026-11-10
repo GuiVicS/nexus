@@ -59,7 +59,7 @@ pub fn build(sys: &System, o: &Options) -> Vec<Step> {
     if sys.family == Family::Debian {
         s.push(cmd("Atualizar a lista de pacotes", &["apt-get", "update"]));
     }
-    s.push(step("Instalar o Nexus (Shell, Core e sessão)", sys.family, &["nexus", "nexus-session"]));
+    s.push(step("Instalar o Nexus (Shell, Core e sessão)", sys.family, &["nexus"]));
     if o.steam {
         match sys.family {
             Family::Debian => {
@@ -112,7 +112,7 @@ mod tests {
         let p = build(&sys(Family::Debian, Some("sddm")), &Options { steam: true, emulation: false, autologin_user: Some("lia".into()) });
         let t: Vec<String> = p.iter().map(|s| s.display()).collect();
         assert!(t[0].starts_with("apt-get update"));
-        assert!(t.iter().any(|x| x == "apt-get install -y nexus nexus-session"));
+        assert!(t.iter().any(|x| x == "apt-get install -y nexus"));
         assert!(t.iter().any(|x| x == "dpkg --add-architecture i386"));
         assert!(t.iter().any(|x| x == "apt-get install -y steam"));
         assert!(t.last().unwrap().contains("autologin"));
@@ -123,7 +123,7 @@ mod tests {
     fn minimal_plan_and_other_families() {
         let p = build(&sys(Family::Arch, None), &Options { steam: false, emulation: false, autologin_user: Some("lia".into()) });
         let t: Vec<String> = p.iter().map(|s| s.display()).collect();
-        assert!(t.contains(&"pacman -S --needed --noconfirm nexus nexus-session".to_string()));
+        assert!(t.contains(&"pacman -S --needed --noconfirm nexus".to_string()));
         assert!(!t.iter().any(|x| x.contains("autologin")), "sem gerenciador de login conhecido não mexe no login");
         assert!(!t.iter().any(|x| x.contains("steam")));
         let f = build(&sys(Family::Fedora, None), &Options { steam: true, emulation: true, autologin_user: None });

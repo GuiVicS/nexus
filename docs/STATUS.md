@@ -16,7 +16,8 @@ Legenda: ✔ feito e testado aqui · ◐ feito, **não validado em hardware real
 | Shell dentro do Electron (ponte segura, protocolo de arte) | ✔ | validado sob Xvfb; **RAM medida: ~750 MB** (software GL) — acima da meta de 400 MB, reavaliar com GPU real (S4) |
 | Sessão: nexus.desktop, sway kiosk, units, guarda de loop | ◐ | escritos, **nunca executados num compositor real** |
 | Instalador: detectar, requisitos, plano, autologin SDDM/GDM/greetd com backup e reversão | ✔ lógica · ◐ execução | testado em diretórios temporários |
-| Pacotes (.deb/.rpm via nfpm), AppArmor, polkit, udev | ◐ | arquivos prontos, não empacotados nem instalados |
+| Pacote .deb (`tools/build-deb.sh`) | ✔ gerado · ◐ instalação | binários do pacote extraído rodam (Core + Electron); `apt install` e a sessão no login **não testados** |
+| AppArmor, polkit, udev | ◐ | incluídos no .deb, nunca carregados num sistema real |
 | Nexus Sysd (ações privilegiadas via D-Bus + polkit) | ✗ | só a política polkit existe; o serviço não foi implementado |
 | Botão Guia com jogo aberto (evdev) | ◐ | código pronto, sem controle físico para testar |
 | gamescope, NVIDIA, Fedora/Arch, emulação (RetroArch), atualização in-app | ✗ | V2+ conforme o plano |

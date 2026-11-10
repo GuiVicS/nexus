@@ -7,6 +7,8 @@ const http = require('node:http');
 const path = require('node:path');
 const fs = require('node:fs');
 
+app.setName('nexus-shell');
+
 const runtime = process.env.NEXUS_RUNTIME_DIR || path.join(process.env.XDG_RUNTIME_DIR || `/tmp/nexus-${process.getuid()}`, 'nexus');
 const RPC_SOCK = path.join(runtime, 'core.sock');
 const HTTP_SOCK = path.join(runtime, 'http.sock');

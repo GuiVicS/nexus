@@ -1,0 +1,5 @@
+[Desktop Entry]
+Type=Application
+Name=Nexus Shell
+Exec=/opt/nexus/shell/nexus-shell
+NoDisplay=true
