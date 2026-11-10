@@ -1,6 +1,8 @@
 //! nexus-installer: detecta o sistema, valida requisitos, mostra o plano e (com --yes) executa.
 //! Nunca instala "tudo": cada provedor entra só se pedido. Autologin é opcional e reversível.
 mod autologin;
+#[path = "../../core/crates/nexus-core/src/glibc_compat.rs"]
+mod glibc_compat;
 mod detect;
 mod plan;
 

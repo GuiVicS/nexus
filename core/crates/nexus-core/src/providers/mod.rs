@@ -4,8 +4,10 @@ use nexus_protocol::Item;
 use std::path::PathBuf;
 
 pub mod demo;
+pub mod emu;
 pub mod native;
 pub mod steam;
+pub mod web;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArtKind {

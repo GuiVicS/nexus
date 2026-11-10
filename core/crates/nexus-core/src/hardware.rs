@@ -11,6 +11,21 @@ pub fn gpu_vendor_name(id: &str) -> &'static str {
         "0x1002" => "amd",
         "0x8086" => "intel",
         "0x10de" => "nvidia",
+        "0x15ad" | "0x80ee" | "0x1af4" | "0x1234" | "0x1b36" => "virtual", // VMware/VirtualBox/virtio/QEMU
+        _ => "unknown",
+    }
+}
+
+/// GPUs sem ID PCI (Raspberry Pi e outras placas ARM) são reconhecidas pelo driver do kernel.
+pub fn gpu_driver_name(driver: &str) -> &'static str {
+    match driver {
+        "vc4" | "v3d" => "broadcom", // Raspberry Pi 4/5
+        "panfrost" | "panthor" | "lima" => "mali",
+        "msm" => "adreno",
+        "amdgpu" | "radeon" => "amd",
+        "i915" | "xe" => "intel",
+        "nvidia" | "nouveau" | "nvidia-drm" => "nvidia",
+        "vmwgfx" | "vboxvideo" | "virtio_gpu" | "virtio-pci" | "qxl" | "bochs-drm" | "cirrus" => "virtual",
         _ => "unknown",
     }
 }
@@ -20,8 +35,12 @@ pub fn os_pretty(os_release: &str) -> String {
 }
 
 pub fn tier(mem_mb: u64, gpu: &str) -> (&'static str, &'static str) {
+    // GPU de placa ARM ou de VM: dá conta da interface, mas sem efeitos pesados (desfoque, sombras grandes)
+    let weak = matches!(gpu, "broadcom" | "mali" | "adreno" | "virtual");
     if mem_mb < 3500 || gpu == "unknown" && mem_mb < 6000 {
         ("low", "minimal")
+    } else if weak {
+        ("mid", "reduced")
     } else if mem_mb < 7500 {
         ("mid", "reduced")
     } else {
@@ -43,17 +62,28 @@ fn disk(path: &Path) -> (u64, u64) {
 
 pub fn detect(providers: Vec<String>, data_dir: &Path) -> HardwareProfile {
     let mem = mem_mb(&std::fs::read_to_string("/proc/meminfo").unwrap_or_default());
-    let gpu = std::fs::read_dir("/sys/class/drm")
-        .ok()
-        .and_then(|rd| {
+    let cards: Vec<_> = std::fs::read_dir("/sys/class/drm")
+        .map(|rd| {
             rd.flatten()
                 .filter(|e| {
                     let n = e.file_name().to_string_lossy().to_string();
                     n.starts_with("card") && !n.contains('-')
                 })
-                .find_map(|e| std::fs::read_to_string(e.path().join("device/vendor")).ok())
+                .map(|e| e.path())
+                .collect()
         })
-        .map(|v| gpu_vendor_name(&v))
+        .unwrap_or_default();
+    // no Pi há dois "cards" (vc4 = saída de vídeo, v3d = 3D): vale o primeiro reconhecido
+    let gpu = cards
+        .iter()
+        .map(|c| {
+            let by_id = std::fs::read_to_string(c.join("device/vendor")).map(|v| gpu_vendor_name(&v)).unwrap_or("unknown");
+            if by_id != "unknown" {
+                return by_id;
+            }
+            std::fs::read_link(c.join("device/driver")).ok().and_then(|l| l.file_name().map(|n| gpu_driver_name(&n.to_string_lossy()))).unwrap_or("unknown")
+        })
+        .find(|g| *g != "unknown")
         .unwrap_or("unknown");
     let (t, fx) = tier(mem, gpu);
     let probe = if data_dir.exists() { data_dir } else { Path::new("/") };
@@ -82,6 +112,10 @@ mod tests {
         assert_eq!(tier(16000, "amd"), ("high", "full"));
         assert_eq!(tier(4096, "intel"), ("mid", "reduced"));
         assert_eq!(tier(2048, "intel"), ("low", "minimal"));
+        assert_eq!(tier(8000, "broadcom"), ("mid", "reduced"), "Raspberry Pi 5 de 8 GB");
+        assert_eq!(tier(2048, "broadcom"), ("low", "minimal"), "Pi de 2 GB");
+        assert_eq!(gpu_driver_name("v3d"), "broadcom");
+        assert_eq!(gpu_vendor_name("0x15ad"), "virtual");
     }
     #[test]
     fn detect_runs_here() {

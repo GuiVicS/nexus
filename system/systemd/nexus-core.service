@@ -9,6 +9,8 @@ ExecStart=/usr/bin/nexus-core
 Restart=always
 RestartSec=1
 Environment=RUST_LOG=info
+# Jogos e a Steam rodam em escopos próprios (systemd-run --scope): reiniciar o Core não derruba o que está aberto
+Environment=NEXUS_SYSTEMD_SCOPE=1
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/games
 ExecStartPre=/bin/mkdir -p %h/.local/share/nexus %h/.cache/nexus
 NoNewPrivileges=yes

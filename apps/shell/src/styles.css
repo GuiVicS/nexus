@@ -115,6 +115,23 @@ body.fx-reduced .tl .in{transition:none}
 .ae-prev h2{font-weight:400;font-size:46px}
 .ae-prev small{font-size:24px;color:var(--muted)}
 .ae-card .tl{pointer-events:none}
-.ae-card .tl{width:260px;height:260px}
+.ae-card .tl{width:240px;height:360px}
 .setpane.ae{left:700px;top:150px}
 .srow small{max-width:1000px;overflow:hidden;text-overflow:ellipsis}
+
+/* Central aberta por cima de um jogo: quadro congelado do jogo ao fundo */
+.gframe{position:absolute;inset:0;background-size:cover;background-position:center;filter:saturate(.9)}
+
+/* Controles: seções, assistente de mapeamento */
+.sh2{font-size:24px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:26px 0 10px 4px;font-weight:400}
+.pm-now{display:flex;flex-direction:column;gap:8px;padding:22px 26px;border-radius:22px;background:var(--card);margin:6px 0 14px}
+.pm-now b{font-size:44px}
+.pm-now small{font-size:22px;color:var(--muted)}
+.pm-now .bar{height:8px;border-radius:8px;background:rgba(var(--tint),.15);overflow:hidden}
+.pm-now .bar i{display:block;height:100%;background:var(--primary);transition:width .25s}
+.pm-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px 22px;margin-top:18px}
+.pm-row{display:flex;justify-content:space-between;gap:12px;padding:10px 16px;border-radius:12px;border:1px solid var(--line);font-size:21px}
+.pm-row code{font-family:var(--mono);color:var(--muted)}
+.pm-row.on{border-color:var(--primary);color:var(--primary)}
+.pbadge{font-size:20px;padding:4px 14px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.pbadge.on{background:var(--primary);color:var(--primary-fg);border-color:transparent}

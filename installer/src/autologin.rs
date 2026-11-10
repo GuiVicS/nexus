@@ -11,6 +11,8 @@ pub enum Dm {
     Sddm,
     Gdm,
     Greetd,
+    /// Raspberry Pi OS, Debian com LXDE/Xfce
+    Lightdm,
 }
 
 pub fn dm_from_name(n: &str) -> Option<Dm> {
@@ -18,6 +20,7 @@ pub fn dm_from_name(n: &str) -> Option<Dm> {
         "sddm" => Some(Dm::Sddm),
         "gdm" | "gdm3" => Some(Dm::Gdm),
         "greetd" => Some(Dm::Greetd),
+        "lightdm" => Some(Dm::Lightdm),
         _ => None,
     }
 }
@@ -101,6 +104,15 @@ pub fn configure(root: &Path, dm: Dm, user: &str) -> std::io::Result<()> {
             let t = ini_set(&ini_set(&cur, "User", "Session", "nexus"), "User", "XSession", "nexus");
             fs::create_dir_all(path(root, &acc).parent().unwrap())?;
             fs::write(path(root, &acc), t)?;
+        }
+        Dm::Lightdm => {
+            // edita o próprio lightdm.conf: ele é lido por último e o raspi-config grava o autologin nele
+            let rel = "etc/lightdm/lightdm.conf";
+            backup(root, rel, &mut m)?;
+            let cur = fs::read_to_string(path(root, rel)).unwrap_or_default();
+            let t = ini_set(&ini_set(&ini_set(&cur, "Seat:*", "autologin-user", user), "Seat:*", "autologin-session", "nexus"), "Seat:*", "user-session", "nexus");
+            fs::create_dir_all(path(root, rel).parent().unwrap())?;
+            fs::write(path(root, rel), t)?;
         }
         Dm::Greetd => {
             let rel = "etc/greetd/config.toml";
@@ -212,11 +224,27 @@ mod tests {
     }
 
     #[test]
+    fn lightdm_raspberry_pi_os() {
+        let d = tempfile::tempdir().unwrap();
+        let conf = d.path().join("etc/lightdm/lightdm.conf");
+        fs::create_dir_all(conf.parent().unwrap()).unwrap();
+        let orig = "[LightDM]\n\n[Seat:*]\n#autologin-user=\nautologin-user=pi\ngreeter-session=pi-greeter-labwc\n";
+        fs::write(&conf, orig).unwrap();
+        configure(d.path(), Dm::Lightdm, "lia").unwrap();
+        let t = fs::read_to_string(&conf).unwrap();
+        assert!(t.contains("autologin-user=lia") && !t.contains("autologin-user=pi\n") && t.contains("autologin-session=nexus"));
+        assert!(t.contains("greeter-session=pi-greeter-labwc"), "preserva o resto");
+        revert(d.path()).unwrap();
+        assert_eq!(fs::read_to_string(&conf).unwrap(), orig);
+    }
+
+    #[test]
     fn rejects_bad_usernames() {
         let d = tempfile::tempdir().unwrap();
         assert!(configure(d.path(), Dm::Sddm, "lia\nSession=evil").is_err());
         assert!(configure(d.path(), Dm::Sddm, "").is_err());
         assert_eq!(dm_from_name("gdm3"), Some(Dm::Gdm));
-        assert_eq!(dm_from_name("lightdm"), None);
+        assert_eq!(dm_from_name("lightdm"), Some(Dm::Lightdm));
+        assert_eq!(dm_from_name("xdm"), None);
     }
 }

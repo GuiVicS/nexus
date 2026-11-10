@@ -9,6 +9,11 @@ import { artUrl } from '../lib/api';
 
 interface Cta { l: string; ic: string; a: string; verb: string; off?: boolean }
 
+/** Títulos longos quebram em 2 linhas a 104 px e empurravam os botões para cima das abas: fonte menor. */
+function titleSize(t: string): '' | 't-long' | 't-xlong' {
+  return t.length > 26 ? 't-xlong' : t.length > 13 ? 't-long' : '';
+}
+
 export function ctaFor(it: Item): Cta {
   if (S.game?.itemId === it.id) return { l: 'Retomar', ic: 'play', a: 'resume', verb: 'Retomar' };
   if (it.state === 'installing') return { l: `Baixando… ${Math.floor(it.install?.percent ?? 0)}%`, ic: 'download', a: 'noop', verb: 'Aguarde', off: true };
@@ -85,9 +90,9 @@ export function Hub(p: { id: string; oid: number }) {
             <div class="hsc" />
             <div class="hmain">
               <span class="chip">{chipOf(i())}</span>
-              <h1 class={i().kind === 'game' && i().logo ? `lg-${i().logo}` : ''}>{i().title}</h1>
+              <h1 class={`${i().kind === 'game' && i().logo ? `lg-${i().logo}` : ''} ${titleSize(i().title)}`}>{i().title}</h1>
               <p class="meta">{metaOf(i())}{i().rating !== null && i().rating !== undefined ? ` · ${ratingLabel(i().rating)}` : ''}</p>
-              <p class="hdesc">{i().description}</p>
+              <p class={`hdesc ${titleSize(i().title) ? 'short' : ''}`}>{i().description}</p>
               <div class="hacts">
                 <div class={`btn pri f ${c().off ? 'off' : ''}`} data-k="cta" data-autofocus data-r="p" data-pad="8" data-a={c().a} data-verb={c().verb}><Icon n={c().ic} /> {c().l}</div>
                 <Show when={i().state === 'installing' && i().caps.cancel}>

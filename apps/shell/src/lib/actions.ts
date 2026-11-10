@@ -10,7 +10,9 @@ import { removeParentalPin, setParentalPin } from './flows';
 
 export const TABS: [string, string][] = [['home', 'Início'], ['biblioteca', 'Biblioteca'], ['midia', 'Mídia'], ['loja', 'Loja']];
 export const kidTabs = (): [string, string][] => TABS.filter(([k]) => k !== 'loja');
-export const tabsNow = () => (isKid() ? kidTabs() : TABS);
+/** Sem Steam possível (Raspberry Pi/ARM sem Steam) não há loja: a aba some. */
+const noStore = () => !!S.hw && S.hw.architecture !== 'x86_64' && !S.steam?.installed;
+export const tabsNow = () => (isKid() ? kidTabs() : noStore() ? TABS.filter(([k]) => k !== 'loja') : TABS);
 
 export const [hubTab, setHubTab] = createSignal<string>('');
 
@@ -25,7 +27,7 @@ function focusSoon(fn: () => void) {
 
 // ---------- navegação ----------
 export function tab(k: string, o: { focus?: boolean } = {}) {
-  if (k === 'loja' && isKid()) return;
+  if (k === 'loja' && (isKid() || noStore())) return;
   setS('tab', k as never);
   if (o.focus) focusSoon(() => fx.f?.set(firstFocus(k), { silent: true, snap: true }));
 }
@@ -63,6 +65,7 @@ export function back() {
       return fx.f?.set(document.querySelector<HTMLElement>('#ovs .setrail .ri.on'), { silent: true });
     }
     if (top.kind === 'profile' && top.props.first) return sfx('bump');
+    if (top.kind === 'guide') return closeGuide();
     return popOv(top.kind === 'pin' || top.kind === 'text' || top.kind === 'confirm' ? (top.kind === 'confirm' ? false : null) : undefined);
   }
   if (S.scr !== 'shell') return;
@@ -156,7 +159,7 @@ export async function closeGame(force = false) {
 export async function install(id: string) {
   try {
     await api.install(id);
-    toast('Download iniciado', findItem(id)?.title ?? '', 'download');
+    toast(id.startsWith('steam:') ? 'Confirme na Steam' : 'Download iniciado', id.startsWith('steam:') ? `${findItem(id)?.title ?? 'O jogo'}: confirme a instalação na janela da Steam` : (findItem(id)?.title ?? ''), 'download');
   } catch (e) {
     fail(e);
   }
@@ -181,8 +184,18 @@ export function openSearch() {
 
 export async function toggleGuide() {
   if (S.scr !== 'shell') return;
-  if (topOv()?.kind === 'guide') return popOv();
+  if (topOv()?.kind === 'guide') return closeGuide();
   void pushOv('guide', {});
+}
+
+/** Fecha a Central; se ela foi aberta por cima de um jogo, volta direto para o jogo. */
+export function closeGuide() {
+  popOv();
+  if (S.frame && S.game) {
+    setS('frame', null);
+    void api.resumeGame().catch(() => {});
+  }
+  setS('frame', null);
 }
 
 export function toggleNotif() {
@@ -316,10 +329,22 @@ export const ACT: Record<string, Fn> = {
   fp(a) {
     document.dispatchEvent(new CustomEvent('nexus:fp', { detail: a }));
   },
+  pads(a) {
+    document.dispatchEvent(new CustomEvent('nexus:pads', { detail: a }));
+  },
+  emufetch(a) {
+    document.dispatchEvent(new CustomEvent('nexus:emufetch', { detail: a }));
+  },
+  padedit(a) {
+    document.dispatchEvent(new CustomEvent('nexus:padedit', { detail: a }));
+  },
+  padmap(a) {
+    document.dispatchEvent(new CustomEvent('nexus:padmap', { detail: a }));
+  },
   async steamopen() {
     try {
       await api.steamOpen();
-      toast('Abrindo a Steam…', 'Entre na conta e use o botão Guia para voltar ao Nexus', 'download');
+      toast('Abrindo a Steam no modo TV…', S.steam?.persona ? 'Use o botão Guia para voltar ao Nexus' : 'Escaneie o QR code com o app Steam no celular', 'download');
     } catch (e) {
       fail(e);
     }
@@ -421,6 +446,10 @@ export const ACT: Record<string, Fn> = {
   exitgame() {
     goHome();
   },
+  home() {
+    sfx('back');
+    goHome();
+  },
   closegame() {
     void closeGame();
     if (topOv()?.kind === 'guide') popOv(undefined, true);
@@ -433,9 +462,17 @@ export const ACT: Record<string, Fn> = {
     if (top?.kind === 'sheet') return;
     void pushOv('sheet', { type: 'opts', id });
   },
-  buy(id) {
-    const it = findItem(id);
-    if (!it) return;
+  async buy(id) {
+    // item vindo da busca na loja pode não estar em memória: pede ao Core (antes o botão não fazia nada)
+    let it = findItem(id);
+    if (!it) {
+      try {
+        it = await api.item(id);
+        setS('extra', id, it);
+      } catch (e) {
+        return void fail(e);
+      }
+    }
     if (priceNum(effectivePrice(it)) > 0) {
       const top = topOv();
       if (top?.kind === 'sheet') void replaceTop('sheet', { type: 'buy', id });

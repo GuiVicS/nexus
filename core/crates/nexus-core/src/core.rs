@@ -48,6 +48,12 @@ impl Core {
         let steam = Arc::new(SteamProvider::new(cfg.clone(), db.clone()));
         let native = Arc::new(NativeProvider::new(cfg.apps_dirs.clone(), db.clone(), cfg.data_dir.join("custom-art"), cfg.fs_roots.clone()));
         let mut providers: Vec<Arc<dyn Provider>> = vec![steam.clone(), native.clone()];
+        if cfg.emulation {
+            providers.push(Arc::new(crate::providers::emu::EmuProvider::new()));
+        }
+        if cfg.web_apps {
+            providers.push(Arc::new(crate::providers::web::WebProvider::new(cfg.data_dir.clone(), cfg.cache_dir.clone())));
+        }
         let demo = cfg.demo.then(|| Arc::new(DemoProvider::new(cfg.demo_assets.clone(), db.clone())));
         if let Some(d) = &demo {
             providers.push(d.clone());
@@ -76,6 +82,7 @@ impl Core {
         if core.demo.is_some() {
             core.seed_demo()?;
         }
+        core.restore_session();
         Ok(core)
     }
 
@@ -103,6 +110,37 @@ impl Core {
     }
 
     // ---- sessão de perfil ----
+    /// Troca o perfil ativo e anota em `runtime/session` (tmpfs, 0600): se o Core reiniciar no mesmo boot
+    /// ele volta ao mesmo perfil em vez da escolha de perfis. Reiniciar o aparelho começa do zero.
+    pub fn set_session(&self, id: Option<String>) {
+        let f = self.cfg.runtime_dir.join("session");
+        match &id {
+            Some(i) => {
+                use std::os::unix::fs::OpenOptionsExt;
+                let w = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&f);
+                if let Ok(mut w) = w {
+                    let _ = std::io::Write::write_all(&mut w, i.as_bytes());
+                }
+            }
+            None => {
+                let _ = std::fs::remove_file(&f);
+            }
+        }
+        *self.session.lock().unwrap_or_else(|e| e.into_inner()) = id;
+    }
+
+    /// Perfil anotado antes de o Core reiniciar (se ainda existir).
+    pub fn restore_session(&self) {
+        let Ok(id) = std::fs::read_to_string(self.cfg.runtime_dir.join("session")) else { return };
+        let id = id.trim().to_string();
+        if self.accounts.get(&id).is_some() {
+            tracing::info!("sessão restaurada após reiniciar: {id}");
+            *self.session.lock().unwrap_or_else(|e| e.into_inner()) = Some(id);
+        } else {
+            self.set_session(None);
+        }
+    }
+
     pub fn current_profile(&self) -> Option<Profile> {
         let id = self.session.lock().unwrap_or_else(|e| e.into_inner()).clone()?;
         self.accounts.get(&id)

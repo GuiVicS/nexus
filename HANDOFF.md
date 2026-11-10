@@ -1,7 +1,7 @@
 # HANDOFF — Nexus
 
 > Documento para continuar o desenvolvimento em **outra sessão ou outro agente** sem perder contexto.
-> Atualize a seção "Estado atual" e "Próximos passos" **ao fim de cada sessão**. Última atualização: 2026-11-10 (versão 0.2.0).
+> Atualize a seção "Estado atual" e "Próximos passos" **ao fim de cada sessão**. Última atualização: 2026-11-10 (versão 0.3.0).
 
 ## 1. O que é
 
@@ -38,11 +38,52 @@ Sessão: nexus.desktop → nexus-session → sway kiosk (ws1 = Shell, ws2 = jogo
 - **Supervisor de jogos**: `game.rs` — lança em sessão própria (`setsid`), acompanha por processos (`/proc`; Steam via `reaper … SteamLaunch AppId=N`), fecha com SIGTERM→SIGKILL, registra tempo de jogo e limite diário infantil.
 - **Segurança**: socket 0600; HTTP local só com `Host` loopback (anti DNS-rebinding); Remote com token de 96 bits + bloqueio por IP; PIN com Argon2 e bloqueio por tentativas; imagens personalizadas validadas por conteúdo e restritas a pastas permitidas (`customart.rs`); Shell sem Node (`contextIsolation`, sandbox, CSP).
 
-## 4. Estado atual (0.2.0)
+## 4. Estado atual (0.3.0)
 
 **Funciona e tem teste automatizado** (ver §6): perfis/PIN/controle parental/tempo diário, perfil infantil, supervisor de jogos,
 provedor Steam (dados locais + loja pública + detalhes), apps Linux registrados com nome/tipo/ícone/capa/fundo personalizados e navegador de imagens,
 celular (QR, gamepad, mouse, teclado, rolagem), Shell completa (Início, Biblioteca, Mídia, Loja, Hub, Busca, Central, Notificações, Ajustes), instalador (plano), pacote `.deb`.
+
+**Novidades da 0.3.0 (2026-11-10):** foto de perfil escolhida do disco (`avatars.rs`: `profiles.avatar_import`,
+avatar `photo:<arquivo>` validado e servido em `/art/photo:<arquivo>/photo`; na tela de perfis sem sessão o navegador de imagens pede o PIN dos
+responsáveis), item "Voltar ao Início" nos Ajustes, modo simulação (§5). Ambiente da VM do usuário: Rust/Node 24/pnpm/gh instalados no usuário
+(`~/.cargo/bin`, `~/.local/bin`), sem sudo pelo Claude; `chromium` é um link para o Google Chrome.
+
+**Teste real na VM (2026-11-10, Steam real logada, sessão sway aninhada com `WLR_BACKENDS=wayland nexus-session`):**
+- Validado: sessão sobe no Nexus; Steam (login no modo TV com QR, depois `-silent` em escopo próprio); busca/instalação/abertura/fechamento de jogo real
+  (AdVenture Capitalist); Central por cima do jogo (quadro congelado via `grim`, tecla Super = Guia via `nexus-core guide`); botões do Nexus
+  sobrepostos a qualquer jogo/app (`nexus-overlay`, Python+GTK+gtk-layer-shell, camada OVERLAY); streaming (YouTube TV abre); RetroArch (ROM de GB
+  abriu, núcleo baixado sozinho, fechar envia SIGTERM à árvore → sem SIGKILL); mapeamento de controle com o celular emulado (uinput) e perfil
+  RetroArch gerado.
+- Corrigido no teste: `StopWhenUnneeded` no target; `[class=".*"]` no sway 1.11 casava a Shell; Steam "não encontrada" sem pasta de dados;
+  pergunta "Install" do launcher Debian (shim de zenity); diálogo "Install" da Steam escondido atrás da janela em tela cheia; `steam://install`
+  pede confirmação (spike S1 **invalidado**: o Core traz a Steam à frente até o download começar); busca não achava a loja; Instalar a partir da
+  busca não fazia nada; reiniciar o Core matava Steam/jogo (agora escopos systemd) e perdia o jogo (agora `runtime/game.json` + readoção);
+  grim do Ubuntu sem JPEG; `install.sh --plano`; testes viam a Steam real (isolado em `for_test`); `run.mjs` não contava exceções.
+- **Não testado**: Bluetooth (VM sem adaptador — código em `controllers.rs`, `bluetoothctl` com argv fixo); reservas de jogador no RetroArch
+  (`input_playerN_reserved_device`, formato não confirmado na prática); Netflix/Prime com DRM; sessão pelo login real (só aninhada).
+- **Corrigidos depois (mesma data):** apport ao parar a Shell (SIGTERM → `app.quit()` + `KillMode=mixed`); capas da loja (cliente HTTP único
+  com conexões reaproveitadas, um download por arquivo, pré-carga de 6 em 6 ao abrir a loja: 104 capas em ~6 s); reiniciar o Core mantém o perfil
+  (`runtime/session`, tmpfs 0600, some ao reiniciar o aparelho); efeitos mínimos sozinhos sem GPU (Shell lê o renderizador WebGL: llvmpipe/SwiftShader;
+  Core reconhece GPU virtual e de ARM pelo driver: vc4/v3d = Pi → "reduzidos"); anel de foco não aparece fora da camada do topo e não desliza com
+  efeitos mínimos (antes ficava na linha atrás do teclado na tela); títulos longos no Hub com fonte menor (não invadem as abas); diálogo
+  "<Jogo> Configuration" do Unity confirmado sozinho (Enter pelo uinput na sessão real + clique em "Play!" pelo cursor do sway — **validado** no
+  AdVenture Capitalist); dica "Guia [Tab]" trocada por "Guia, Super ou ☰".
+- **Raspberry Pi (arm64):** `tools/build-deb.sh arm64` / `tools/bundle.sh arm64` (compilação cruzada: `gcc-aarch64-linux-gnu` + `rustup target add
+  aarch64-unknown-linux-gnu`; Electron arm64 oficial baixado e conferido por SHA-256 em `~/.cache/nexus-build`). `glibc_compat.rs` nos binários
+  (`pidfd_spawnp`/`pidfd_getpid` locais) baixa a exigência de glibc de 2.39 para **2.34** (Pi OS Bookworm = 2.36; vale também para o PC: Ubuntu 22.04
+  / Debian 12). Instalador aceita aarch64 (Debian/Pi OS/Ubuntu = experimental; 32 bits não), pula a Steam (não existe Steam Linux para ARM),
+  mínimo 2 GB de RAM/3 GB de disco no ARM, autologin no **LightDM** (Pi OS). Núcleos do RetroArch vêm de `linux/aarch64` no buildbot (os 36 existem).
+  Sem Steam possível a aba Loja some. **Validado só com QEMU** (`qemu-aarch64 -L /usr/aarch64-linux-gnu`): testes do Core (56 + 13 e2e) e do
+  instalador (12) passam em ARM; **nunca rodou num Pi de verdade** (GPU V3D, desempenho, sway/Electron no Pi OS).
+- Abertos: o 1º e2e completo sob QEMU falhou 1 vez por tempo (passou em 3 repetições seguintes); `systemctl --user stop nexus-shell` derruba a sessão
+  inteira (target com `Requires=`; travamentos reais não propagam); na sessão aninhada o teclado virtual vai para a sessão de fora (por isso o Enter
+  do Unity só é usado com saídas reais, `compositor::sway_nested`).
+
+**Novos módulos:** `providers/web.rs` (streaming, perfil de navegador em `<dados>/web-profile`, `NEXUS_WEB_APPS=0` desliga), `providers/emu.rs`
+(42 consoles, `~/ROMs/<console>`, núcleos do buildbot, capas libretro-thumbnails, `NEXUS_EMULATION=0` desliga), `controllers.rs` (lista, captura,
+cadastro com apelido/jogador 1–4, mapa de 25 ações, autoconfig RetroArch, Bluetooth), `system/overlay/nexus-overlay` + `nexus-overlay.service`.
+Cards 208×312 (2:3, capas da Steam). Ajustes ganhou "Emuladores" e "Controles" (conectados, Bluetooth, USB).
 
 **Comportamentos decididos pelo usuário (não reverter sem perguntar):**
 - A **Steam não aparece como jogo**; só os jogos dela.
@@ -58,11 +99,11 @@ celular (QR, gamepad, mouse, teclado, rolagem), Shell completa (Início, Bibliot
 5. RAM do Electron: ~750 MB medidos sob Xvfb/GL por software (meta 400 MB; gate S4 do plano → plano B Qt/QML).
 6. Botão Guia com jogo aberto (evdev), NVIDIA, Fedora/Arch, `install.sh`/apt/flatpak num sistema real.
 
-**Não implementado** (planejado): provedor de emulação (ROMs/RetroArch — o instalador só instala o RetroArch via Flatpak), provedor de **apps web** (Netflix/YouTube/etc. abrindo o navegador em kiosk), Nexus Sysd (ações privilegiadas via D-Bus+polkit — só existe a política polkit), atualização dentro da interface, gamescope, SteamGridDB/IGDB, multiusuário avançado.
+**Não implementado** (planejado): Nexus Sysd (ações privilegiadas via D-Bus+polkit — só existe a política polkit), atualização dentro da interface, gamescope, SteamGridDB/IGDB, multiusuário avançado.
 
 ## 5. Como rodar (desenvolvimento)
 
-Requisitos: Rust (rustup), Node 24, pnpm, Chromium (para os testes). O ambiente onde isto foi feito é headless (sem GPU/Steam).
+Requisitos: Rust (rustup), Node 24, pnpm, Chromium (para os testes). Para o pacote do Raspberry Pi: `gcc-aarch64-linux-gnu` e o alvo `aarch64-unknown-linux-gnu`. O ambiente onde isto foi feito é headless (sem GPU/Steam).
 
 ```sh
 pnpm install
@@ -70,6 +111,11 @@ pnpm gen                 # regenera tipos TS a partir do Rust (rode ao mudar nex
 make build               # cargo build + build da Shell e do Remote
 make dev-core            # Core em modo demonstração + Shell em http://127.0.0.1:8799 (PIN dos responsáveis na demo: 1234)
 ```
+
+**Modo simulação (preferido para testar à mão, pedido do usuário):** `make sim` (ou `tools/sim.sh`; `make sim-reset` apaga tudo).
+Roda o Core real **sem** `--demo`: começa no primeiro uso, Steam simulada (`tools/sim/steam`: conta, 4 jogos instalados, 3 já jogados
+para instalar, download com progresso nos `.acf`, jogo = processo `SteamLaunch AppId=N`), loja = vitrine pública real, apps = os da máquina.
+Dados em `~/.local/share/nexus-sim`, log da Steam simulada em `~/.local/share/nexus-sim/steam.log`. O `make dev-core` (catálogo fictício) continua para os testes.
 
 Variáveis úteis do Core (`config.rs`): `NEXUS_DEMO=1`, `NEXUS_DEV_HTTP`, `NEXUS_STEAM_ROOT`, `NEXUS_STEAM_BIN`, `NEXUS_STEAM_API_KEY`, `NEXUS_APPS_DIRS`, `NEXUS_FS_ROOTS`, `NEXUS_UINPUT=0`, `NEXUS_COMPOSITOR=sway|none`, `NEXUS_REMOTE_BIND`.
 Ganchos de teste: `NEXUS_OFFLINE=1` (sem rede) + `NEXUS_STEAM_FIXTURE=arquivo.json` (vitrine fictícia `{categoria:[entradas]}`).
@@ -87,9 +133,10 @@ Os cenários de UI são **sensíveis a carga** (máquina de 2 núcleos): um dele
 
 ## 7. Build, empacotar e distribuir
 
-- `tools/build-deb.sh` → `dist/nexus_<versão>_amd64.deb` (Core + Shell/Electron + Remote + sessão + units + polkit + udev + AppArmor). A versão vem do `Cargo.toml` (workspace).
-- `tools/bundle.sh` → `dist/nexus-<versão>-linux-x86_64.tar.gz` (+ `.sha256`) contendo o `.deb` e `install.sh`. **`dist/` não vai para o git.**
+- `tools/build-deb.sh [amd64|arm64]` → `dist/nexus_<versão>_<arq>.deb` (Core + Shell/Electron + Remote + sessão + units + polkit + udev + AppArmor). A versão vem do `Cargo.toml` (workspace).
+- `tools/bundle.sh [amd64|arm64]` → `dist/nexus-<versão>-linux-{x86_64|arm64}.tar.gz` (+ `.sha256`; `update.sh` escolhe pela arquitetura) contendo o `.deb` e `install.sh`. **`dist/` não vai para o git.**
 - `install.sh` (Debian/Ubuntu): instala o `.deb` e chama `nexus-installer install --steam --yes` (habilita 32 bits + multiverse, instala Steam; `--emulation` → Flatpak+Flathub+RetroArch; `--autologin USUARIO`; `--plano` só mostra).
+- **GitHub Releases (pedido do usuário, a partir da 0.3.0):** `gh release create vX.Y.Z` com os `.tar.gz` + `.sha256` de PC e Raspberry Pi; o README aponta para `releases/latest`.
 - **Hospedagem do download (decidida pelo usuário):** projeto Vercel `nexus-download` na conta `serafim-company`, pasta local `/root/nexus-download` (fora do repo): `index.html`, `latest.txt`, `update.sh` (cópia de `tools/update.sh`), o `.tar.gz`, `.sha256` e o código-fonte. Publicar: copiar os arquivos novos, atualizar `latest.txt`/`index.html` e `vercel deploy --prod --yes`. URL: `https://nexus-download-psi.vercel.app`.
 - **Atualizar no aparelho:** `curl -fsSL https://nexus-download-psi.vercel.app/update.sh | sh` (compara com `latest.txt`, confere sha256, `apt install`).
 - Ao mudar versão: `Cargo.toml`, `README.md`; depois bundle → copiar → `latest.txt` → deploy.
@@ -122,8 +169,8 @@ Saídas de emergência: Ctrl+Alt+F3 (terminal; na VirtualBox Right-Ctrl+F3), `su
 ## 10. Próximos passos sugeridos (prioridade)
 
 1. **Fechar o ciclo no aparelho do usuário:** confirmar a sessão (`session.log`), abrir um jogo Steam real, ajustar o que aparecer. Tudo o resto depende disso.
-2. **Provedor de apps web** (Netflix, YouTube, Disney+, Prime, Twitch…): catálogo que abre o navegador em kiosk com perfil próprio; aparece na aba Mídia com o ícone certo; aceitar URL personalizada em *Apps e jogos*.
-3. **Provedor de emulação:** varrer pastas de ROMs, identificar console (extensão/hash), capas (libretro-thumbnails), abrir no RetroArch com o núcleo certo usando o supervisor existente; aba "Clássicos".
+2. **Testar num Raspberry Pi real** (pacote arm64 só validado com QEMU): sessão, GPU V3D, RAM, emuladores leves, Chromium com DRM.
+3. ~~Apps web~~ e ~~emulação~~ feitos na 0.3.0; falta URL personalizada em *Apps e jogos* e identificar console por hash.
 4. **Nexus Sysd** (D-Bus + polkit, ações com argv fixo): instalar/atualizar provedores pela interface sem terminal.
 5. Spike S1 (instalar jogo Steam sem diálogo; talvez via porta CEF 8080 da Steam — não documentado, tratar como experimento) e medir RAM/FPS reais (gate S4).
 6. Repositório apt próprio (hoje a distribuição é `.deb` solto), imagem/Pi só depois (V4).

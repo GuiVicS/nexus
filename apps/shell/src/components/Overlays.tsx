@@ -5,7 +5,7 @@ import { ACT, THEME_LABEL, hubTab } from '../lib/actions';
 import { textSink } from '../lib/actions';
 import { closeOv, fail, findItem, guarded, hasGrant, isInstalled, isKid, me, popOv, prefs, S, setS, toast, replaceTop } from '../lib/state';
 import { effectivePrice, money, norm, priceNum } from '../lib/format';
-import { Avatar, Glyph, Icon, Switch, Tile, appBg, Bar } from './ui';
+import { Avatar, Icon, Switch, Tile, appBg, Bar } from './ui';
 import { sfx } from '@nexus/ui';
 
 export const [clock, setClock] = createSignal('--:--');
@@ -210,6 +210,9 @@ export function Guide() {
   );
   return (
     <>
+      <Show when={S.game && S.frame}>
+        <div class="gframe" style={{ 'background-image': `url("${artUrl('frame', 'frame')}?t=${S.frame}")` }} />
+      </Show>
       <div class="veil" />
       <aside class="panel l">
         <div class="ph">
@@ -294,7 +297,7 @@ export function Launch(p: { id: string }) {
               <Show when={closing()}>
                 <div class="lacts"><div class="btn f" data-r="p" data-pad="8" data-a="forceclose" data-verb="Forçar"><Icon n="x" /> Forçar encerramento</div></div>
               </Show>
-              <p class="lnote">O {i().kind === 'app' ? 'app' : 'jogo'} fica em primeiro plano. Use o botão Guia ({<Glyph k="G" />}) para voltar ao Nexus.</p>
+              <p class="lnote">O {i().kind === 'app' ? 'app' : 'jogo'} fica em primeiro plano. Para voltar ao Nexus: botão Guia do controle, tecla Super (⊞) ou ☰ no canto da tela.</p>
             </Show>
           </div>
         </>

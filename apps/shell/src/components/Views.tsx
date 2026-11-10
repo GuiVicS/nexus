@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, on, onMount, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js';
 import type { Item } from '@nexus/protocol';
 import { api } from '../lib/api';
 import { fail, isInstalled, isKid, prefs, S, setS, fx } from '../lib/state';
@@ -59,6 +59,14 @@ export function Home() {
   const activeId = createMemo(() => (S.dockId === 'lib' ? 'lib' : items().some((i) => i.id === S.dockId) ? S.dockId! : (items()[0]?.id ?? 'lib')));
   const active = createMemo(() => items().find((i) => i.id === activeId()));
   const games = createMemo(() => S.lib.filter((i) => i.kind === 'game'));
+  // Steam instalada mas sem conta: o Início convida a entrar (login pelo modo TV da Steam, com QR code)
+  const steamNeedsLogin = () => !!S.steam?.installed && !S.steam?.persona && !isKid();
+  onMount(() => {
+    const poll = () => void api.steamAccount().then((a) => setS('steam', a)).catch(() => {});
+    poll();
+    const t = setInterval(() => steamNeedsLogin() && poll(), 8000);
+    onCleanup(() => clearInterval(t));
+  });
   let info!: HTMLDivElement;
   createEffect(on(activeId, () => {
     if (!info) return;
@@ -113,10 +121,20 @@ export function Home() {
       </div>
       <Show when={items().length === 0}>
         <div class="home-empty">
-          <Empty icon="box" title="Sua biblioteca está vazia" text="Instale um jogo pela Loja ou adicione programas do Linux em Ajustes → Apps e jogos.">
-            <div class="btn pri f" data-autofocus data-r="p" data-pad="8" data-a="tabgo:loja" data-verb="Abrir"><Icon n="bag" /> Loja</div>
-            <div class="btn f" data-r="p" data-pad="8" data-a="settings:apps" data-verb="Abrir"><Icon n="plus" /> Adicionar app</div>
-          </Empty>
+          <Show
+            when={steamNeedsLogin()}
+            fallback={
+              <Empty icon="box" title="Sua biblioteca está vazia" text="Instale um jogo pela Loja ou adicione programas do Linux em Ajustes → Apps e jogos.">
+                <div class="btn pri f" data-autofocus data-r="p" data-pad="8" data-a="tabgo:loja" data-verb="Abrir"><Icon n="bag" /> Loja</div>
+                <div class="btn f" data-r="p" data-pad="8" data-a="settings:apps" data-verb="Abrir"><Icon n="plus" /> Adicionar app</div>
+              </Empty>
+            }
+          >
+            <Empty icon="download" title="Entre na sua conta Steam" text="Seus jogos da Steam aparecem aqui. Escaneie o QR code com o app Steam no celular — não precisa digitar senha.">
+              <div class="btn pri f" data-autofocus data-k="home-steamlogin" data-r="p" data-pad="8" data-a="steamopen" data-verb="Entrar"><Icon n="play" /> Entrar na Steam</div>
+              <div class="btn f" data-r="p" data-pad="8" data-a="tabgo:loja" data-verb="Abrir"><Icon n="bag" /> Loja</div>
+            </Empty>
+          </Show>
         </div>
       </Show>
     </>
@@ -278,7 +296,8 @@ export function Store() {
   createEffect(() => {
     if (shopLoading()) return;
     const c = cats();
-    if (c.length && !c.some(([k]) => k === S.shopCat)) setS('shopCat', c[0][0]);
+    // categoria atual sumiu ou está vazia (ex.: "Na sua conta" sem jogos): vai para a primeira com itens
+    if (c.length && (!c.some(([k]) => k === S.shopCat) || items(S.shopCat).length === 0)) setS('shopCat', (c.find(([k]) => items(k).length > 0) ?? c[0])[0]);
   });
   const list = createMemo(() => items(S.shopCat));
   const title = () => SHOP_CATS.find(([k]) => k === S.shopCat)?.[1] ?? 'Loja';

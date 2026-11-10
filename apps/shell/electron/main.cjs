@@ -114,6 +114,10 @@ app.on('web-contents-created', (_e, wc) => {
   wc.on('will-attach-webview', (e) => e.preventDefault());
 });
 
+// SIGTERM (systemd ao parar a sessão/reiniciar a Shell): sair pelo caminho normal do Electron. Sem isso o
+// processo morria no meio e os filhos do Chromium caíam com SIGTRAP → aviso de erro do Ubuntu (apport) na tela.
+for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(sig, () => app.quit());
+
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.whenReady().then(() => {

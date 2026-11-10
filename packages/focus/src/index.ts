@@ -109,7 +109,10 @@ export class Focus {
       this.cur = null;
       this.o.onLost?.();
     }
-    const t = this.target();
+    // o anel fica acima de tudo: se o foco ficou numa camada de baixo (ex.: a linha atrás do teclado na tela,
+    // antes de a camada nova receber o foco), não desenha
+    const r = this.root();
+    const t = r && this.cur && !r.contains(this.cur) ? null : this.target();
     if (!t) {
       ring.style.opacity = '0';
       this.rg.init = false;

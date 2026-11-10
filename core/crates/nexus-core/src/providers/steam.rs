@@ -317,6 +317,25 @@ fn fetch_prices(ids: &[u32]) -> HashMap<u32, (Option<u64>, Option<u64>, u32)> {
     all
 }
 
+/// Busca na loja (rede): `params` vai para /search/results (ex.: "term=…", "filter=topsellers").
+fn store_search(params: &str, linux: bool, free: bool) -> Vec<StoreEntry> {
+    let Some(b) = http_get(&format!("https://store.steampowered.com/search/results/?query&start=0&count=30&{params}&json=1&cc=br&l=portuguese")) else { return vec![] };
+    let found = parse_search(&b);
+    let ids: Vec<u32> = found.iter().map(|f| f.0).collect();
+    let prices = if free { HashMap::new() } else { fetch_prices(&ids) };
+    found
+        .into_iter()
+        .map(|(appid, name)| {
+            let (f, o, d) = prices.get(&appid).copied().unwrap_or((None, None, 0));
+            StoreEntry { appid, name, free: free || (prices.contains_key(&appid) && f.is_none()), final_cents: if free { Some(0) } else { f }, orig_cents: o, discount: d, linux }
+        })
+        .collect()
+}
+
+pub fn url_encode(s: &str) -> String {
+    s.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
+}
+
 /// Baixa a vitrine de uma categoria (rede). Roda em thread própria.
 pub fn fetch_feed(cat: &str) -> Vec<StoreEntry> {
     // gancho de teste: com NEXUS_OFFLINE=1 a vitrine vem de um arquivo JSON {categoria: [entradas]}
@@ -328,19 +347,7 @@ pub fn fetch_feed(cat: &str) -> Vec<StoreEntry> {
             .and_then(|mut m| m.remove(cat))
             .unwrap_or_default();
     }
-    let search = |params: &str, linux: bool, free: bool| -> Vec<StoreEntry> {
-        let Some(b) = http_get(&format!("https://store.steampowered.com/search/results/?query&start=0&count=30&{params}&json=1&cc=br&l=portuguese")) else { return vec![] };
-        let found = parse_search(&b);
-        let ids: Vec<u32> = found.iter().map(|f| f.0).collect();
-        let prices = if free { HashMap::new() } else { fetch_prices(&ids) };
-        found
-            .into_iter()
-            .map(|(appid, name)| {
-                let (f, o, d) = prices.get(&appid).copied().unwrap_or((None, None, 0));
-                StoreEntry { appid, name, free: free || (prices.contains_key(&appid) && f.is_none()), final_cents: if free { Some(0) } else { f }, orig_cents: o, discount: d, linux }
-            })
-            .collect()
-    };
+    let search = store_search;
     match cat {
         "destaques" => search("filter=topsellers&category1=998", false, false),
         "linux" => search("filter=topsellers&category1=998&os=linux", true, false),
@@ -493,10 +500,62 @@ impl SteamProvider {
         vec!["steam".into()]
     }
 
-    fn spawn_detached(&self, args: &[&str]) -> anyhow::Result<()> {
+    /// Máquina sem Steam possível (Raspberry Pi e outros ARM: não há cliente Linux para ARM).
+    /// Aí a loja da Steam some: mostrar jogos que não dá para instalar só confundiria.
+    pub fn impossible_here(&self) -> bool {
+        !cfg!(target_arch = "x86_64") && self.root().is_none() && !self.client_available()
+    }
+
+    /// O programa da Steam existe (mesmo que nunca tenha sido aberto e ainda não haja pasta de dados).
+    pub fn client_available(&self) -> bool {
         let cmd = self.steam_cmd();
+        if cmd[0] == "flatpak" {
+            return true;
+        }
+        let p = Path::new(&cmd[0]);
+        if p.is_absolute() {
+            return p.is_file();
+        }
+        std::env::var_os("PATH").is_some_and(|paths| std::env::split_paths(&paths).any(|d| d.join(&cmd[0]).is_file()))
+    }
+
+    /// O cliente da Steam (ubuntu12_32/steam) está rodando.
+    pub fn running(&self) -> bool {
+        crate::procs::list().into_iter().any(|p| crate::procs::cmdline(p.pid).first().is_some_and(|a| a.ends_with("ubuntu12_32/steam")))
+    }
+
+    /// Pasta com um `zenity`/`yad` que responde "sim" só à pergunta de instalação do launcher Debian
+    /// (`/usr/games/steam`: "Steam is proprietary software… Install/Cancel"). Quem instalou o Nexus com a Steam já
+    /// aceitou; na TV essa janela não pode ser respondida com controle. Outras janelas (progresso) usam o programa real.
+    fn dialog_shim(&self) -> Option<PathBuf> {
+        let dir = self.cfg.runtime_dir.join("steam-shim");
+        std::fs::create_dir_all(&dir).ok()?;
+        for (name, real) in [("zenity", "/usr/bin/zenity"), ("yad", "/usr/bin/yad")] {
+            let p = dir.join(name);
+            let body = format!("#!/bin/sh\ncase \" $* \" in *\" --question \"*'Steam installer'*) exit 0 ;; esac\nexec {real} \"$@\"\n");
+            std::fs::write(&p, body).ok()?;
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).ok()?;
+        }
+        Some(dir)
+    }
+
+    fn spawn_detached(&self, args: &[&str]) -> anyhow::Result<()> {
+        let mut cmd = self.steam_cmd();
+        // na sessão, a Steam vive num escopo próprio: reiniciar o nexus-core.service não a derruba (nem o jogo que ela abriu)
+        if self.cfg.systemd_scope && !self.running() {
+            let mut pre: Vec<String> = ["systemd-run", "--user", "--scope", "--collect", "--quiet"].iter().map(|s| s.to_string()).collect();
+            pre.push(format!("--unit=nexus-steam-{}", crate::util::random_hex(4)));
+            pre.push("--".into());
+            pre.append(&mut cmd);
+            cmd = pre;
+        }
         let mut c = std::process::Command::new(&cmd[0]);
         c.args(&cmd[1..]).args(args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+        if let Some(shim) = self.dialog_shim() {
+            let path = std::env::var("PATH").unwrap_or_else(|_| "/usr/local/bin:/usr/bin:/bin:/usr/games".into());
+            c.env("PATH", format!("{}:{path}", shim.display()));
+        }
         use std::os::unix::process::CommandExt;
         unsafe {
             c.pre_exec(|| {
@@ -511,9 +570,22 @@ impl SteamProvider {
         Ok(())
     }
 
-    /// Abre a janela da Steam (primeiro login, atualizações, compras).
+    /// Abre a Steam no modo TV (Big Picture): login com QR code, compras e ajustes navegáveis por controle.
     pub fn open_client(&self) -> anyhow::Result<()> {
-        self.spawn_detached(&[])
+        if self.running() {
+            self.spawn_detached(&["steam://open/bigpicture"])
+        } else {
+            self.spawn_detached(&["-gamepadui"])
+        }
+    }
+
+    /// Inicia a Steam escondida (sem janela), para os jogos abrirem rápido. Só com uma conta já conectada.
+    pub fn start_silent(&self) -> anyhow::Result<bool> {
+        if self.running() || !self.client_available() || self.user().is_none() {
+            return Ok(false);
+        }
+        self.spawn_detached(&["-silent"])?;
+        Ok(true)
     }
 
     pub fn open_store(&self, appid: u32) -> anyhow::Result<()> {
@@ -593,8 +665,25 @@ impl SteamProvider {
         fresh
     }
 
+    /// Busca por nome na loja da Steam (jogos ainda não instalados). A última busca fica guardada para abrir os detalhes.
+    pub async fn search_store(&self, q: &str) -> Vec<Item> {
+        let q = q.trim();
+        if q.chars().count() < 3 || self.impossible_here() {
+            return vec![];
+        }
+        let params = format!("term={}&category1=998", url_encode(q));
+        let entries = tokio::task::spawn_blocking(move || store_search(&params, false, false)).await.unwrap_or_default();
+        if !entries.is_empty() {
+            if let Ok(j) = serde_json::to_string(&(now_unix(), &entries)) {
+                let _ = self.db.kv_set("sf:busca", &j);
+            }
+        }
+        let (installed, owned) = (self.installed_map(), self.owned_ids());
+        entries.iter().map(|e| self.item_from_entry(e, "busca", &installed, &owned)).collect()
+    }
+
     fn cached_entry(&self, appid: u32) -> Option<StoreEntry> {
-        STORE_CATS.iter().find_map(|c| {
+        STORE_CATS.iter().chain(["busca"].iter()).find_map(|c| {
             let (_, v): (i64, Vec<StoreEntry>) = serde_json::from_str(&self.db.kv_get(&format!("sf:{c}"))?).ok()?;
             v.into_iter().find(|e| e.appid == appid)
         })
@@ -682,7 +771,7 @@ impl Provider for SteamProvider {
     }
 
     async fn store(&self, category: &str) -> anyhow::Result<Vec<Item>> {
-        if !STORE_CATS.contains(&category) {
+        if !STORE_CATS.contains(&category) || self.impossible_here() {
             return Ok(vec![]);
         }
         let entries = self.feed(category).await;

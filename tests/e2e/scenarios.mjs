@@ -106,6 +106,10 @@ scenarios.adulto_demo = () =>
     const code = await ui.text('.qrinfo code');
     check(code.startsWith('http://127.0.0.1:') && !code.includes('?t='), `endereço do controle mostrado sem o token (${code})`);
     await ui.shot('settings-remote');
+    // "Voltar ao Início" fecha os Ajustes e volta para a aba Início
+    await ui.ev(`document.querySelector('[data-k=sc-home]').click()`);
+    await ui.until(`()=>!document.querySelector('#ovs [data-kind=settings]')`, 'ajustes fechados pelo Voltar ao Início');
+    check(await ui.ev(`document.querySelector('.tab.on')?.dataset.tab==='home'`), 'voltou à aba Início');
   });
 
 scenarios.crianca = () =>
@@ -131,7 +135,7 @@ scenarios.crianca = () =>
     // ajustes limitados
     await ui.ev(`document.querySelector('#sbGear').click()`);
     await ui.until(`()=>document.querySelector('.setrail')`, 'ajustes');
-    check((await ui.count('.setrail .ri')) === 3, 'só 3 categorias nos ajustes infantis');
+    check((await ui.count('.setrail .ri[data-rail]')) === 3, 'só 3 categorias nos ajustes infantis');
     await ui.key('Escape');
     // sair do perfil infantil pede o PIN dos responsáveis
     await ui.key('Tab');

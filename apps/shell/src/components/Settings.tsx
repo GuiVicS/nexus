@@ -1,10 +1,11 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
-import type { CustomApp } from '@nexus/protocol';
+import type { CustomApp, EmuStatus } from '@nexus/protocol';
 import { api } from '../lib/api';
 import { ACT, THEME_LABEL, cycHandlers, editProfile } from '../lib/actions';
-import { askConfirm, askPin, fail, guarded, isKid, me, prefs, S, setS, toast } from '../lib/state';
+import { askConfirm, askPin, effectsLevel, fail, guarded, isKid, me, prefs, S, setS, softwareGL, toast } from '../lib/state';
 import { fmtBytes, ratingLabel } from '../lib/format';
 import { Avatar, Icon, Switch } from './ui';
+import { PadsSection } from './Pads';
 import { sfx } from '@nexus/ui';
 
 interface Cat { id: string; label: string; icon: string; adult?: boolean }
@@ -14,6 +15,7 @@ const CATS: Cat[] = [
   { id: 'ctrl', label: 'Controles', icon: 'pad' },
   { id: 'remote', label: 'Controle no celular', icon: 'tv', adult: true },
   { id: 'apps', label: 'Apps e jogos', icon: 'grid', adult: true },
+  { id: 'emu', label: 'Emuladores', icon: 'pad', adult: true },
   { id: 'conta', label: 'Conta e perfis', icon: 'user', adult: true },
   { id: 'parental', label: 'Controle parental', icon: 'lock', adult: true },
   { id: 'steam', label: 'Steam', icon: 'download', adult: true },
@@ -64,7 +66,7 @@ function PaneSom() {
       <div class="srow f slider" data-k="s-vol" data-r="22" data-slider="vol" data-a="noop" data-verb="Ajustar">
         <b>Volume</b><div class="tr"><i style={{ width: `${prefs().vol}%` }} /></div><span class="v">{prefs().vol}</span>
       </div>
-      <Info label="Efeitos visuais" desc={{ full: 'Completos', reduced: 'Reduzidos (aparelho de desempenho médio)', minimal: 'Mínimos (economiza recursos)' }[S.hw?.effects ?? 'full'] ?? 'Completos'} />
+      <Info label="Efeitos visuais" desc={softwareGL() ? 'Mínimos (sem aceleração de vídeo: a placa de vídeo não está em uso)' : ({ full: 'Completos', reduced: 'Reduzidos (aparelho de desempenho médio)', minimal: 'Mínimos (economiza recursos)' }[effectsLevel()])} />
       <Info label="Resolução" desc={`${screen.width} × ${screen.height}`} />
     </Pane>
   );
@@ -87,6 +89,7 @@ function PaneCtrl() {
       <SwRow k="invy" label="Inverter eixo Y" desc="Para câmeras em terceira pessoa" />
       <Info label="Mapa de botões" desc="A selecionar · B voltar · Y busca · ≡ opções · LB/RB seções · LT/RT página · Guia central" />
       <Show when={!isKid()}><ActRow a="remote" icon="tv" label="Usar o celular como controle" desc="Gamepad, mouse e teclado no celular" k="s-remote" /></Show>
+      <Show when={!isKid()}><PadsSection /></Show>
     </Pane>
   );
 }
@@ -210,14 +213,54 @@ function PaneSteam() {
       <Show when={S.steam} fallback={<Info label="Verificando…" desc="" />}>
         {(s) => (
           <>
-            <Info label="Cliente Steam" desc={s().installed ? 'Instalado' : 'Não encontrado — instale a Steam para listar e abrir seus jogos'} />
+            <Info label="Cliente Steam" desc={s().installed ? 'Instalado' : S.hw && S.hw.architecture !== 'x86_64' ? 'Não disponível neste aparelho (a Steam para Linux só existe para PC x86_64)' : 'Não encontrado — instale a Steam para listar e abrir seus jogos'} />
             <Show when={s().installed}>
               <Info label="Conta" desc={s().persona ? `${s().persona}${s().account ? ` (${s().account})` : ''}` : 'Nenhuma conta conectada. Abra a Steam uma vez para entrar.'} />
               <Info label="Jogos na biblioteca" desc={String(s().libraryGames)} />
-              <ActRow a="steamopen" icon="play" label="Abrir a Steam" desc="Para entrar na conta pela primeira vez, atualizar ou comprar. Volte com o botão Guia." verb="Abrir" k="s-open" />
+              <ActRow a="steamopen" icon="play" label={s().persona ? 'Abrir a Steam (modo TV)' : 'Entrar na Steam'} desc={s().persona ? 'Compras, amigos e ajustes da Steam no modo TV. Volte com o botão Guia.' : 'Abre o login da Steam no modo TV: escaneie o QR code com o app Steam no celular.'} verb={s().persona ? 'Abrir' : 'Entrar'} k="s-open" />
               <ActRow a="steamsync" icon="refresh" label="Sincronizar biblioteca" desc="Busca os jogos da conta que ainda não estão instalados" verb="Sincronizar" k="s-sync" />
               <ActRow a="steamkey" icon="lock" label="Chave da Web API" desc="Necessária para listar jogos não instalados (perfil Steam público)" verb="Informar" k="s-key" />
             </Show>
+          </>
+        )}
+      </Show>
+    </Pane>
+  );
+}
+
+function PaneEmu() {
+  const [st, setSt] = createSignal<EmuStatus | null>(null);
+  const [busy, setBusy] = createSignal(false);
+  const load = () => void api.emuStatus().then(setSt).catch(fail);
+  onMount(() => {
+    load();
+    const h = (e: Event) => {
+      const all = (e as CustomEvent<string>).detail === 'all';
+      if (busy()) return;
+      setBusy(true);
+      toast('Baixando emuladores…', all ? 'Todos os consoles · pode levar alguns minutos' : 'Dos consoles que têm jogos', 'download');
+      void api.emuFetchCores(all).then((r) => {
+        toast(r.ok ? 'Emuladores prontos' : 'Alguns emuladores falharam', r.ok ? `${r.done.length} baixado(s)` : r.failed.map((f) => f.core).join(', '), r.ok ? 'check' : 'info');
+        load();
+      }).catch(fail).finally(() => setBusy(false));
+    };
+    document.addEventListener('nexus:emufetch', h);
+    onCleanup(() => document.removeEventListener('nexus:emufetch', h));
+  });
+  const withGames = () => (st()?.systems ?? []).filter((s) => s.games > 0);
+  return (
+    <Pane title="Emuladores">
+      <Show when={st()} fallback={<Info label="Verificando…" desc="" />}>
+        {(s) => (
+          <>
+            <Info label="RetroArch" desc={s().retroarch ? 'Instalado · os jogos abrem em tela cheia com seus controles mapeados' : 'Não instalado — sudo nexus-installer install --emulation --yes'} />
+            <Info label="Pasta dos jogos" desc={`${s().romsDir}/<console> — copie cada ROM para a pasta do console (veja LEIA-ME.txt)`} />
+            <ActRow a="emufetch:mine" icon="download" label={busy() ? 'Baixando…' : 'Baixar emuladores dos meus jogos'} desc="Baixa os núcleos só dos consoles que já têm jogos (também acontece sozinho ao abrir o jogo)" verb="Baixar" k="s-emu-mine" />
+            <ActRow a="emufetch:all" icon="download" label="Baixar todos os emuladores" desc={`${s().systems.length} consoles · usa algumas centenas de MB`} verb="Baixar" k="s-emu-all" />
+            <h3 class="sh2">{withGames().length ? 'Consoles com jogos' : 'Consoles suportados'}</h3>
+            <For each={withGames().length ? withGames() : s().systems}>
+              {(x) => <Info label={`${x.name} · ${x.games} jogo${x.games === 1 ? '' : 's'}`} desc={`Pasta ${x.dir} · .${x.exts.join(' .')} · núcleo ${x.core} ${x.coreReady ? '✓ pronto' : '(baixa na 1ª vez)'}`} />}
+            </For>
           </>
         )}
       </Show>
@@ -275,6 +318,9 @@ export function Settings() {
             </div>
           )}
         </For>
+        <div class="ri f home" data-k="sc-home" data-r="22" data-a="home" data-verb="Voltar ao Início">
+          <Icon n="home" /> Voltar ao Início
+        </div>
       </nav>
       <div class="setpane" id="setpane">
         <Show when={S.setCat === 'som'}><PaneSom /></Show>
@@ -282,6 +328,7 @@ export function Settings() {
         <Show when={S.setCat === 'ctrl'}><PaneCtrl /></Show>
         <Show when={S.setCat === 'remote' && !isKid()}><PaneRemote /></Show>
         <Show when={S.setCat === 'apps' && !isKid()}><PaneApps /></Show>
+        <Show when={S.setCat === 'emu' && !isKid()}><PaneEmu /></Show>
         <Show when={S.setCat === 'conta' && !isKid()}><PaneConta /></Show>
         <Show when={S.setCat === 'parental' && !isKid()}><PaneParental /></Show>
         <Show when={S.setCat === 'steam' && !isKid()}><PaneSteam /></Show>

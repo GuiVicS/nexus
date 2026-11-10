@@ -229,7 +229,7 @@ export function installInput(stage: HTMLElement): () => void {
   let raf = 0;
   const poll = (t: number) => {
     const p = [...(navigator.getGamepads ? navigator.getGamepads() : [])].find(Boolean);
-    if (p) {
+    if (p && !S.capturing) {
       const b = (i: number) => !!p.buttons[i]?.pressed;
       const ax = p.axes;
       const s: Record<string, boolean> = {

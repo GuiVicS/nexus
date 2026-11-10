@@ -42,9 +42,22 @@ pub fn spawn(core: Arc<Core>) {
     });
 }
 
-fn pressed(core: &Core) {
-    if core.game_info().is_some() {
-        core.compositor.show_shell();
-        core.emit("input.guide", serde_json::json!({}));
+/// Botão Guia (controle, tecla Super ou celular) com um jogo/app aberto: guarda um quadro da tela do jogo
+/// (fundo da Central, para ela parecer aberta por cima do jogo), traz a Shell e abre a Central.
+pub fn pressed(core: &Core) {
+    if core.game_info().is_none() {
+        return;
     }
+    // PNG: o grim do Debian/Ubuntu vem sem suporte a JPEG
+    let frame = core.cfg.runtime_dir.join("frame.png");
+    let ok = core.compositor.name() == "sway"
+        && std::process::Command::new("grim")
+            .args(["-l", "1"])
+            .arg(&frame)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success());
+    core.compositor.show_shell();
+    core.emit("input.guide", serde_json::json!({ "frame": if ok { Some(nexus_protocol::now_unix()) } else { None } }));
 }

@@ -134,8 +134,11 @@ export function startEvents() {
   client.on('remote.devices', (p) => {
     if (S.pairing) setS('pairing', 'devices', reconcile(p.devices, { key: 'id' }));
   });
-  client.on('input.guide', () => {
-    void import('./actions').then((m) => m.ACT.guide(''));
+  client.on('input.guide', (p: { frame?: number | null }) => {
+    setS('frame', p?.frame ?? null);
+    void import('./actions').then((m) => {
+      if (topOv()?.kind !== 'guide') m.ACT.guide('');
+    });
   });
 }
 

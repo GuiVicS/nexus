@@ -28,10 +28,13 @@ export function Glyph(p: { k: keyof typeof GLY.pad }) {
   );
 }
 
+const PRESET_AVATAR = /^[a-z]+$/;
 export const avatarStyle = (p: Pick<Profile, 'avatar' | 'hue' | 'name'>): JSX.CSSProperties =>
-  p.avatar === 'initial'
-    ? { background: `linear-gradient(135deg,hsl(${p.hue} 60% 42%),hsl(${(p.hue + 50) % 360} 60% 24%))` }
-    : { 'background-image': `url(avatars/${p.avatar}.jpg)`, 'background-color': `hsl(${p.hue} 40% 30%)` };
+  p.avatar.startsWith('photo:')
+    ? { 'background-image': `url("${artUrl(p.avatar, 'photo')}")`, 'background-color': `hsl(${p.hue} 40% 30%)`, 'background-size': 'cover', 'background-position': 'center' }
+    : p.avatar !== 'initial' && PRESET_AVATAR.test(p.avatar)
+      ? { 'background-image': `url(avatars/${p.avatar}.jpg)`, 'background-color': `hsl(${p.hue} 40% 30%)` }
+      : { background: `linear-gradient(135deg,hsl(${p.hue} 60% 42%),hsl(${(p.hue + 50) % 360} 60% 24%))` };
 
 export function Avatar(p: { p: Pick<Profile, 'avatar' | 'hue' | 'name'>; class?: string; size?: number; children?: JSX.Element }) {
   return (

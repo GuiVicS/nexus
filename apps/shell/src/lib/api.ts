@@ -31,5 +31,5 @@ function makeTransport(): Transport {
 export const client = new RpcClient(makeTransport());
 export const api = createApi(client);
 
-export type ArtKind = 'cover' | 'hero' | 'icon';
+export type ArtKind = 'cover' | 'hero' | 'icon' | 'photo' | 'frame';
 export const artUrl = (id: string, kind: ArtKind) => (IS_ELECTRON ? `nexus-art://art/${encodeURIComponent(id)}/${kind}` : `/art/${encodeURIComponent(id)}/${kind}`);

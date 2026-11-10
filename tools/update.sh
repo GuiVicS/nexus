@@ -26,8 +26,10 @@ fi
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 cd "$T"
-FILE="nexus-$VER-linux-x86_64.tar.gz"
-echo "→ Baixando $FILE (93 MB)…"
+ARCH=$(dpkg --print-architecture)
+case "$ARCH" in amd64) TAG=x86_64 ;; arm64) TAG=arm64 ;; *) echo "Arquitetura $ARCH sem pacote do Nexus (só amd64 e arm64)." >&2; exit 1 ;; esac
+FILE="nexus-$VER-linux-$TAG.tar.gz"
+echo "→ Baixando $FILE (~100 MB)…"
 curl -fL --progress-bar -o "$FILE" "$BASE/$FILE"
 curl -fsSL -o "$FILE.sha256" "$BASE/$FILE.sha256"
 echo "→ Conferindo integridade…"
@@ -41,6 +43,6 @@ if [ "${NEXUS_DRY:-0}" = "1" ]; then
 fi
 
 echo "→ Instalando…"
-$SUDO apt-get install -y "./nexus-$VER/nexus_${VER}_amd64.deb"
+$SUDO apt-get install -y "./nexus-$VER/nexus_${VER}_${ARCH}.deb"
 echo
 echo "Pronto: Nexus $VER instalado. Saia da sessão e entre de novo em \"Nexus\" para usar a nova versão."

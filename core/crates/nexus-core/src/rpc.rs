@@ -109,6 +109,25 @@ fn parental(core: &Core, v: &Value) -> Result<(), RpcError> {
     Ok(())
 }
 
+/// Navegar pelas imagens do disco: perfil adulto ativo, primeiro uso (sem perfis) ou, na tela de perfis, os responsáveis.
+fn may_browse(core: &Core, v: &Value) -> Result<(), RpcError> {
+    match core.current_profile() {
+        Some(p) if p.kind == ProfileKind::Kid => Err(RpcError::new(E_FORBIDDEN, "Indisponível neste perfil")),
+        Some(_) => Ok(()),
+        None if core.accounts.list()?.is_empty() => Ok(()),
+        None => parental(core, v),
+    }
+}
+
+/// Avatar recebido da Shell: um dos prontos, a inicial ou uma foto já importada pelo Core.
+fn avatar_arg(core: &Core, v: &Value) -> Result<Option<String>, RpcError> {
+    match os(v, "avatar") {
+        None => Ok(None),
+        Some(a) if crate::avatars::valid(core, &a) => Ok(Some(a)),
+        Some(_) => Err(RpcError::new(E_FAILED, "avatar inválido")),
+    }
+}
+
 fn kid_session(core: &Core) -> bool {
     core.current_profile().is_some_and(|p| p.kind == ProfileKind::Kid)
 }
@@ -139,7 +158,8 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             let root = st.root();
             let u = st.user();
             let n = core.library.read().unwrap().iter().filter(|i| i.provider == "steam").count() as u32;
-            ok(SteamAccount { installed: root.is_some(), persona: u.as_ref().map(|u| u.persona.clone()), account: u.map(|u| u.account), library_games: n })
+            // instalada = há dados (já foi aberta) ou o programa existe (primeira abertura pelo Nexus)
+            ok(SteamAccount { installed: root.is_some() || st.client_available(), persona: u.as_ref().map(|u| u.persona.clone()), account: u.map(|u| u.account), library_games: n })
         }
         "steam.set_key" => {
             let p = need_session(core)?;
@@ -215,7 +235,7 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             }
             let p = core.accounts.create(NewProfile {
                 name: s(&v, "name")?,
-                avatar: os(&v, "avatar").unwrap_or_else(|| "initial".into()),
+                avatar: avatar_arg(core, &v)?.unwrap_or_else(|| "initial".into()),
                 hue: v.get("hue").and_then(|h| h.as_u64()).unwrap_or(180) as u16 % 360,
                 kid,
                 pin: os(&v, "pin"),
@@ -237,13 +257,16 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             }
             let patch = ProfilePatch {
                 name: os(&v, "name"),
-                avatar: os(&v, "avatar"),
+                avatar: avatar_arg(core, &v)?,
                 hue: v.get("hue").and_then(|h| h.as_u64()).map(|h| h as u16 % 360),
                 age_limit: v.get("ageLimit").map(|a| a.as_u64().map(|a| a.min(18) as u8)).filter(|_| target.kind == ProfileKind::Kid),
                 daily_limit_min: v.get("dailyLimitMin").map(|a| a.as_u64().map(|a| a.clamp(5, 720) as u32)).filter(|_| target.kind == ProfileKind::Kid),
                 pin: v.get("pin").map(|p| p.as_str().map(String::from)),
             };
             let p = core.accounts.update(&id, patch)?;
+            if p.avatar != target.avatar {
+                crate::avatars::forget(core, &target.avatar);
+            }
             core.emit("profiles.changed", json!({}));
             if core.current_profile().is_some_and(|c| c.id == id) {
                 core.emit("session.changed", serde_json::to_value(core.session_info(p.clone()))?);
@@ -265,6 +288,7 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
                 core.accounts.verify_profile_pin(&id, os(&v, "pin").as_deref()).map_err(|e| scoped(e, "profile"))?;
             }
             core.accounts.delete(&id)?;
+            crate::avatars::forget(core, &target.avatar);
             core.emit("profiles.changed", json!({}));
             Ok(json!({ "ok": true }))
         }
@@ -275,9 +299,10 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             }
             core.accounts.get(&id).ok_or_else(|| RpcError::new(E_NOT_FOUND, "perfil não existe"))?;
             core.accounts.verify_profile_pin(&id, os(&v, "pin").as_deref()).map_err(|e| scoped(e, "profile"))?;
-            *core.session.lock().unwrap() = Some(id.clone());
+            core.set_session(Some(id.clone()));
             let info = core.session_info(core.accounts.get(&id).unwrap());
             core.emit("session.changed", serde_json::to_value(&info)?);
+            core.adopt_running_game();
             ok(info)
         }
         "session.current" => match core.current_profile() {
@@ -291,7 +316,7 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             if core.game_info().is_some() {
                 return Err(RpcError::new(E_BUSY, "Feche o jogo antes de trocar de perfil"));
             }
-            *core.session.lock().unwrap() = None;
+            core.set_session(None);
             core.emit("session.changed", Value::Null);
             Ok(json!({ "ok": true }))
         }
@@ -356,13 +381,28 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
                     }
                 }
             }
-            let res: Vec<Item> = pool
+            // jogos da loja da Steam pelo nome (adultos; os resultados já filtrados pelo termo)
+            let mut res_store: Vec<Item> = vec![];
+            if p.kind == ProfileKind::Adult {
+                if let Some(st) = &core.steam {
+                    res_store = st.search_store(&os(&v, "q").unwrap_or_default()).await;
+                }
+            }
+            let mut res: Vec<Item> = pool
                 .into_iter()
                 .filter(|i| core.visible_to(Some(&p), i))
                 .filter(|i| q.is_empty() || norm_text(&format!("{} {} {} {}", i.title, i.subtitle, i.category.clone().unwrap_or_default(), i.studio.clone().unwrap_or_default())).contains(&q))
                 .map(|i| core.with_profile_data(&p, i))
                 .take(60)
                 .collect();
+            for it in res_store {
+                if res.len() >= 60 {
+                    break;
+                }
+                if !res.iter().any(|x| x.id == it.id) && core.visible_to(Some(&p), &it) {
+                    res.push(core.with_profile_data(&p, it));
+                }
+            }
             ok(res)
         }
         "store.list" => {
@@ -374,6 +414,10 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             let mut out = vec![];
             for prov in &core.providers {
                 out.extend(prov.store(&cat).await.unwrap_or_default());
+            }
+            if !std::env::var("NEXUS_OFFLINE").is_ok_and(|v| v == "1") {
+                // pré-carga das capas (a tela pede na ordem de exibição; a pré-carga começa pelo fim)
+                crate::art::prefetch(core, out.iter().rev().map(|x| x.id.clone()).collect());
             }
             ok(out)
         }
@@ -403,6 +447,39 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
                     prov.install(&id).await?;
                     core.pending.lock().unwrap().insert(id.clone(), std::time::Instant::now());
                     core.kick.notify_one();
+                    // A Steam pede confirmação ("Install", dentro da janela dela), que fica no workspace dos jogos.
+                    // Sem isso o usuário aperta Instalar e não vê nada (validado no teste real): traz a Steam à frente
+                    // e volta ao Nexus quando o download começa (aparece o appmanifest) ou após 3 minutos.
+                    if let (Some(st), Some(n)) = (core.steam.clone(), id.strip_prefix("steam:").map(String::from)) {
+                        if core.compositor.name() == "sway" {
+                            let c = core.clone();
+                            std::thread::spawn(move || {
+                                use std::time::{Duration, Instant};
+                                let started = || st.root().is_some_and(|r| st.steamapps_dirs(&r).iter().any(|d| d.join(format!("appmanifest_{n}.acf")).is_file()));
+                                if started() {
+                                    return;
+                                }
+                                let t0 = Instant::now();
+                                while !crate::compositor::sway_windows().iter().any(|(a, _)| a.eq_ignore_ascii_case("steam")) {
+                                    if t0.elapsed() > Duration::from_secs(20) {
+                                        return;
+                                    }
+                                    std::thread::sleep(Duration::from_millis(400));
+                                }
+                                c.compositor.show_game();
+                                c.emit("steam.dialog", json!({ "open": true }));
+                                let t1 = Instant::now();
+                                while !started() && t1.elapsed() < Duration::from_secs(180) {
+                                    crate::compositor::raise_dialogs();
+                                    std::thread::sleep(Duration::from_millis(700));
+                                }
+                                if c.game_info().is_none() {
+                                    c.compositor.show_shell();
+                                }
+                                c.emit("steam.dialog", json!({ "open": false }));
+                            });
+                        }
+                    }
                 }
                 "item.cancel" => prov.cancel(&id).await?,
                 _ => {
@@ -421,6 +498,77 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             let force = v.get("force").and_then(|f| f.as_bool()).unwrap_or(false);
             Ok(json!({ "closing": core.close_game(force).await }))
         }
+        "controllers.list" => {
+            need_session(core)?;
+            let db = core.db.clone();
+            ok(tokio::task::spawn_blocking(move || crate::controllers::list(&db)).await.unwrap_or_default())
+        }
+        "controllers.actions" => Ok(crate::controllers::actions_json()),
+        "emu.status" => {
+            need_session(core)?;
+            Ok(tokio::task::spawn_blocking(crate::providers::emu::systems_status).await.unwrap_or(Value::Null))
+        }
+        "emu.fetch_cores" => {
+            let p = need_session(core)?;
+            if p.kind == ProfileKind::Kid {
+                return Err(RpcError::new(E_FORBIDDEN, "Indisponível neste perfil"));
+            }
+            let all = v.get("all").and_then(|a| a.as_bool()).unwrap_or(false);
+            Ok(tokio::task::spawn_blocking(move || crate::providers::emu::fetch_cores(all)).await.unwrap_or(Value::Null))
+        }
+        "controllers.save" | "controllers.delete" => {
+            let p = need_session(core)?;
+            if p.kind == ProfileKind::Kid {
+                return Err(RpcError::new(E_FORBIDDEN, "Indisponível neste perfil"));
+            }
+            let id = s(&v, "id")?;
+            let r = if method == "controllers.save" {
+                let player = v.get("player").map(|p| p.as_u64().map(|n| n as u8));
+                crate::controllers::save(&core.db, &id, os(&v, "nickname"), player).map(|r| serde_json::to_value(r).unwrap())
+            } else {
+                crate::controllers::delete(&core.db, &id).map(|_| json!({ "ok": true }))
+            };
+            r.map_err(|e| RpcError::new(E_FAILED, &e))
+        }
+        "controllers.capture" | "controllers.get_map" | "controllers.set_map" | "bt.status" | "bt.scan" | "bt.pair" | "bt.remove" => {
+            let p = need_session(core)?;
+            if p.kind == ProfileKind::Kid {
+                return Err(RpcError::new(E_FORBIDDEN, "Indisponível neste perfil"));
+            }
+            let fail = |e: String| RpcError::new(E_FAILED, &e);
+            match method {
+                "controllers.get_map" => Ok(Value::Object(crate::controllers::get_map(&core.db, &s(&v, "id")?))),
+                "controllers.capture" => {
+                    let id = s(&v, "id")?;
+                    let ms = v.get("timeoutMs").and_then(|t| t.as_u64()).unwrap_or(10_000).clamp(1000, 30_000);
+                    let r = tokio::task::spawn_blocking(move || crate::controllers::capture(&id, std::time::Duration::from_millis(ms))).await.map_err(|e| fail(e.to_string()))?.map_err(fail)?;
+                    Ok(json!({ "binding": r }))
+                }
+                "controllers.set_map" => {
+                    let id = s(&v, "id")?;
+                    let map = v.get("map").and_then(|m| m.as_object()).cloned().ok_or_else(|| RpcError::new(E_FAILED, "mapa ausente"))?;
+                    let db = core.db.clone();
+                    let files = tokio::task::spawn_blocking(move || crate::controllers::set_map(&db, &id, &map)).await.map_err(|e| fail(e.to_string()))?.map_err(fail)?;
+                    Ok(json!({ "ok": true, "retroarch": files }))
+                }
+                "bt.status" => Ok(tokio::task::spawn_blocking(crate::controllers::bt_status).await.unwrap_or(Value::Null)),
+                "bt.scan" => {
+                    let secs = v.get("secs").and_then(|t| t.as_u64()).unwrap_or(10).clamp(3, 20);
+                    Ok(tokio::task::spawn_blocking(move || crate::controllers::bt_scan(secs)).await.unwrap_or(Value::Null))
+                }
+                _ => {
+                    parental(core, &v)?;
+                    let mac = s(&v, "mac")?;
+                    let pair = method == "bt.pair";
+                    tokio::task::spawn_blocking(move || if pair { crate::controllers::bt_pair(&mac) } else { crate::controllers::bt_remove(&mac) }).await.map_err(|e| fail(e.to_string()))?.map_err(fail)?;
+                    Ok(json!({ "ok": true }))
+                }
+            }
+        }
+        "guide.press" => {
+            crate::guide::pressed(core);
+            Ok(json!({ "ok": true }))
+        }
         "game.show_nexus" => {
             core.compositor.show_shell();
             Ok(json!({ "ok": true }))
@@ -433,7 +581,15 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
         }
 
         // ---------- apps e jogos do Linux adicionados pelo usuário ----------
-        "apps.system" | "apps.registered" | "apps.add" | "apps.update" | "apps.remove" | "fs.list" => {
+        "fs.list" | "profiles.avatar_import" => {
+            may_browse(core, &v)?;
+            if method == "fs.list" {
+                return ok(crate::customart::list(core.native.roots(), os(&v, "path").as_deref()).map_err(|e| RpcError::new(E_FAILED, &e))?);
+            }
+            let avatar = crate::avatars::import(core, &s(&v, "path")?).map_err(|e| RpcError::new(E_FAILED, &e))?;
+            Ok(json!({ "avatar": avatar }))
+        }
+        "apps.system" | "apps.registered" | "apps.add" | "apps.update" | "apps.remove" => {
             let p = need_session(core)?;
             if p.kind == ProfileKind::Kid {
                 return Err(RpcError::new(E_FORBIDDEN, "Indisponível neste perfil"));
@@ -441,7 +597,6 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             match method {
                 "apps.system" => ok(core.native.system_apps()),
                 "apps.registered" => ok(core.native.custom_apps()),
-                "fs.list" => ok(crate::customart::list(core.native.roots(), os(&v, "path").as_deref()).map_err(|e| RpcError::new(E_FAILED, &e))?),
                 _ => {
                     parental(core, &v)?;
                     let opt = |k: &str| -> Option<Option<String>> { v.get(k).map(|x| x.as_str().filter(|s| !s.is_empty()).map(String::from)) };

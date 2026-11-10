@@ -3,11 +3,32 @@ import type { CustomApp, FsListing, SystemApp, Friend, GameSession, HardwareProf
 
 type Auth = { pin?: string; parentPin?: string; grant?: string };
 
+export interface Pad { id: string; name: string; bus: 'usb' | 'bluetooth' | 'virtual' | 'outro'; vendor: number; product: number; mapped: boolean; connected: boolean; registered: boolean; nickname: string; player: number | null }
+export type PadBinding = { kind: 'button'; code: number } | { kind: 'axis' | 'hat'; code: number; dir: number };
+export interface EmuSystem { dir: string; name: string; exts: string[]; core: string; games: number; coreReady: boolean }
+export interface EmuStatus { retroarch: boolean; romsDir: string; systems: EmuSystem[] }
+export interface BtDevice { mac: string; name: string; gamepad: boolean }
+export interface BtStatus { available: boolean; powered: boolean; paired: BtDevice[] }
+
 /** Métodos tipados do Core. Cada um corresponde a uma rota em rpc.rs. */
 export function createApi(c: RpcClient) {
   const call = c.call.bind(c);
   return {
     hello: () => call<Hello>('core.hello'),
+    // controles físicos, mapeamento (emuladores) e Bluetooth
+    pads: () => call<Pad[]>('controllers.list'),
+    emuStatus: () => call<EmuStatus>('emu.status'),
+    emuFetchCores: (all = false) => call<{ ok: boolean; done: string[]; failed: { core: string; error: string }[] }>('emu.fetch_cores', { all }, 30 * 60 * 1000),
+    padSave: (id: string, p: { nickname?: string; player?: number | null }) => call<Pad>('controllers.save', { id, ...p }),
+    padDelete: (id: string) => call<{ ok: true }>('controllers.delete', { id }),
+    padActions: () => call<{ id: string; label: string }[]>('controllers.actions'),
+    padCapture: (id: string, timeoutMs = 10000) => call<{ binding: PadBinding | null }>('controllers.capture', { id, timeoutMs }, timeoutMs + 5000),
+    padMap: (id: string) => call<Record<string, PadBinding>>('controllers.get_map', { id }),
+    padSetMap: (id: string, map: Record<string, PadBinding>) => call<{ ok: true; retroarch: string[] }>('controllers.set_map', { id, map }),
+    btStatus: () => call<BtStatus>('bt.status'),
+    btScan: (secs = 10) => call<{ devices: BtDevice[] }>('bt.scan', { secs }, (secs + 10) * 1000),
+    btPair: (mac: string, a: Auth = {}) => call<{ ok: true }>('bt.pair', { mac, ...a }, 70000),
+    btRemove: (mac: string, a: Auth = {}) => call<{ ok: true }>('bt.remove', { mac, ...a }),
     hardware: () => call<HardwareProfile>('hardware.profile'),
     power: (action: 'off' | 'restart' | 'suspend') => call<{ simulated: boolean }>('system.power', { action }),
     steamOpen: () => call<{ ok: true }>('steam.open'),
@@ -17,7 +38,8 @@ export function createApi(c: RpcClient) {
     addApp: (fileId: string, kind: 'game' | 'app' | undefined, a: Auth) => call<CustomApp>('apps.add', { fileId, kind, ...a }),
     updateApp: (p: { id: string; name?: string | null; kind?: 'game' | 'app'; icon?: string | null; cover?: string | null; hero?: string | null } & Auth) => call<CustomApp>('apps.update', p),
     removeApp: (id: string, a: Auth) => call<{ ok: true }>('apps.remove', { id, ...a }),
-    fsList: (path?: string) => call<FsListing>('fs.list', { path }),
+    fsList: (path?: string, a: { grant?: string } = {}) => call<FsListing>('fs.list', { path, ...a }),
+    importAvatar: (path: string, a: { grant?: string } = {}) => call<{ avatar: string }>('profiles.avatar_import', { path, ...a }),
     steamAccount: () => call<SteamAccount>('steam.account'),
     steamSetKey: (key: string) => call<{ ok: true }>('steam.set_key', { key }),
     steamSync: () => call<{ count: number; hasKey: boolean }>('steam.sync'),

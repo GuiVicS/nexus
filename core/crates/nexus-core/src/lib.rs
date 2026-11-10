@@ -1,7 +1,9 @@
 pub mod accounts;
 pub mod art;
+pub mod avatars;
 pub mod compositor;
 pub mod config;
+pub mod controllers;
 pub mod core;
 pub mod customart;
 pub mod db;
@@ -29,9 +31,20 @@ pub async fn run(cfg: config::Config) -> anyhow::Result<Running> {
     let guide_watch = cfg.guide_watch;
     let core = core::Core::new(cfg)?;
     let started = net::start(core.clone()).await?;
+    core.adopt_running_game(); // perfil restaurado + jogo aberto antes de reiniciar
     tokio::spawn(core::library_loop(core.clone()));
     if guide_watch {
         guide::spawn(core.clone());
+    }
+    // Na sessão Nexus (sway), a Steam fica rodando escondida em segundo plano: o usuário só vê o Nexus.
+    if core.cfg.compositor == "sway" {
+        if let Some(st) = core.steam.clone() {
+            match st.start_silent() {
+                Ok(true) => tracing::info!("Steam iniciada em segundo plano (-silent)"),
+                Ok(false) => {}
+                Err(e) => tracing::warn!("Steam em segundo plano: {e}"),
+            }
+        }
     }
     if let Some(st) = core.steam.clone() {
         tokio::spawn(async move {

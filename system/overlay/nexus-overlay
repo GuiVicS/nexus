@@ -1,0 +1,187 @@
+#!/usr/bin/python3 -I
+"""Botões do Nexus por cima de qualquer jogo ou app aberto pelo Nexus (Steam, Proton, navegador, Linux).
+
+Fica na camada de sobreposição do sway (wlr-layer-shell), que é desenhada acima até de janelas em
+tela cheia. Não pega o teclado (o jogo continua recebendo tudo). Aparece só com um jogo/app aberto
+e com o workspace dos jogos à frente; some quando o Nexus está na tela.
+  ☰ Nexus  → abre a Central (o mesmo que o botão Guia ou a tecla Super)
+  ✕ Sair   → fecha o jogo/app e volta ao Nexus
+"""
+import json
+import os
+import socket
+import subprocess
+import threading
+import time
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+gi.require_version("GtkLayerShell", "0.1")
+from gi.repository import Gdk, GLib, Gtk, GtkLayerShell  # noqa: E402
+
+SOCK = os.path.join(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"), "nexus", "core.sock")
+COMPACT_AFTER = 6  # segundos expandido ao abrir o jogo
+
+CSS = b"""
+window { background: transparent; }
+.pill { background: rgba(11,16,18,.82); border-radius: 999px; padding: 6px; border: 1px solid rgba(43,212,189,.45); }
+.pill.compact { background: rgba(11,16,18,.45); border-color: rgba(255,255,255,.12); }
+button { background: transparent; border: none; box-shadow: none; color: #f3faf9; font-size: 15px; font-weight: 600; padding: 6px 14px; border-radius: 999px; }
+button:hover { background: rgba(43,212,189,.25); }
+button.exit:hover { background: rgba(251,113,133,.35); }
+"""
+
+
+def rpc(method, params=None):
+    """Chamada avulsa ao Core (uma conexão por chamada: simples e sem estado)."""
+    try:
+        s = socket.socket(socket.AF_UNIX)
+        s.settimeout(3)
+        s.connect(SOCK)
+        s.sendall((json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}) + "\n").encode())
+        f = s.makefile("r")
+        while True:
+            line = f.readline()
+            if not line:
+                return None
+            msg = json.loads(line)
+            if msg.get("id") == 1:
+                s.close()
+                return msg.get("result")
+    except (OSError, ValueError):
+        return None
+
+
+class Overlay:
+    def __init__(self):
+        self.game = False
+        self.games_ws = False
+        self.compact = False
+        self.hide_at = 0.0
+
+        prov = Gtk.CssProvider()
+        prov.load_from_data(CSS)
+        Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+        self.win = Gtk.Window()
+        GtkLayerShell.init_for_window(self.win)
+        GtkLayerShell.set_namespace(self.win, "nexus-overlay")
+        GtkLayerShell.set_layer(self.win, GtkLayerShell.Layer.OVERLAY)
+        GtkLayerShell.set_anchor(self.win, GtkLayerShell.Edge.TOP, True)
+        GtkLayerShell.set_anchor(self.win, GtkLayerShell.Edge.RIGHT, True)
+        GtkLayerShell.set_margin(self.win, GtkLayerShell.Edge.TOP, 16)
+        GtkLayerShell.set_margin(self.win, GtkLayerShell.Edge.RIGHT, 16)
+        GtkLayerShell.set_keyboard_mode(self.win, GtkLayerShell.KeyboardMode.NONE)
+        self.win.set_app_paintable(True)
+        visual = self.win.get_screen().get_rgba_visual()
+        if visual:
+            self.win.set_visual(visual)
+
+        self.box = Gtk.Box(spacing=4)
+        self.box.get_style_context().add_class("pill")
+        self.menu = Gtk.Button(label="☰  Nexus")
+        self.menu.set_tooltip_text("Abrir a Central do Nexus")
+        self.menu.connect("clicked", lambda *_: threading.Thread(target=rpc, args=("guide.press",), daemon=True).start())
+        self.exit = Gtk.Button(label="✕  Sair")
+        self.exit.get_style_context().add_class("exit")
+        self.exit.connect("clicked", lambda *_: threading.Thread(target=rpc, args=("game.close",), daemon=True).start())
+        self.box.pack_start(self.menu, False, False, 0)
+        self.box.pack_start(self.exit, False, False, 0)
+        ev = Gtk.EventBox()
+        ev.add(self.box)
+        ev.connect("enter-notify-event", lambda *_: self.expand(4))
+        self.win.add(ev)
+
+        GLib.timeout_add(500, self.tick)
+        threading.Thread(target=self.watch_core, daemon=True).start()
+        threading.Thread(target=self.watch_sway, daemon=True).start()
+
+    # ---- estado ----
+    def expand(self, secs=COMPACT_AFTER):
+        self.compact = False
+        self.hide_at = time.time() + secs
+        self.render()
+        return False
+
+    def render(self):
+        ctx = self.box.get_style_context()
+        if self.compact:
+            ctx.add_class("compact")
+            self.menu.set_label("☰")
+            self.exit.hide()
+        else:
+            ctx.remove_class("compact")
+            self.menu.set_label("☰  Nexus")
+            self.exit.show()
+        if self.game and self.games_ws:
+            self.win.show_all()
+            if self.compact:
+                self.exit.hide()
+        else:
+            self.win.hide()
+
+    def tick(self):
+        if not self.compact and self.hide_at and time.time() > self.hide_at:
+            self.compact = True
+            self.render()
+        return True
+
+    def set_game(self, running):
+        if running != self.game:
+            self.game = running
+            if running:
+                self.expand()
+            else:
+                self.render()
+
+    def set_ws(self, games):
+        if games != self.games_ws:
+            self.games_ws = games
+            if games:
+                self.expand(3)
+            else:
+                self.render()
+
+    # ---- fontes ----
+    def watch_core(self):
+        """Eventos do Core: jogo começou/terminou. Reconecta se o Core reiniciar."""
+        while True:
+            try:
+                s = socket.socket(socket.AF_UNIX)
+                s.connect(SOCK)
+                s.sendall(b'{"jsonrpc":"2.0","id":1,"method":"game.current","params":{}}\n')
+                for line in s.makefile("r"):
+                    msg = json.loads(line)
+                    if msg.get("id") == 1:
+                        GLib.idle_add(self.set_game, bool(msg.get("result")))
+                    elif msg.get("method") in ("game.started", "game.launching"):
+                        GLib.idle_add(self.set_game, True)
+                    elif msg.get("method") in ("game.exited", "game.failed"):
+                        GLib.idle_add(self.set_game, False)
+            except (OSError, ValueError):
+                pass
+            GLib.idle_add(self.set_game, False)
+            time.sleep(2)
+
+    def watch_sway(self):
+        """Qual workspace está à frente: 2 = jogos (mostra), 1 = Nexus (esconde)."""
+        while True:
+            try:
+                p = subprocess.Popen(["swaymsg", "-m", "-t", "subscribe", '["workspace"]'], stdout=subprocess.PIPE, text=True)
+                cur = subprocess.run(["swaymsg", "-t", "get_workspaces"], capture_output=True, text=True).stdout
+                vis = [w["name"] for w in json.loads(cur or "[]") if w.get("visible")]
+                GLib.idle_add(self.set_ws, "2" in vis)
+                for line in p.stdout:
+                    e = json.loads(line)
+                    if e.get("change") == "focus" and e.get("current"):
+                        GLib.idle_add(self.set_ws, e["current"].get("name") == "2")
+            except (OSError, ValueError):
+                pass
+            time.sleep(2)
+
+
+if __name__ == "__main__":
+    Overlay()
+    Gtk.main()

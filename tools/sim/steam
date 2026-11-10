@@ -1,0 +1,76 @@
+#!/bin/sh
+# Steam simulada para o modo simulação (tools/sim.sh). Responde aos mesmos comandos que o Core
+# manda para a Steam de verdade e mexe nos mesmos arquivos que ela (appmanifest_*.acf):
+#   steam://rungameid/N   abre um "jogo" (processo SteamLaunch AppId=N, como o reaper real)
+#   steam://install/N     baixa aos poucos: o progresso aparece no ACF, como na Steam real
+#   steam://store/N       abre a página do jogo na loja (navegador)
+#   (sem argumentos)      "abre a janela da Steam" — aqui só registra no log
+# Variáveis: NEXUS_SIM_DIR (pasta da simulação), NEXUS_SIM_DL_SECS (duração do download, padrão 25).
+set -u
+SIM="${NEXUS_SIM_DIR:-$HOME/.local/share/nexus-sim}"
+ROOT="$SIM/Steam"
+APPS="$ROOT/steamapps"
+LOG="$SIM/steam.log"
+DL_SECS="${NEXUS_SIM_DL_SECS:-25}"
+mkdir -p "$APPS"
+log() { printf '%s %s\n' "$(date '+%H:%M:%S')" "$*" >> "$LOG"; }
+
+name_of() {
+  # nome pela loja pública (como a Steam real gravaria no ACF); sem rede, um nome genérico
+  python3 -I - "$1" <<'EOF' 2>/dev/null || echo "Jogo $1"
+import json, sys, urllib.request
+n = sys.argv[1]
+try:
+    d = json.load(urllib.request.urlopen(f"https://store.steampowered.com/api/appdetails?appids={n}&l=brazilian&cc=BR", timeout=6))
+    print(d[n]["data"]["name"])
+except Exception:
+    print(f"Jogo {n}")
+EOF
+}
+
+acf() { # appid nome flags extra
+  tmp="$APPS/.appmanifest_$1.tmp"
+  printf '"AppState"\n{\n\t"appid"\t\t"%s"\n\t"name"\t\t"%s"\n\t"StateFlags"\t\t"%s"\n\t"installdir"\t\t"%s"\n%s\n}\n' "$1" "$2" "$3" "$2" "$4" > "$tmp"
+  mv "$tmp" "$APPS/appmanifest_$1.acf"
+}
+
+URI="${1:-}"
+case "$URI" in
+  steam://rungameid/*)
+    N="${URI##*/}"
+    log "abrindo jogo $N"
+    # mesmo formato do reaper da Steam: o Core acompanha por "SteamLaunch AppId=N" e fecha com SIGTERM
+    setsid sh -c 'trap "exit 0" TERM; while :; do sleep 1; done' SteamLaunch "AppId=$N" >/dev/null 2>&1 &
+    ;;
+  steam://install/*)
+    N="${URI##*/}"
+    if grep -qs '"StateFlags"[[:space:]]*"4"' "$APPS/appmanifest_$N.acf"; then log "jogo $N já instalado"; exit 0; fi
+    NAME="$(name_of "$N" | tr -d '"\\')"
+    log "baixando $N ($NAME) em ${DL_SECS}s"
+    (
+      TOTAL=$(( (N % 7 + 2) * 1000000000 ))
+      STEPS=20
+      i=1
+      while [ "$i" -le "$STEPS" ]; do
+        DONE=$(( TOTAL / STEPS * i ))
+        acf "$N" "$NAME" 1026 "$(printf '\t"BytesToDownload"\t\t"%s"\n\t"BytesDownloaded"\t\t"%s"\n' "$TOTAL" "$DONE")"
+        sleep "$(LC_ALL=C awk "BEGIN{print $DL_SECS/$STEPS}")"
+        i=$((i + 1))
+      done
+      acf "$N" "$NAME" 4 "$(printf '\t"SizeOnDisk"\t\t"%s"\n' "$TOTAL")"
+      log "instalado $N ($NAME)"
+    ) >/dev/null 2>&1 &
+    ;;
+  steam://store/*)
+    N="${URI##*/}"
+    log "loja: página do jogo $N"
+    xdg-open "https://store.steampowered.com/app/$N/" >/dev/null 2>&1 &
+    ;;
+  "")
+    log "janela da Steam aberta (simulada)"
+    ;;
+  *)
+    log "comando ignorado: $*"
+    ;;
+esac
+exit 0

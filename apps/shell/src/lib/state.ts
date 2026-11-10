@@ -8,7 +8,7 @@ import { api } from './api';
 
 export type Screen = 'boot' | 'standby' | 'onboarding' | 'profiles' | 'shell';
 export type Tab = 'home' | 'biblioteca' | 'midia' | 'loja';
-export type OvKind = 'sheet' | 'hub' | 'search' | 'settings' | 'guide' | 'notif' | 'launch' | 'pin' | 'text' | 'profile' | 'timeup' | 'confirm' | 'appicker' | 'appedit' | 'filepick';
+export type OvKind = 'sheet' | 'hub' | 'search' | 'settings' | 'guide' | 'notif' | 'launch' | 'pin' | 'text' | 'profile' | 'timeup' | 'confirm' | 'appicker' | 'appedit' | 'filepick' | 'padmap' | 'padedit';
 export type Mode = 'key' | 'pad' | 'ptr';
 
 export const DEFAULT_PREFS: Prefs = { theme: 'dark', sfx: true, vol: 60, reduce: false, hc: false, subs: false, invy: false, vib: true, pins: [], favs: [] };
@@ -24,6 +24,10 @@ interface State {
   session: SessionInfo | null;
   lib: Item[];
   game: GameSession | null;
+  /** quadro do jogo (timestamp) quando a Central foi aberta por cima dele */
+  frame: number | null;
+  /** assistente de mapeamento aberto: o controle físico não navega nos menus */
+  capturing: boolean;
   notifs: Notification[];
   unread: boolean;
   libFilter: string;
@@ -52,6 +56,8 @@ export const [S, setS] = createStore<State>({
   session: null,
   lib: [],
   game: null,
+  frame: null,
+  capturing: false,
   notifs: [],
   unread: false,
   libFilter: 'todos',
@@ -283,6 +289,29 @@ export function removeLib(ids: string[]) {
 // ---------- preferências ----------
 const mq = typeof matchMedia !== 'undefined' ? matchMedia('(prefers-color-scheme: light)') : null;
 
+/** Desenho por software (llvmpipe/SwiftShader: VM sem 3D, driver faltando): efeitos mínimos, senão tudo trava. */
+let soft: boolean | undefined;
+export function softwareGL(): boolean {
+  if (soft !== undefined) return soft;
+  soft = false;
+  try {
+    const gl = document.createElement('canvas').getContext('webgl');
+    if (!gl) return (soft = true);
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const r = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) ?? '');
+    soft = /llvmpipe|softpipe|swiftshader|software/i.test(r);
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+  } catch { /* sem WebGL */ }
+  return soft;
+}
+
+/** Nível de efeitos de fato aplicado: o do aparelho (Core), rebaixado se a GPU não estiver em uso. */
+export function effectsLevel(): 'full' | 'reduced' | 'minimal' {
+  if (softwareGL()) return 'minimal';
+  const e = S.hw?.effects;
+  return e === 'minimal' || e === 'reduced' ? e : 'full';
+}
+
 export function applyPrefs() {
   const p = prefs();
   const t = p.theme === 'auto' ? (mq?.matches ? 'light' : 'dark') : p.theme;
@@ -291,10 +320,10 @@ export function applyPrefs() {
     localStorage.setItem('nexus-theme', JSON.stringify({ theme: p.theme }));
   } catch { /* sem armazenamento */ }
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', t === 'light' ? '#f3f7f6' : '#0b1012');
-  document.body.classList.toggle('reduce', p.reduce || S.hw?.effects === 'minimal');
+  document.body.classList.toggle('reduce', p.reduce || effectsLevel() === 'minimal');
   document.body.classList.toggle('hc', p.hc);
   document.body.classList.toggle('kid', isKid());
-  document.body.classList.toggle('fx-reduced', S.hw?.effects === 'reduced');
+  document.body.classList.toggle('fx-reduced', effectsLevel() !== 'full');
   configureSfx({ enabled: p.sfx, volume: p.vol });
 }
 mq?.addEventListener?.('change', () => {

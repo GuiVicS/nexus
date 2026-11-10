@@ -172,7 +172,7 @@ pub enum ProfileKind {
 pub struct Profile {
     pub id: String,
     pub name: String,
-    /// nome de um avatar pré-definido ("lia", "rafa"...) ou "initial" (letra sobre cor)
+    /// nome de um avatar pré-definido ("lia", "rafa"...), "initial" (letra sobre cor) ou "photo:<arquivo>" (foto escolhida)
     pub avatar: String,
     pub hue: u16,
     pub kind: ProfileKind,

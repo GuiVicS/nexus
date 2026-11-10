@@ -1,5 +1,8 @@
 [Unit]
 Description=Sessão Nexus
 Requires=nexus-core.service nexus-shell.service
+# botões do Nexus por cima dos jogos: opcional (se faltar a biblioteca, a sessão sobe mesmo assim)
+Wants=nexus-overlay.service
 After=nexus-core.service
-StopWhenUnneeded=yes
+# Sem StopWhenUnneeded: o target é iniciado à mão pelo sway (exec no kiosk) e nada depende dele,
+# então o systemd o pararia na hora — e com ele o Core e a Shell (PartOf). Quem para é o nexus-session.

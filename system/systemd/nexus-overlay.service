@@ -1,0 +1,12 @@
+[Unit]
+StartLimitIntervalSec=0
+Description=Nexus Overlay (botões do Nexus por cima de jogos e apps)
+After=nexus-core.service
+PartOf=nexus-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/nexus-overlay
+Environment=GDK_BACKEND=wayland
+Restart=on-failure
+RestartSec=2

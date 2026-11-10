@@ -5,8 +5,26 @@ use axum::body::Body;
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::Response;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
+
+/// Um só cliente HTTP para todas as capas: reaproveita as conexões TLS com a CDN (a 1ª carga da loja
+/// era lenta porque cada imagem abria uma conexão nova).
+fn agent() -> &'static ureq::Agent {
+    static A: OnceLock<ureq::Agent> = OnceLock::new();
+    A.get_or_init(|| ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(8))).build().into())
+}
+
+/// Um download por arquivo: pedidos simultâneos da mesma capa (tela + pré-carga) esperam o primeiro.
+fn inflight(key: &str) -> Arc<tokio::sync::Mutex<()>> {
+    static M: OnceLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> = OnceLock::new();
+    let mut m = M.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner());
+    if m.len() > 512 {
+        m.retain(|_, v| Arc::strong_count(v) > 1);
+    }
+    m.entry(key.to_string()).or_default().clone()
+}
 
 fn ctype(p: &Path) -> Option<&'static str> {
     match p.extension()?.to_str()?.to_lowercase().as_str() {
@@ -29,7 +47,7 @@ fn cache_name(id: &str, kind: &str) -> String {
 
 async fn fetch(urls: Vec<String>, dest: PathBuf, miss_mark: PathBuf) -> Option<PathBuf> {
     tokio::task::spawn_blocking(move || {
-        let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(8))).build().into();
+        let agent = agent();
         let mut ok = None;
         for url in &urls {
             let res = agent.get(url).call().ok();
@@ -59,31 +77,81 @@ async fn fetch(urls: Vec<String>, dest: PathBuf, miss_mark: PathBuf) -> Option<P
 }
 
 pub async fn serve(core: &Arc<Core>, id: &str, kind: &str) -> Response {
-    let Some(kind_e) = ArtKind::parse(kind) else { return miss() };
-    let Some(provider) = core.provider_for(id) else { return miss() };
-    let source = provider.art(id, kind_e);
-    let path = match source {
-        ArtSource::File(p) => p,
-        ArtSource::Missing => return miss(),
-        ArtSource::Url(_) | ArtSource::Urls(_) => {
-            let dir = core.cfg.cache_dir.join("art");
-            let _ = std::fs::create_dir_all(&dir);
-            let base = dir.join(cache_name(id, kind));
-            let hit = ["jpg", "png", "webp"].iter().map(|e| base.with_extension(e)).find(|p| p.is_file());
-            let mark = base.with_extension("miss");
-            let fresh_miss = mark.metadata().and_then(|m| m.modified()).ok().is_some_and(|t| t.elapsed().unwrap_or_default() < Duration::from_secs(3600));
-            match hit {
-                Some(p) => p,
-                None if fresh_miss => return miss(),
-                None => match fetch(match source { ArtSource::Url(u) => vec![u], ArtSource::Urls(v) => v, _ => vec![] }, base, mark).await {
-                    Some(p) => p,
-                    None => return miss(),
-                },
-            }
-        }
+    if kind == "frame" {
+        // quadro do jogo capturado ao abrir a Central (só este arquivo)
+        return send(&core.cfg.runtime_dir.join("frame.png")).await;
+    }
+    if kind == "photo" {
+        // fotos de perfil: /art/photo:<arquivo>/photo
+        return match crate::avatars::path(core, id) {
+            Some(p) => send(&p).await,
+            None => miss(),
+        };
+    }
+    match ensure(core, id, kind).await {
+        Some(p) => send(&p).await,
+        None => miss(),
+    }
+}
+
+/// Caminho local da arte (baixa e guarda em cache se for remota).
+async fn ensure(core: &Arc<Core>, id: &str, kind: &str) -> Option<PathBuf> {
+    let kind_e = ArtKind::parse(kind)?;
+    let provider = core.provider_for(id)?;
+    let urls = match provider.art(id, kind_e) {
+        ArtSource::File(p) => return Some(p),
+        ArtSource::Missing => return None,
+        ArtSource::Url(u) => vec![u],
+        ArtSource::Urls(v) => v,
     };
-    let Some(ct) = ctype(&path) else { return miss() };
-    match tokio::fs::read(&path).await {
+    let dir = core.cfg.cache_dir.join("art");
+    let _ = std::fs::create_dir_all(&dir);
+    let name = cache_name(id, kind);
+    let base = dir.join(&name);
+    let lookup = || {
+        let hit = ["jpg", "png", "webp"].iter().map(|e| base.with_extension(e)).find(|p| p.is_file());
+        let mark = base.with_extension("miss");
+        let fresh_miss = mark.metadata().and_then(|m| m.modified()).ok().is_some_and(|t| t.elapsed().unwrap_or_default() < Duration::from_secs(3600));
+        (hit, fresh_miss)
+    };
+    if let (Some(p), _) = lookup() {
+        return Some(p);
+    }
+    let lock = inflight(&name);
+    let _g = lock.lock().await;
+    match lookup() {
+        (Some(p), _) => Some(p),
+        (None, true) => None,
+        (None, false) => fetch(urls, base.clone(), base.with_extension("miss")).await,
+    }
+}
+
+/// Baixa em segundo plano as capas de uma lista (ex.: a vitrine da loja), 6 de cada vez,
+/// para que a tela já as encontre em cache.
+pub fn prefetch(core: &Arc<Core>, ids: Vec<String>) {
+    let core = core.clone();
+    tokio::spawn(async move {
+        let q = Arc::new(Mutex::new(ids));
+        let mut tasks = vec![];
+        for _ in 0..6 {
+            let (core, q) = (core.clone(), q.clone());
+            tasks.push(tokio::spawn(async move {
+                loop {
+                    let next = q.lock().unwrap_or_else(|e| e.into_inner()).pop();
+                    let Some(id) = next else { break };
+                    let _ = ensure(&core, &id, "cover").await;
+                }
+            }));
+        }
+        for t in tasks {
+            let _ = t.await;
+        }
+    });
+}
+
+async fn send(path: &Path) -> Response {
+    let Some(ct) = ctype(path) else { return miss() };
+    match tokio::fs::read(path).await {
         Ok(bytes) if bytes.len() <= 12 * 1024 * 1024 => Response::builder()
             .header(header::CONTENT_TYPE, ct)
             .header(header::CACHE_CONTROL, "max-age=86400")

@@ -701,7 +701,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "argon2",
@@ -728,8 +728,9 @@ dependencies = [
 
 [[package]]
 name = "nexus-installer"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
+ "libc",
  "serde",
  "serde_json",
  "tempfile",
@@ -737,7 +738,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-protocol"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",

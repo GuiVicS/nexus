@@ -285,7 +285,7 @@ impl NativeProvider {
                 anyhow::bail!("nome inválido (1 a 40 caracteres)");
             }
         }
-        let mut img = |kind: &str, new: &Option<Option<String>>, old: &Option<String>| -> anyhow::Result<Option<Option<String>>> {
+        let img = |kind: &str, new: &Option<Option<String>>, old: &Option<String>| -> anyhow::Result<Option<Option<String>>> {
             Ok(match new {
                 None => None,
                 Some(None) => Some(None),

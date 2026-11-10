@@ -5,7 +5,7 @@ import { sfx } from '@nexus/ui';
 import { api } from '../lib/api';
 import { cycHandlers, editProfile } from '../lib/actions';
 import { enterProfile } from '../lib/session';
-import { askConfirm, askPin, askText, closeOv, fail, guarded, me, S, setS, toast } from '../lib/state';
+import { askConfirm, askPin, askText, closeOv, fail, guarded, me, pushOv, S, setS, toast } from '../lib/state';
 import { ratingLabel } from '../lib/format';
 import { Avatar, Glyph, Icon } from './ui';
 import { setParentalPin } from '../lib/flows';
@@ -151,7 +151,8 @@ export function ProfileEditor(p: { id: string | null; first?: boolean; oid: numb
     cycHandlers.set('pe:kind', () => toggleKid());
     const h = (e: Event) => {
       const a = (e as CustomEvent<string>).detail;
-      if (a.startsWith('avatar:')) setAvatar(a.slice(7));
+      if (a === 'photo') void choosePhoto();
+      else if (a.startsWith('avatar:')) setAvatar(a.slice(7));
       else if (a.startsWith('hue:')) setHue(+a.slice(4));
       else if (a === 'name') void editName();
       else if (a === 'pin') void editPin();
@@ -180,6 +181,19 @@ export function ProfileEditor(p: { id: string | null; first?: boolean; oid: numb
     const v = await askText({ title: 'Nome do perfil', value: name(), max: 16 });
     if (v !== null && v !== '') setName(v);
     else if (!editing() && !name()) closeOv(p.oid, undefined);
+  };
+
+  // foto: o navegador de imagens devolve um caminho; o Core valida, copia e devolve "photo:<arquivo>"
+  const [photo, setPhoto] = createSignal<string | null>(existing()?.avatar.startsWith('photo:') ? existing()!.avatar : null);
+  const choosePhoto = async () => {
+    const path = (await pushOv<string>('filepick', { title: 'Escolher foto do perfil' })) as string | undefined;
+    if (!path) return;
+    const r = await guarded((a) => api.importAvatar(path, a), 'Confirme para escolher a foto');
+    if (!r) return;
+    setPhoto(r.avatar);
+    setAvatar(r.avatar);
+    sfx('on');
+    toast('Foto escolhida', 'Salve o perfil para usar', 'check');
   };
 
   const editPin = async () => {
@@ -266,6 +280,14 @@ export function ProfileEditor(p: { id: string | null; first?: boolean; oid: numb
         <div class="srow col">
           <b>Avatar</b>
           <div class="chips">
+            <div class="btn f" data-k="pe-photo" data-r="p" data-pad="8" data-a="pe:photo" data-verb="Escolher"><Icon n="grid" /> {photo() ? 'Trocar foto' : 'Escolher foto'}</div>
+            <Show when={photo()}>
+              {(ph) => (
+                <div class={`avc f ${avatar() === ph() ? 'on' : ''}`} data-k="pe-av-photo" data-r="p" data-pad="8" data-a={`pe:avatar:${ph()}`} data-verb="Escolher" aria-label="Foto">
+                  <Avatar p={{ avatar: ph(), hue: hue(), name: name() || '?' }} size={72} />
+                </div>
+              )}
+            </Show>
             <For each={AVATARS}>
               {(a) => (
                 <div class={`avc f ${avatar() === a ? 'on' : ''}`} data-k={`pe-av-${a}`} data-r="p" data-pad="8" data-a={`pe:avatar:${a}`} data-verb="Escolher" aria-label={`Avatar ${a}`}>

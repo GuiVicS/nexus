@@ -1,4 +1,4 @@
-.PHONY: all gen test e2e dev-core build
+.PHONY: all gen test e2e dev-core build sim sim-reset
 
 all: gen build test
 
@@ -20,3 +20,9 @@ e2e: build  ## cenários de interface contra o Core real (Chromium headless)
 
 dev-core:      ## Core em modo demonstração + Shell em http://127.0.0.1:8799
 	cargo run -p nexus-core -- --demo --dev --dev-http 127.0.0.1:8799 --shell-dir apps/shell/dist --remote-dir apps/remote/dist --demo-assets assets/demo --runtime-dir /tmp/nexus-dev/run --data-dir /tmp/nexus-dev/data
+
+sim:           ## simulação do app real (primeiro uso, Steam simulada, loja real) em http://127.0.0.1:8799
+	tools/sim.sh
+
+sim-reset:     ## apaga os dados da simulação e começa do zero
+	tools/sim.sh --reset

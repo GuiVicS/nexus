@@ -1,5 +1,6 @@
 #!/bin/sh
-# Instalador do Nexus para Debian/Ubuntu x86_64.
+# Instalador do Nexus para Debian/Ubuntu (PC x86_64) e Raspberry Pi OS / Debian arm64 (Raspberry Pi 4/5).
+# No ARM não existe Steam para Linux: o Nexus instala sem ela (emuladores, streaming e apps funcionam).
 #   sudo ./install.sh                         instala o Nexus + Steam
 #   sudo ./install.sh --sem-steam             só o Nexus
 #   sudo ./install.sh --emulation             acrescenta o RetroArch (Flatpak)
@@ -31,9 +32,15 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-DEB=$(ls -1 ./nexus_*_amd64.deb ./dist/nexus_*_amd64.deb 2>/dev/null | tail -1 || true)
+ARCH=$(dpkg --print-architecture)
+case "$ARCH" in
+  amd64) ;;
+  arm64) [ -n "$STEAM" ] && echo "→ Raspberry Pi/ARM: a Steam não existe para esta arquitetura; instalando sem ela." ; STEAM="" ;;
+  *) echo "Arquitetura $ARCH não suportada (precisa de amd64, ou arm64 = Raspberry Pi com sistema de 64 bits)." >&2; exit 1 ;;
+esac
+DEB=$(ls -1 ./nexus_*_"$ARCH".deb ./dist/nexus_*_"$ARCH".deb 2>/dev/null | tail -1 || true)
 if [ -z "$DEB" ] && ! [ -x /usr/bin/nexus-installer ]; then
-  echo "Não encontrei o pacote nexus_*_amd64.deb ao lado deste script." >&2
+  echo "Não encontrei o pacote nexus_*_$ARCH.deb ao lado deste script." >&2
   exit 1
 fi
 
@@ -44,6 +51,14 @@ if [ -n "$DEB" ]; then
 fi
 
 if [ "$PLAN" -eq 1 ]; then
+  # só mostrar o plano: sem o pacote instalado, usa o nexus-installer de dentro do .deb
+  if ! command -v nexus-installer >/dev/null 2>&1 && [ -n "$DEB" ]; then
+    TMP=$(mktemp -d)
+    trap 'rm -rf "$TMP"' EXIT
+    dpkg-deb -x "$DEB" "$TMP"
+    "$TMP/usr/bin/nexus-installer" plan $STEAM $ARGS
+    exit $?
+  fi
   exec nexus-installer plan $STEAM $ARGS
 fi
 nexus-installer check

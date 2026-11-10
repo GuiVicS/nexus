@@ -578,10 +578,57 @@ async fn steam_store_and_open_actions() {
     sleep_ms(500).await;
     let calls = std::fs::read_to_string(&rec).unwrap();
     assert!(calls.contains("steam://store/1") && calls.contains("steam://install/2"), "{calls}");
-    assert_eq!(calls.lines().filter(|l| l.trim().is_empty()).count(), 1, "steam.open chama a Steam sem argumentos");
+    assert_eq!(calls.lines().filter(|l| l.trim() == "-gamepadui" || l.trim() == "steam://open/bigpicture").count(), 1, "steam.open abre a Steam no modo TV (login com QR code): {calls}");
     assert_eq!(c.code("steam.store_page", json!({ "id": "native:x" })).await, -32602);
 }
 
 async fn sleep_ms(ms: u64) {
     tokio::time::sleep(Duration::from_millis(ms)).await;
+}
+
+#[tokio::test]
+async fn profile_photo_import_validate_and_serve() {
+    let d = tempfile::tempdir().unwrap();
+    let home = d.path().join("home");
+    std::fs::create_dir_all(home.join("Fotos")).unwrap();
+    std::fs::write(home.join("Fotos/eu.png"), b"\x89PNG\r\n\x1a\n0000").unwrap();
+    std::fs::write(home.join("Fotos/falsa.png"), "texto").unwrap();
+    let (r, mut c) = boot(d.path(), |_| {}).await;
+    let eu = home.join("Fotos/eu.png");
+
+    // primeiro uso (sem perfis): pode navegar e escolher a foto
+    assert!(!c.ok("fs.list", json!({})).await["entries"].as_array().unwrap().is_empty());
+    let av = c.ok("profiles.avatar_import", json!({ "path": eu.to_str().unwrap() })).await["avatar"].as_str().unwrap().to_string();
+    assert!(av.starts_with("photo:"), "{av}");
+    assert_eq!(c.code("profiles.avatar_import", json!({ "path": home.join("Fotos/falsa.png").to_str().unwrap() })).await, 1011, "conteúdo que não é imagem");
+    assert_eq!(c.code("profiles.avatar_import", json!({ "path": "/etc/passwd" })).await, 1011, "fora das pastas permitidas");
+    for bad in ["photo:../nexus.db", "photo:nao-existe.png", "url(x)"] {
+        assert_eq!(c.code("profiles.create", json!({ "name": "X", "avatar": bad, "hue": 1 })).await, 1011, "avatar forjado: {bad}");
+    }
+    let p = c.ok("profiles.create", json!({ "name": "Lia", "avatar": av, "hue": 180 })).await;
+    assert_eq!(p["avatar"], av);
+    let id = p["id"].as_str().unwrap().to_string();
+
+    let addr = r.started.dev_addr.unwrap();
+    let get = |path: String| {
+        tokio::task::spawn_blocking(move || {
+            let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).build().into();
+            agent.get(&format!("http://{addr}{path}")).call().unwrap().status().as_u16()
+        })
+    };
+    let enc = av.replace(':', "%3A");
+    assert_eq!(get(format!("/art/{enc}/photo")).await.unwrap(), 200, "foto servida pelo Core");
+    assert_eq!(get("/art/photo%3A..%2Fnexus.db/photo".into()).await.unwrap(), 404);
+
+    // com perfis e sem sessão, os responsáveis precisam confirmar (quando há PIN)
+    c.ok("profiles.select", json!({ "id": id })).await;
+    c.ok("parental.set", json!({ "newPin": "1111" })).await;
+    c.ok("session.logout", json!({ "parentPin": "1111" })).await;
+    assert_eq!(c.code("fs.list", json!({})).await, 1001, "sem perfil ativo: pede o PIN dos responsáveis");
+    assert!(c.ok("fs.list", json!({ "parentPin": "1111" })).await["entries"].is_array());
+
+    // trocar para um avatar pronto apaga a foto antiga
+    c.ok("profiles.select", json!({ "id": id })).await;
+    c.ok("profiles.update", json!({ "id": id, "avatar": "lia" })).await;
+    assert_eq!(get(format!("/art/{enc}/photo")).await.unwrap(), 404, "foto apagada ao trocar");
 }

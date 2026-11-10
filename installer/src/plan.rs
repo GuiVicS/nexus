@@ -67,7 +67,10 @@ pub fn build(sys: &System, o: &Options) -> Vec<Step> {
     if !installed {
         s.push(step("Instalar o Nexus (Shell, Core e sessão)", sys.family, &["nexus"]));
     }
-    if o.steam {
+    if o.steam && !crate::detect::steam_possible(&sys.arch) {
+        // Raspberry Pi e outros ARM: a Steam para Linux não existe para essa arquitetura
+        s.push(sh("Steam: não disponível nesta arquitetura (ARM) — o Nexus segue sem ela", "true"));
+    } else if o.steam {
         match sys.family {
             Family::Debian => {
                 s.push(cmd("Habilitar a arquitetura de 32 bits (necessária para a Steam)", &["dpkg", "--add-architecture", "i386"]));
@@ -142,6 +145,18 @@ mod tests {
         assert!(pos("add-apt-repository -y multiverse") < pos("apt-get install -y steam-installer"));
         assert!(t.last().unwrap().contains("autologin"));
         assert!(!t.iter().any(|x| x.contains("RetroArch")), "só entra o que foi pedido");
+    }
+
+    #[test]
+    fn raspberry_pi_skips_steam() {
+        let mut pi = sys(Family::Debian, Some("lightdm"));
+        pi.id = "debian".into();
+        pi.arch = "aarch64".into();
+        let p = build(&pi, &Options { steam: true, emulation: true, autologin_user: Some("pi".into()) });
+        let t: Vec<String> = p.iter().map(|s| s.display()).collect();
+        assert!(!t.iter().any(|x| x.contains("i386") || x.contains("steam-installer")), "sem Steam nem 32 bits no ARM: {t:?}");
+        assert!(t.iter().any(|x| x.contains("RetroArch")));
+        assert!(t.last().unwrap().contains("autologin"), "LightDM do Raspberry Pi OS");
     }
 
     #[test]

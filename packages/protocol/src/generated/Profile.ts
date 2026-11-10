@@ -3,6 +3,6 @@ import type { ProfileKind } from "./ProfileKind";
 
 export type Profile = { id: string, name: string, 
 /**
- * nome de um avatar pré-definido ("lia", "rafa"...) ou "initial" (letra sobre cor)
+ * nome de um avatar pré-definido ("lia", "rafa"...), "initial" (letra sobre cor) ou "photo:<arquivo>" (foto escolhida)
  */
 avatar: string, hue: number, kind: ProfileKind, hasPin: boolean, ageLimit: number | null, dailyLimitMin: number | null, };

@@ -43,7 +43,18 @@ pub fn environ_has(pid: u32, needle: &str) -> bool {
 
 /// Processos vivos da sessão (setsid) iniciada por `leader`.
 pub fn session_members(leader: u32) -> Vec<u32> {
-    list().into_iter().filter(|p| p.sid == leader && p.state != 'Z' && p.state != 'X').map(|p| p.pid).collect()
+    let all: Vec<Proc> = list().into_iter().filter(|p| p.state != 'Z' && p.state != 'X').collect();
+    // a sessão do jogo e todos os descendentes: Flatpak (bwrap) e navegadores abrem sessões próprias
+    // lá dentro, e o SIGTERM precisa chegar ao processo de verdade (para o emulador gravar o save)
+    let mut out: Vec<u32> = all.iter().filter(|p| p.sid == leader).map(|p| p.pid).collect();
+    let mut i = 0;
+    while i < out.len() {
+        let parent = out[i];
+        let kids: Vec<u32> = all.iter().filter(|p| p.ppid == parent && !out.contains(&p.pid)).map(|p| p.pid).collect();
+        out.extend(kids);
+        i += 1;
+    }
+    out
 }
 
 /// Processos da Steam que pertencem ao jogo `appid` (reaper `SteamLaunch AppId=N` ou ambiente SteamGameId=N).
@@ -60,6 +71,18 @@ pub fn steam_game_pids(appid: u32) -> Vec<u32> {
         })
         .map(|p| p.pid)
         .collect()
+}
+
+/// Jogo da Steam rodando (reaper "SteamLaunch AppId=N"), para o Core reencontrar após reiniciar.
+pub fn running_steam_appid() -> Option<u32> {
+    let me = std::process::id();
+    list().into_iter().filter(|p| p.pid != me && p.state != 'Z').find_map(|p| {
+        let c = cmdline(p.pid);
+        if !c.iter().any(|a| a == "SteamLaunch") {
+            return None;
+        }
+        c.iter().find_map(|a| a.strip_prefix("AppId=")?.parse::<u32>().ok())
+    })
 }
 
 pub fn signal(pids: &[u32], sig: i32) {

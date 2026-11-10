@@ -30,6 +30,10 @@ pub struct Config {
     pub uinput: bool,
     pub systemd_scope: bool,
     pub guide_watch: bool,
+    /// plataformas de streaming (Netflix, YouTube…) na aba Mídia
+    pub web_apps: bool,
+    /// emulação (RetroArch, ROMs em ~/ROMs)
+    pub emulation: bool,
 }
 
 fn env(k: &str) -> Option<String> {
@@ -83,6 +87,8 @@ impl Config {
             uinput: env("NEXUS_UINPUT").map(|v| v != "0").unwrap_or(true),
             systemd_scope: env("NEXUS_SYSTEMD_SCOPE").is_some_and(|v| v == "1"),
             guide_watch: env("NEXUS_GUIDE_WATCH").map(|v| v != "0").unwrap_or(true),
+            web_apps: env("NEXUS_WEB_APPS").map(|v| v != "0").unwrap_or(true),
+            emulation: env("NEXUS_EMULATION").map(|v| v != "0").unwrap_or(true),
         };
         let mut it = args.iter().skip(1);
         while let Some(a) = it.next() {
@@ -126,7 +132,7 @@ impl Config {
             shell_dir: None,
             demo: false,
             demo_assets: root.join("demo"),
-            steam_root: None,
+            steam_root: Some(root.join("nosteam")), // isola da Steam real da máquina
             steam_bin: "steam".into(),
             steam_api_key: None,
             apps_dirs: vec![],
@@ -136,6 +142,8 @@ impl Config {
             uinput: false,
             systemd_scope: false,
             guide_watch: false,
+            web_apps: false,
+            emulation: false,
         }
     }
 }

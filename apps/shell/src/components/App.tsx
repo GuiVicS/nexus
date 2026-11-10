@@ -13,9 +13,10 @@ import { Confirm, Guide, Launch, Notifs, Search, Sheet, TimeUp, clock } from './
 import { PinPad, TextEntry } from './Entry';
 import { Settings } from './Settings';
 import { AppEditor, AppPicker, FilePicker } from './Apps';
+import { PadEditor, PadMapper } from './Pads';
 import { Boot, Onboarding, ProfileEditor, ProfilePicker, Standby } from './Profiles';
 
-const FULL: Ov['kind'][] = ['hub', 'search', 'settings', 'launch', 'profile', 'timeup', 'appicker', 'appedit', 'filepick'];
+const FULL: Ov['kind'][] = ['hub', 'search', 'settings', 'launch', 'profile', 'timeup', 'appicker', 'appedit', 'filepick', 'padmap', 'padedit'];
 
 function OvBody(p: { o: Ov }) {
   const o = p.o;
@@ -34,6 +35,8 @@ function OvBody(p: { o: Ov }) {
       <Match when={o.kind === 'timeup'}><TimeUp /></Match>
       <Match when={o.kind === 'appicker'}><AppPicker oid={o.id} /></Match>
       <Match when={o.kind === 'appedit'}><AppEditor id={o.props.id} fresh={o.props.fresh} oid={o.id} /></Match>
+      <Match when={o.kind === 'padedit'}><PadEditor pad={o.props.pad} oid={o.id} /></Match>
+      <Match when={o.kind === 'padmap'}><PadMapper pad={o.props.pad} oid={o.id} /></Match>
       <Match when={o.kind === 'filepick'}><FilePicker title={o.props.title} oid={o.id} /></Match>
       <Match when={o.kind === 'confirm'}><Confirm title={o.props.title} sub={o.props.sub} yes={o.props.yes} no={o.props.no} danger={o.props.danger} oid={o.id} /></Match>
     </Switch>
@@ -181,7 +184,8 @@ export function App() {
       stage,
       ring,
       getRoot: root,
-      reduceMotion: () => prefs().reduce,
+      // efeitos mínimos (sem GPU) também: o anel deslizando a poucos quadros por segundo ficava para trás
+      reduceMotion: () => document.body.classList.contains('reduce'),
       onAdjust: adjust,
       onBump: () => sfx('bump'),
       onLost: () => queueMicrotask(() => requestAnimationFrame(() => fx.f?.ensure())),

@@ -173,15 +173,16 @@ export function FilePicker(p: { title: string; oid: number }) {
   const [l, setL] = createSignal<FsListing | null>(null);
   const [err, setErr] = createSignal('');
   const open = async (path?: string) => {
-    try {
-      const r = await api.fsList(path);
-      setL(r);
-      setErr('');
-      queueMicrotask(() => requestAnimationFrame(() => focusLayer(p.oid)));
-    } catch (e) {
-      setErr((e as Error).message);
-      sfx('deny');
+    // guarded: na tela de perfis (sem perfil ativo) os responsáveis confirmam com o PIN
+    const r = await guarded((a) => api.fsList(path, a), 'Confirme para escolher uma imagem');
+    if (!r) {
+      if (!l()) closeOv(p.oid);
+      else sfx('deny');
+      return;
     }
+    setL(r);
+    setErr('');
+    queueMicrotask(() => requestAnimationFrame(() => focusLayer(p.oid)));
   };
   onMount(() => {
     void open();
