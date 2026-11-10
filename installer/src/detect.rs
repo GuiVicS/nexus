@@ -15,6 +15,9 @@ pub struct System {
     pub disk_free_mb: u64,
     pub has_steam: bool,
     pub has_flatpak: bool,
+    /// navegador para o streaming (Netflix, YouTube TV…)
+    #[serde(default)]
+    pub has_browser: bool,
     pub display_manager: Option<String>,
 }
 
@@ -139,6 +142,9 @@ impl System {
             disk_free_mb: free_mb("/opt").max(free_mb("/")),
             has_steam: which("steam") || Path::new("/var/lib/flatpak/app/com.valvesoftware.Steam").exists(),
             has_flatpak: which("flatpak"),
+            has_browser: ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge", "brave-browser", "firefox"]
+                .iter()
+                .any(|b| which(b) || Path::new("/snap/bin").join(b).exists() || Path::new("/usr/bin").join(b).exists()),
             display_manager: display_manager(),
             id, id_like, version_id, pretty, arch,
         }
@@ -208,7 +214,7 @@ mod tests {
     }
 
     fn sys(mem: u64, disk: u64, gpu: &str) -> System {
-        System { id: "ubuntu".into(), id_like: vec![], version_id: "24.04".into(), pretty: "Ubuntu".into(), arch: "x86_64".into(), family: Family::Debian, supported: Support::Supported, gpu_vendor: gpu.into(), memory_mb: mem, disk_free_mb: disk, has_steam: false, has_flatpak: false, display_manager: None }
+        System { id: "ubuntu".into(), id_like: vec![], version_id: "24.04".into(), pretty: "Ubuntu".into(), arch: "x86_64".into(), family: Family::Debian, supported: Support::Supported, gpu_vendor: gpu.into(), memory_mb: mem, disk_free_mb: disk, has_steam: false, has_flatpak: false, has_browser: true, display_manager: None }
     }
 
     #[test]

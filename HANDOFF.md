@@ -1,7 +1,7 @@
 # HANDOFF — Nexus
 
 > Documento para continuar o desenvolvimento em **outra sessão ou outro agente** sem perder contexto.
-> Atualize a seção "Estado atual" e "Próximos passos" **ao fim de cada sessão**. Última atualização: 2026-11-10 (versão 0.3.0).
+> Atualize a seção "Estado atual" e "Próximos passos" **ao fim de cada sessão**. Última atualização: 2026-11-10 (versão 0.3.1).
 
 ## 1. O que é
 
@@ -138,7 +138,12 @@ Os cenários de UI são **sensíveis a carga** (máquina de 2 núcleos): um dele
 - `install.sh` (Debian/Ubuntu): instala o `.deb` e chama `nexus-installer install --steam --yes` (habilita 32 bits + multiverse, instala Steam; `--emulation` → Flatpak+Flathub+RetroArch; `--autologin USUARIO`; `--plano` só mostra).
 - **GitHub Releases (pedido do usuário, a partir da 0.3.0):** `gh release create vX.Y.Z` com os `.tar.gz` + `.sha256` de PC e Raspberry Pi; o README aponta para `releases/latest`.
 - **Hospedagem do download (decidida pelo usuário):** projeto Vercel `nexus-download` na conta `serafim-company`, pasta local `/root/nexus-download` (fora do repo): `index.html`, `latest.txt`, `update.sh` (cópia de `tools/update.sh`), o `.tar.gz`, `.sha256` e o código-fonte. Publicar: copiar os arquivos novos, atualizar `latest.txt`/`index.html` e `vercel deploy --prod --yes`. URL: `https://nexus-download-psi.vercel.app`.
-- **Atualizar no aparelho:** `curl -fsSL https://nexus-download-psi.vercel.app/update.sh | sh` (compara com `latest.txt`, confere sha256, `apt install`).
+- **Instalar/atualizar no aparelho (0.3.1+):** `tools/update.sh` baixa da **release mais recente do GitHub** (arquitetura pela `dpkg`,
+  confere sha256). Sem o Nexus instalado roda o `install.sh` completo; com ele, só `apt install` do `.deb`. O repositório é **privado**:
+  o link aberto dá 404, então o script usa `gh release download` (precisa de `gh auth login`); o próprio script é obtido com
+  `gh api repos/GuiVicS/nexus/contents/tools/update.sh -H "Accept: application/vnd.github.raw" | sh`. O site da Vercel ficou parado na 0.2.0.
+- **Instalação completa por padrão (pedido do usuário, 0.3.1):** `install.sh` = Steam (PC) + RetroArch (`--sem-steam`/`--sem-emuladores`
+  para tirar) + navegador se não houver (plano: `chromium`, ou `chromium-browser` no Ubuntu) + `bluez`/`curl` nas dependências do `.deb`.
 - Ao mudar versão: `Cargo.toml`, `README.md`; depois bundle → copiar → `latest.txt` → deploy.
 
 ## 8. Diagnóstico no aparelho (peça ao usuário nesta ordem)

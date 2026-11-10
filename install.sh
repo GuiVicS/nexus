@@ -1,9 +1,10 @@
 #!/bin/sh
 # Instalador do Nexus para Debian/Ubuntu (PC x86_64) e Raspberry Pi OS / Debian arm64 (Raspberry Pi 4/5).
 # No ARM não existe Steam para Linux: o Nexus instala sem ela (emuladores, streaming e apps funcionam).
-#   sudo ./install.sh                         instala o Nexus + Steam
-#   sudo ./install.sh --sem-steam             só o Nexus
-#   sudo ./install.sh --emulation             acrescenta o RetroArch (Flatpak)
+#   sudo ./install.sh                         instala TUDO: Nexus + Steam (PC) + RetroArch (emuladores) + navegador
+#                                             para o streaming + Bluetooth e todas as bibliotecas
+#   sudo ./install.sh --sem-steam             sem a Steam
+#   sudo ./install.sh --sem-emuladores        sem o RetroArch
 #   sudo ./install.sh --autologin SEU_USUARIO entra direto no Nexus ao ligar
 #   sudo ./install.sh --plano                 só mostra o que seria feito
 set -eu
@@ -19,6 +20,7 @@ if ! command -v apt-get >/dev/null 2>&1; then
 fi
 
 STEAM=--steam
+EMU=--emulation
 PLAN=0
 ARGS=""
 while [ $# -gt 0 ]; do
@@ -26,7 +28,8 @@ while [ $# -gt 0 ]; do
     --sem-steam) STEAM="" ;;
     --plano) PLAN=1 ;;
     --autologin) ARGS="$ARGS --autologin $2"; shift ;;
-    --emulation) ARGS="$ARGS --emulation" ;;
+    --sem-emuladores) EMU="" ;;
+    --emulation) ;;  # já é o padrão (mantido por compatibilidade)
     *) echo "opção desconhecida: $1" >&2; exit 1 ;;
   esac
   shift
@@ -56,13 +59,13 @@ if [ "$PLAN" -eq 1 ]; then
     TMP=$(mktemp -d)
     trap 'rm -rf "$TMP"' EXIT
     dpkg-deb -x "$DEB" "$TMP"
-    "$TMP/usr/bin/nexus-installer" plan $STEAM $ARGS
+    "$TMP/usr/bin/nexus-installer" plan $STEAM $EMU $ARGS
     exit $?
   fi
-  exec nexus-installer plan $STEAM $ARGS
+  exec nexus-installer plan $STEAM $EMU $ARGS
 fi
 nexus-installer check
-nexus-installer install $STEAM $ARGS --yes
+nexus-installer install $STEAM $EMU $ARGS --yes
 echo
 echo "Pronto! Reinicie ou saia da sessão e escolha \"Nexus\" na tela de login."
 echo "Problemas? Rode: nexus-installer doctor   (Ctrl+Alt+F3 abre um terminal de emergência)"

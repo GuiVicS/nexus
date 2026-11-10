@@ -95,6 +95,16 @@ pub fn build(sys: &System, o: &Options) -> Vec<Step> {
             Family::Unknown => {}
         }
     }
+    if !sys.has_browser {
+        // streaming (Netflix, YouTube TV, Spotify…) abre num navegador em tela cheia
+        let pkg = match (sys.family, sys.id.as_str()) {
+            (Family::Debian, "ubuntu") => "chromium-browser",
+            _ => "chromium",
+        };
+        if sys.family != Family::Unknown {
+            s.push(step("Instalar o navegador para os serviços de streaming", sys.family, &[pkg]));
+        }
+    }
     if o.emulation {
         if !sys.has_flatpak {
             s.push(step("Instalar o Flatpak", sys.family, &["flatpak"]));
@@ -131,7 +141,7 @@ mod tests {
     use crate::detect::Support;
 
     fn sys(f: Family, dm: Option<&str>) -> System {
-        System { id: "x".into(), id_like: vec![], version_id: "1".into(), pretty: "X".into(), arch: "x86_64".into(), family: f, supported: Support::Supported, gpu_vendor: "amd".into(), memory_mb: 8000, disk_free_mb: 50000, has_steam: false, has_flatpak: true, display_manager: dm.map(String::from) }
+        System { id: "x".into(), id_like: vec![], version_id: "1".into(), pretty: "X".into(), arch: "x86_64".into(), family: f, supported: Support::Supported, gpu_vendor: "amd".into(), memory_mb: 8000, disk_free_mb: 50000, has_steam: false, has_flatpak: true, has_browser: true, display_manager: dm.map(String::from) }
     }
 
     #[test]
@@ -145,6 +155,16 @@ mod tests {
         assert!(pos("add-apt-repository -y multiverse") < pos("apt-get install -y steam-installer"));
         assert!(t.last().unwrap().contains("autologin"));
         assert!(!t.iter().any(|x| x.contains("RetroArch")), "só entra o que foi pedido");
+    }
+
+    #[test]
+    fn installs_browser_only_when_missing() {
+        let mut y = sys(Family::Debian, None);
+        y.id = "debian".into();
+        let has = |b: &System| build(b, &Options { steam: false, emulation: false, autologin_user: None }).iter().any(|s| s.display().contains("chromium"));
+        assert!(!has(&y), "já tem navegador");
+        y.has_browser = false;
+        assert!(has(&y), "Raspberry Pi OS / Debian: chromium");
     }
 
     #[test]

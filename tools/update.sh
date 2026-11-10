@@ -1,23 +1,60 @@
 #!/bin/sh
-# Atualiza o Nexus para a versão mais recente.
-#   curl -fsSL https://nexus-download-psi.vercel.app/update.sh | sh
-#   curl -fsSL https://nexus-download-psi.vercel.app/update.sh | sh -s -- --force   (reinstala mesmo se já estiver atualizado)
+# Instala ou atualiza o Nexus a partir das releases do GitHub (PC x86_64 ou Raspberry Pi arm64).
+#   curl -fsSL https://raw.githubusercontent.com/GuiVicS/nexus/main/tools/update.sh | sh
+#   ... | sh -s -- --force                       reinstala mesmo se já estiver atualizado
+#   ... | sh -s -- --autologin SEU_USUARIO       (1ª instalação) entra direto no Nexus ao ligar
+#   ... | sh -s -- --sem-steam / --sem-emuladores (1ª instalação) deixa de fora a Steam / o RetroArch
+# Sem o Nexus instalado, roda o instalador completo (Nexus + Steam + RetroArch + navegador + dependências).
+# Com o Nexus instalado, só troca o pacote pela versão nova.
 set -eu
-BASE="${NEXUS_BASE_URL:-https://nexus-download-psi.vercel.app}"
+REPO="${NEXUS_REPO:-GuiVicS/nexus}"
 FORCE=0
-[ "${1:-}" = "--force" ] && FORCE=1
+ARGS=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --force) FORCE=1 ;;
+    --autologin) ARGS="$ARGS --autologin $2"; shift ;;
+    --sem-steam|--sem-emuladores) ARGS="$ARGS $1" ;;
+    *) echo "opção desconhecida: $1" >&2; exit 1 ;;
+  esac
+  shift
+done
 
 if ! command -v apt-get >/dev/null 2>&1; then
-  echo "Este atualizador é para Debian/Ubuntu (apt)." >&2
+  echo "Este instalador é para Debian/Ubuntu/Raspberry Pi OS (apt)." >&2
   exit 1
 fi
 SUDO=""
 [ "$(id -u)" -ne 0 ] && SUDO="sudo"
+command -v curl >/dev/null 2>&1 || { $SUDO apt-get update && $SUDO apt-get install -y curl ca-certificates; }
 
-VER=$(curl -fsSL "$BASE/latest.txt" | tr -d ' \r\n')
-case "$VER" in [0-9]*.[0-9]*.[0-9]*) ;; *) echo "Não consegui descobrir a versão mais recente." >&2; exit 1 ;; esac
+ARCH=$(dpkg --print-architecture)
+case "$ARCH" in
+  amd64) TAG=x86_64 ;;
+  arm64) TAG=arm64 ;;
+  *) echo "Arquitetura $ARCH sem pacote do Nexus (só amd64 = PC e arm64 = Raspberry Pi 4/5 com sistema de 64 bits)." >&2; exit 1 ;;
+esac
+
+# versão mais recente: o GitHub redireciona /releases/latest para /releases/tag/vX.Y.Z (sem usar a API, que tem limite).
+# Repositório privado: o link aberto dá 404; aí usa o GitHub CLI já logado (gh auth login).
+GH=0
+URL=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest" 2>/dev/null || true)
+VER=${URL##*/v}
+case "$VER" in
+  [0-9]*.[0-9]*.[0-9]*) ;;
+  *)
+    if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+      GH=1
+      VER=$(gh release view -R "$REPO" --json tagName -q .tagName | sed 's/^v//')
+    else
+      echo "Não consegui acessar github.com/$REPO (repositório privado?). Instale o GitHub CLI e entre na conta:" >&2
+      echo "  sudo apt install gh && gh auth login" >&2
+      exit 1
+    fi ;;
+esac
+case "$VER" in [0-9]*.[0-9]*.[0-9]*) ;; *) echo "Não consegui descobrir a versão mais recente em github.com/$REPO." >&2; exit 1 ;; esac
 CUR=$(dpkg-query -W -f='${Version}' nexus 2>/dev/null || echo "nenhuma")
-echo "Instalada: $CUR · Mais recente: $VER"
+echo "Instalada: $CUR · Mais recente: $VER ($ARCH)"
 if [ "$CUR" = "$VER" ] && [ "$FORCE" -eq 0 ]; then
   echo "Já está atualizado."
   exit 0
@@ -26,12 +63,15 @@ fi
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 cd "$T"
-ARCH=$(dpkg --print-architecture)
-case "$ARCH" in amd64) TAG=x86_64 ;; arm64) TAG=arm64 ;; *) echo "Arquitetura $ARCH sem pacote do Nexus (só amd64 e arm64)." >&2; exit 1 ;; esac
 FILE="nexus-$VER-linux-$TAG.tar.gz"
+BASE="https://github.com/$REPO/releases/download/v$VER"
 echo "→ Baixando $FILE (~100 MB)…"
-curl -fL --progress-bar -o "$FILE" "$BASE/$FILE"
-curl -fsSL -o "$FILE.sha256" "$BASE/$FILE.sha256"
+if [ "$GH" -eq 1 ]; then
+  gh release download "v$VER" -R "$REPO" -p "$FILE" -p "$FILE.sha256"
+else
+  curl -fL --progress-bar -o "$FILE" "$BASE/$FILE"
+  curl -fsSL -o "$FILE.sha256" "$BASE/$FILE.sha256"
+fi
 echo "→ Conferindo integridade…"
 sha256sum -c "$FILE.sha256"
 tar xzf "$FILE"
@@ -42,7 +82,14 @@ if [ "${NEXUS_DRY:-0}" = "1" ]; then
   exit 0
 fi
 
-echo "→ Instalando…"
-$SUDO apt-get install -y "./nexus-$VER/nexus_${VER}_${ARCH}.deb"
-echo
-echo "Pronto: Nexus $VER instalado. Saia da sessão e entre de novo em \"Nexus\" para usar a nova versão."
+if [ "$CUR" = "nenhuma" ]; then
+  echo "→ Primeira instalação: Nexus e todas as dependências…"
+  cd "nexus-$VER"
+  # shellcheck disable=SC2086
+  $SUDO ./install.sh $ARGS
+else
+  echo "→ Atualizando…"
+  $SUDO apt-get install -y "./nexus-$VER/nexus_${VER}_${ARCH}.deb"
+  echo
+  echo "Pronto: Nexus $VER instalado. Saia da sessão e entre de novo em \"Nexus\" para usar a nova versão."
+fi
