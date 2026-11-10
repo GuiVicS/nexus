@@ -8,16 +8,9 @@ ExecStart=/usr/bin/nexus-core
 Restart=always
 RestartSec=1
 Environment=RUST_LOG=info
-# o Core só fala por socket Unix 0600 e pela porta do celular na rede local
+ExecStartPre=/bin/mkdir -p %h/.local/share/nexus %h/.cache/nexus
 NoNewPrivileges=yes
-ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=%h/.local/share/nexus %h/.cache/nexus %t/nexus
-PrivateTmp=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
-CapabilityBoundingSet=
-SystemCallFilter=@system-service
-MemoryDenyWriteExecute=yes
 
 [Install]
 WantedBy=nexus-session.target

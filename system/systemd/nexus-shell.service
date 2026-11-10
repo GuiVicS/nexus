@@ -5,7 +5,7 @@ PartOf=nexus-session.target
 
 [Service]
 Type=simple
-ExecStart=/opt/nexus/shell/nexus-shell --ozone-platform=wayland --enable-features=UseOzonePlatform
+ExecStart=/opt/nexus/shell/nexus-shell --ozone-platform=wayland $NEXUS_SHELL_FLAGS
 Environment=NEXUS_KIOSK=1
 Restart=on-failure
 RestartSec=1

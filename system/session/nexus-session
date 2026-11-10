@@ -1,29 +1,32 @@
 #!/bin/sh
 # Líder da sessão Nexus: prepara o ambiente, sobe os serviços de usuário e executa o compositor kiosk.
-# Se a sessão cair 3 vezes em 5 minutos, desfaz o autologin e volta ao desktop original (guarda de loop).
-set -eu
-
-STATE="${XDG_RUNTIME_DIR:?}/nexus"
-mkdir -p "$STATE"
-chmod 700 "$STATE"
+# Tudo é registrado em ~/.local/state/nexus/session.log. Se a sessão cair 3 vezes em 5 minutos,
+# desfaz o autologin e volta ao desktop original (guarda de loop).
+XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export XDG_RUNTIME_DIR
+STATE="$XDG_RUNTIME_DIR/nexus"
+LOGDIR="${XDG_STATE_HOME:-$HOME/.local/state}/nexus"
+mkdir -p "$STATE" "$LOGDIR" 2>/dev/null
+chmod 700 "$STATE" 2>/dev/null
+LOG="$LOGDIR/session.log"
+exec >>"$LOG" 2>&1
+echo "=== $(date '+%F %T') nexus-session (uid $(id -u), vt ${XDG_VTNR:-?}) ==="
 
 if [ -e /etc/nexus/force-desktop ] || [ -e "$HOME/.config/nexus/force-desktop" ]; then
-  logger -t nexus-session "force-desktop presente: abrindo o desktop original"
+  echo "force-desktop presente: abrindo o desktop original"
   exec /usr/bin/nexus-launch-desktop
 fi
 
-# guarda de loop
 now=$(date +%s)
-log="$STATE/starts"
-touch "$log"
-recent=$(awk -v now="$now" 'now - $1 < 300' "$log" | wc -l)
+touch "$STATE/starts"
+recent=$(awk -v now="$now" 'now - $1 < 300' "$STATE/starts" | wc -l)
 if [ "$recent" -ge 3 ]; then
-  logger -t nexus-session "3 falhas em 5 min: restaurando o login normal"
-  /usr/bin/nexus-installer revert-autologin >/dev/null 2>&1 || true
-  : > "$log"
+  echo "3 falhas em 5 min: restaurando o login normal"
+  /usr/bin/nexus-installer revert-autologin || true
+  : > "$STATE/starts"
   exec /usr/bin/nexus-launch-desktop
 fi
-echo "$now" >> "$log"
+echo "$now" >> "$STATE/starts"
 
 export XDG_SESSION_TYPE=wayland
 export XDG_CURRENT_DESKTOP=Nexus
@@ -33,10 +36,32 @@ export SDL_VIDEODRIVER=wayland,x11
 export QT_QPA_PLATFORM=wayland
 export NEXUS_COMPOSITOR=sway
 
-# o ambiente do compositor vai para o systemd --user para os serviços herdarem
-systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP NEXUS_COMPOSITOR PATH HOME
-dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP 2>/dev/null || true
+# Máquina virtual: sem aceleração 3D confiável (cursor por hardware e GPU do Chromium causam falhas)
+if systemd-detect-virt -q 2>/dev/null; then
+  echo "máquina virtual detectada ($(systemd-detect-virt 2>/dev/null))"
+  export WLR_NO_HARDWARE_CURSORS=1
+  export NEXUS_SHELL_FLAGS="--disable-gpu"
+fi
+export WLR_RENDERER_ALLOW_SOFTWARE=1
 
-systemctl --user start nexus-session.target &
-# sway é o líder: quando ele sai, a sessão acaba e os serviços param
-exec /usr/bin/sway --unsupported-gpu -c /usr/share/nexus/sway-kiosk.conf
+systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP NEXUS_COMPOSITOR NEXUS_SHELL_FLAGS PATH HOME 2>&1 || echo "aviso: import-environment falhou"
+dbus-update-activation-environment --systemd XDG_CURRENT_DESKTOP 2>/dev/null || true
+
+run_sway() {
+  /usr/bin/sway --unsupported-gpu -c /usr/share/nexus/sway-kiosk.conf
+}
+
+start=$(date +%s)
+run_sway
+rc=$?
+echo "sway saiu com código $rc"
+if [ "$rc" -ne 0 ] && [ $(( $(date +%s) - start )) -lt 15 ]; then
+  echo "sway falhou ao iniciar; tentando com renderizador por software (pixman)"
+  export WLR_RENDERER=pixman WLR_NO_HARDWARE_CURSORS=1
+  start=$(date +%s)
+  run_sway
+  rc=$?
+  echo "sway (pixman) saiu com código $rc"
+fi
+systemctl --user stop nexus-session.target 2>/dev/null || true
+exit "$rc"
