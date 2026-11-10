@@ -83,6 +83,8 @@ export function AppFace(p: { it: Item }) {
 }
 
 export const appBg = (it: Item) => (it.brand ? it.brand.bg : hueGrad(it));
+/** Fundo grande do item: imagem de fundo (hero) quando existe; senão o degradê/cor do app. */
+export const heroStyle = (it: Item, extra: Record<string, string> = {}): JSX.CSSProperties => (it.art.hero ? { 'background-image': `url("${artUrl(it.id, 'hero')}")`, 'background-color': `hsl(${it.hue[0]} 40% 20%)`, ...extra } : { background: appBg(it), ...extra });
 
 export function Tile(p: { it: Item; a?: string; dock?: boolean; badge?: string; price?: JSX.Element; noProg?: boolean; defAct?: string }) {
   const it = () => p.it;
@@ -90,8 +92,8 @@ export function Tile(p: { it: Item; a?: string; dock?: boolean; badge?: string; 
   const act = () => p.a ?? p.defAct ?? (it().kind === 'app' ? `app:${it().id}` : `open:${it().id}`);
   return (
     <div class="tl f" data-k={it().id} data-id={it().id} data-r="22" data-a={act()} data-verb={verbOf(it())} data-opt="1" data-dock={p.dock ? '1' : undefined} aria-label={it().title}>
-      <div class="in" style={{ background: it().kind === 'app' ? undefined : hueGrad(it()) }}>
-        <Show when={it().kind === 'app'} fallback={
+      <div class="in" style={{ background: it().kind === 'app' && !it().art.cover ? undefined : hueGrad(it()) }}>
+        <Show when={it().kind === 'app' && !it().art.cover} fallback={
           <>
             <Show when={it().art.cover} fallback={<div class="br br-i" style={{ background: 'transparent' }}><span class="mg">{mono(it().title)}</span></div>}>
               <div class="art" style={{ 'background-image': `url("${artUrl(it().id, 'cover')}")` }} />

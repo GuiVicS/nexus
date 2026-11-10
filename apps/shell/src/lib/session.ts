@@ -90,7 +90,11 @@ export function startEvents() {
       } catch { /* sessão mudou no meio */ }
     }
   });
-  client.on('game.launching', (p) => setS('game', p.session));
+  client.on('game.launching', (p) => {
+    setS('launchHint', '');
+    setS('game', p.session);
+  });
+  client.on('game.waiting', (p: { hint: string }) => setS('launchHint', p.hint));
   client.on('game.started', (p) => {
     setS('game', p.session);
     sfx('launch');
@@ -98,6 +102,7 @@ export function startEvents() {
   client.on('game.exited', (p: { itemId: string; playSec: number }) => {
     const title = S.game?.title ?? findItem(p.itemId)?.title ?? 'Jogo';
     setS('game', null);
+    setS('launchHint', '');
     for (const o of [...ovs()].reverse()) if (o.kind === 'launch') popOv(undefined, true);
     toast(`${title} foi encerrado`, p.playSec >= 60 ? fmtPlaytime(p.playSec) : 'Progresso salvo', 'check');
     if (S.session) void api.items([p.itemId]).then(upsertLib).catch(() => {});

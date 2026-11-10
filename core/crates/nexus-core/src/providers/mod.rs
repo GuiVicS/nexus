@@ -29,6 +29,8 @@ impl ArtKind {
 pub enum ArtSource {
     File(PathBuf),
     Url(String),
+    /// tenta cada endereço na ordem até um funcionar
+    Urls(Vec<String>),
     Missing,
 }
 

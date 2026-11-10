@@ -107,3 +107,14 @@ body.kid #bgs.dim{background:radial-gradient(60% 50% at 90% 6%,rgba(255,201,51,.
 body.kid .ac .ci{background:rgba(255,201,51,.18)}
 body.fx-reduced .tl .in{transition:none}
 @media (prefers-reduced-motion: reduce){.wm span{animation-duration:.01s}}
+/* ----- Apps personalizados / seletores ----- */
+.setpane.wide{left:96px;top:170px}
+.pane-sub{font-size:24px;color:var(--muted);margin:0 8px 18px;line-height:1.4}
+.pane-sub.mono{font-family:var(--mono);font-size:22px;word-break:break-all}
+.ae-prev{position:absolute;left:150px;top:200px;width:420px;display:flex;flex-direction:column;align-items:center;gap:18px;text-align:center}
+.ae-prev h2{font-weight:400;font-size:46px}
+.ae-prev small{font-size:24px;color:var(--muted)}
+.ae-card .tl{pointer-events:none}
+.ae-card .tl{width:260px;height:260px}
+.setpane.ae{left:700px;top:150px}
+.srow small{max-width:1000px;overflow:hidden;text-overflow:ellipsis}

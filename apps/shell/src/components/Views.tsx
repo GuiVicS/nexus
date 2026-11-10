@@ -113,9 +113,9 @@ export function Home() {
       </div>
       <Show when={items().length === 0}>
         <div class="home-empty">
-          <Empty icon="box" title="Sua biblioteca está vazia" text="Conecte a Steam, instale um jogo pela Loja ou adicione apps do Linux.">
-            <div class="btn pri f" data-autofocus data-r="p" data-pad="8" data-a="settings" data-verb="Abrir" onClick={() => setS('setCat', 'steam')}><Icon n="gear" /> Ajustes</div>
-            <div class="btn f" data-r="p" data-pad="8" data-a="tabgo:midia" data-verb="Abrir"><Icon n="tv" /> Apps</div>
+          <Empty icon="box" title="Sua biblioteca está vazia" text="Instale um jogo pela Loja ou adicione programas do Linux em Ajustes → Apps e jogos.">
+            <div class="btn pri f" data-autofocus data-r="p" data-pad="8" data-a="tabgo:loja" data-verb="Abrir"><Icon n="bag" /> Loja</div>
+            <div class="btn f" data-r="p" data-pad="8" data-a="settings:apps" data-verb="Abrir"><Icon n="plus" /> Adicionar app</div>
           </Empty>
         </div>
       </Show>
@@ -218,7 +218,9 @@ export function Media() {
         <div class="gridt">
           <For each={groups()} fallback={
             <div class="empty-wrap">
-              <Empty icon="tv" title="Nenhum app encontrado" text="Os apps instalados no Linux (.desktop e Flatpak) aparecem aqui automaticamente." />
+              <Empty icon="tv" title="Nenhum app adicionado" text="Programas do Linux (navegador, Kodi, Minecraft…) aparecem aqui depois que você os adiciona em Ajustes → Apps e jogos.">
+                <Show when={!isKid()}><div class="btn f" data-autofocus data-r="p" data-pad="8" data-a="settings:apps" data-verb="Abrir"><Icon n="plus" /> Adicionar app</div></Show>
+              </Empty>
             </div>
           }>
             {([c, list]) => (
@@ -240,18 +242,31 @@ export function Media() {
 }
 
 // ---------- Loja ----------
-const SHOP_CATS: [string, string][] = [['conta', 'Na sua conta'], ['jogos', 'Jogos'], ['classicos', 'Clássicos'], ['apps', 'Apps'], ['ofertas', 'Ofertas']];
+const SHOP_CATS: [string, string][] = [
+  ['conta', 'Na sua conta'],
+  ['destaques', 'Mais vendidos'],
+  ['ofertas', 'Ofertas'],
+  ['gratis', 'Grátis'],
+  ['linux', 'Nativos Linux'],
+  ['lancamentos', 'Lançamentos'],
+  ['jogos', 'Jogos'],
+  ['classicos', 'Clássicos'],
+  ['apps', 'Apps'],
+];
+const STORE_FEEDS = SHOP_CATS.map(([c]) => c).filter((c) => c !== 'conta');
+const [shopLoading, setShopLoading] = createSignal(false);
 
 export async function loadShop() {
   if (isKid()) return;
-  try {
-    const res = await Promise.all(['jogos', 'classicos', 'apps', 'ofertas'].map((c) => api.store(c)));
-    ['jogos', 'classicos', 'apps', 'ofertas'].forEach((c, i) => setS('shop', c, res[i]));
-    const w = await api.wallet().catch(() => null);
-    setS('wallet', w ? w.balance : null);
-  } catch (e) {
-    fail(e);
-  }
+  setShopLoading(true);
+  const w = api.wallet().then((x) => setS('wallet', x ? x.balance : null)).catch(() => {});
+  await Promise.all(
+    STORE_FEEDS.map((c) =>
+      api.store(c).then((r) => setS('shop', c, r)).catch(() => {}),
+    ),
+  );
+  await w;
+  setShopLoading(false);
 }
 
 export function Store() {
@@ -259,7 +274,9 @@ export function Store() {
   const owned = createMemo(() => S.lib.filter((i) => i.state === 'not_installed' || (i.state === 'installing' && i.tags.includes('owned'))));
   const items = (c: string) => (c === 'conta' ? owned() : (S.shop[c] ?? []));
   const cats = createMemo(() => SHOP_CATS.filter(([c]) => items(c).length > 0 || (c === 'conta' && S.steam?.installed)));
+  // só escolhe outra categoria depois que tudo carregou (senão a primeira que chegar roubaria a seleção)
   createEffect(() => {
+    if (shopLoading()) return;
     const c = cats();
     if (c.length && !c.some(([k]) => k === S.shopCat)) setS('shopCat', c[0][0]);
   });
@@ -278,12 +295,12 @@ export function Store() {
           )}
         </For>
       </nav>
-      <Strip fallbackTitle={title()} fallbackSub={`${list().length} itens${S.wallet !== null ? ` · carteira ${money(S.wallet)}` : ''}`} />
+      <Strip fallbackTitle={title()} fallbackSub={shopLoading() && !list().length ? 'Carregando a loja…' : `${list().length} itens${S.wallet !== null ? ` · carteira ${money(S.wallet)}` : ''}`} />
       <div class="sc" id="sc">
         <div class="gridt">
           <For each={list()} fallback={
             <div class="empty-wrap">
-              <Empty icon="bag" title="A loja está vazia" text="Os jogos da sua conta Steam que ainda não estão instalados aparecem aqui. Conecte a conta e informe a chave da Web API em Ajustes → Steam.">
+              <Empty icon="bag" title={shopLoading() ? 'Carregando a loja…' : 'A loja está vazia'} text={shopLoading() ? 'Buscando os jogos da Steam. Pode levar alguns segundos.' : 'Não consegui carregar a loja da Steam. Confira a conexão com a internet.'}>
                 <div class="btn f" data-autofocus data-r="p" data-pad="8" data-a="settings" data-verb="Abrir" onClick={() => setS('setCat', 'steam')}><Icon n="gear" /> Ajustes</div>
               </Empty>
             </div>

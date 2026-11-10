@@ -27,11 +27,13 @@ fn cache_name(id: &str, kind: &str) -> String {
     format!("{safe}-{kind}")
 }
 
-async fn fetch(url: String, dest: PathBuf, miss_mark: PathBuf) -> Option<PathBuf> {
+async fn fetch(urls: Vec<String>, dest: PathBuf, miss_mark: PathBuf) -> Option<PathBuf> {
     tokio::task::spawn_blocking(move || {
         let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(8))).build().into();
-        let res = agent.get(&url).call().ok();
-        let ok = res.and_then(|mut r| {
+        let mut ok = None;
+        for url in &urls {
+            let res = agent.get(url).call().ok();
+            ok = res.and_then(|mut r| {
             let ct = r.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
             if !ct.starts_with("image/") {
                 return None;
@@ -41,7 +43,11 @@ async fn fetch(url: String, dest: PathBuf, miss_mark: PathBuf) -> Option<PathBuf
             let p = dest.with_extension(ext);
             std::fs::write(&p, bytes).ok()?;
             Some(p)
-        });
+            });
+            if ok.is_some() {
+                break;
+            }
+        }
         if ok.is_none() {
             let _ = std::fs::write(&miss_mark, b"");
         }
@@ -55,10 +61,11 @@ async fn fetch(url: String, dest: PathBuf, miss_mark: PathBuf) -> Option<PathBuf
 pub async fn serve(core: &Arc<Core>, id: &str, kind: &str) -> Response {
     let Some(kind_e) = ArtKind::parse(kind) else { return miss() };
     let Some(provider) = core.provider_for(id) else { return miss() };
-    let path = match provider.art(id, kind_e) {
+    let source = provider.art(id, kind_e);
+    let path = match source {
         ArtSource::File(p) => p,
         ArtSource::Missing => return miss(),
-        ArtSource::Url(url) => {
+        ArtSource::Url(_) | ArtSource::Urls(_) => {
             let dir = core.cfg.cache_dir.join("art");
             let _ = std::fs::create_dir_all(&dir);
             let base = dir.join(cache_name(id, kind));
@@ -68,7 +75,7 @@ pub async fn serve(core: &Arc<Core>, id: &str, kind: &str) -> Response {
             match hit {
                 Some(p) => p,
                 None if fresh_miss => return miss(),
-                None => match fetch(url, base, mark).await {
+                None => match fetch(match source { ArtSource::Url(u) => vec![u], ArtSource::Urls(v) => v, _ => vec![] }, base, mark).await {
                     Some(p) => p,
                     None => return miss(),
                 },

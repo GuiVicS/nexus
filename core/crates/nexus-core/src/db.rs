@@ -18,6 +18,9 @@ const MIGRATIONS: &[&str] = &[
      CREATE TABLE usage (profile_id TEXT NOT NULL, day TEXT NOT NULL, seconds INTEGER NOT NULL DEFAULT 0,
         bonus INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (profile_id, day));
      CREATE TABLE installed (item_id TEXT PRIMARY KEY, ts INTEGER NOT NULL);",
+    "CREATE TABLE custom_apps (
+        item_id TEXT PRIMARY KEY, file_id TEXT NOT NULL, name TEXT, kind TEXT NOT NULL DEFAULT 'app',
+        icon TEXT, cover TEXT, hero TEXT, added_at INTEGER NOT NULL);",
 ];
 
 impl Db {

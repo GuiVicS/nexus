@@ -24,7 +24,7 @@ export async function startCore({ demo = false, env = {}, args = [], dir: given 
   const dev = await freePort();
   const remote = await freePort();
   const a = ['--dev', '--dev-http', `127.0.0.1:${dev}`, '--remote-bind', `127.0.0.1:${remote}`, '--runtime-dir', `${dir}/run`, '--data-dir', `${dir}/data`, '--shell-dir', `${ROOT}/apps/shell/dist`, '--remote-dir', `${ROOT}/apps/remote/dist`, '--demo-assets', `${ROOT}/assets/demo`, ...(demo ? ['--demo'] : []), ...args];
-  const p = spawn(`${ROOT}/target/debug/nexus-core`, a, { env: { ...process.env, NEXUS_UINPUT: '0', NEXUS_GUIDE_WATCH: '0', NEXUS_CACHE_DIR: `${dir}/cache`, NEXUS_DEMO_DL_SECS: '2', NEXUS_REMOTE_HOST: '127.0.0.1', NEXUS_APPS_DIRS: `${dir}/noapps`, NEXUS_STEAM_ROOT: `${dir}/nosteam`, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const p = spawn(`${ROOT}/target/debug/nexus-core`, a, { env: { ...process.env, NEXUS_UINPUT: '0', NEXUS_GUIDE_WATCH: '0', NEXUS_CACHE_DIR: `${dir}/cache`, NEXUS_DEMO_DL_SECS: '2', NEXUS_REMOTE_HOST: '127.0.0.1', NEXUS_OFFLINE: '1', NEXUS_FS_ROOTS: `${dir}/home`, NEXUS_APPS_DIRS: `${dir}/noapps`, NEXUS_STEAM_ROOT: `${dir}/nosteam`, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
   let log = '';
   p.stdout.on('data', (d) => (log += d));
   p.stderr.on('data', (d) => (log += d));
@@ -128,7 +128,8 @@ export async function openUi(core, o = {}) {
     },
     async typePin(pin) {
       await ui.until(`()=>document.querySelector('#ovs [data-kind=pin]')`, 'teclado de PIN');
-      for (const d of pin) await c.key(d, { wait: 60 });
+      await ui.wait(350);
+      for (const d of pin) await c.key(d, { wait: 90 });
       await c.key('Enter');
     },
     errors: () => c.errors,

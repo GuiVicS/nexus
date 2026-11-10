@@ -316,6 +316,54 @@ pub struct SteamAccount {
     pub library_games: u32,
 }
 
+/// App ou jogo do Linux que o usuário adicionou ao Nexus (com aparência opcionalmente personalizada).
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CustomApp {
+    pub id: ItemId,
+    pub name: String,
+    pub default_name: String,
+    /// "game" ou "app"
+    pub kind: String,
+    pub has_icon: bool,
+    pub has_cover: bool,
+    pub has_hero: bool,
+    /// o arquivo .desktop original ainda existe
+    pub available: bool,
+}
+
+/// Item da lista de apps instalados no sistema, para escolher quais entram no Nexus.
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SystemApp {
+    pub file_id: String,
+    pub name: String,
+    pub category: String,
+    pub added: bool,
+}
+
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct FsEntry {
+    pub name: String,
+    pub path: String,
+    pub dir: bool,
+}
+
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct FsListing {
+    pub path: String,
+    pub parent: Option<String>,
+    pub entries: Vec<FsEntry>,
+    /// atalhos de partida: pasta pessoal e mídias removíveis
+    pub roots: Vec<FsEntry>,
+}
+
 #[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]

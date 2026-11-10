@@ -23,6 +23,7 @@ pub struct Core {
     pub accounts: Accounts,
     pub providers: Vec<Arc<dyn Provider>>,
     pub steam: Option<Arc<SteamProvider>>,
+    pub native: Arc<NativeProvider>,
     pub demo: Option<Arc<DemoProvider>>,
     pub events: broadcast::Sender<Event>,
     pub library: RwLock<Vec<Item>>,
@@ -45,8 +46,8 @@ impl Core {
         std::fs::create_dir_all(&cfg.runtime_dir)?;
         let db = Arc::new(Db::open(&cfg.data_dir.join("nexus.db"))?);
         let steam = Arc::new(SteamProvider::new(cfg.clone(), db.clone()));
-        let native = Arc::new(NativeProvider::new(cfg.apps_dirs.clone()));
-        let mut providers: Vec<Arc<dyn Provider>> = vec![steam.clone(), native];
+        let native = Arc::new(NativeProvider::new(cfg.apps_dirs.clone(), db.clone(), cfg.data_dir.join("custom-art"), cfg.fs_roots.clone()));
+        let mut providers: Vec<Arc<dyn Provider>> = vec![steam.clone(), native.clone()];
         let demo = cfg.demo.then(|| Arc::new(DemoProvider::new(cfg.demo_assets.clone(), db.clone())));
         if let Some(d) = &demo {
             providers.push(d.clone());
@@ -60,6 +61,7 @@ impl Core {
             db,
             providers,
             steam: Some(steam),
+            native,
             demo,
             events,
             library: RwLock::new(vec![]),

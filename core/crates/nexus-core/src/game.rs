@@ -22,6 +22,7 @@ pub struct ActiveGame {
     pub tracker: Tracker,
     pub exit_code: Arc<AtomicI32>,
     pub stop: Arc<AtomicBool>,
+    pub log: std::path::PathBuf,
 }
 
 #[derive(Debug)]
@@ -97,7 +98,8 @@ impl Core {
         }
         let logs = self.cfg.cache_dir.join("logs");
         let _ = std::fs::create_dir_all(&logs);
-        let log = std::fs::File::create(logs.join(format!("{}.log", item_id.replace([':', '/'], "_")))).map_err(|e| LaunchError::Failed(e.to_string()))?;
+        let log_path = logs.join(format!("{}.log", item_id.replace([':', '/'], "_")));
+        let log = std::fs::File::create(&log_path).map_err(|e| LaunchError::Failed(e.to_string()))?;
         let scope = self.cfg.systemd_scope.then(|| format!("nexus-game-{}", crate::util::random_hex(6)));
         let mut child = spawn(&plan, scope, log).map_err(|e| LaunchError::Failed(format!("{}: {e}", plan.argv[0])))?;
         let pid = child.id();
@@ -119,6 +121,7 @@ impl Core {
             tracker: plan.tracker.clone(),
             exit_code,
             stop,
+            log: log_path,
         };
         let info = g.info();
         *self.game.lock().unwrap_or_else(|e| e.into_inner()) = Some(g);
@@ -129,10 +132,10 @@ impl Core {
     }
 
     async fn track_game(self: Arc<Self>) {
-        let (tracker, sid, exit_code, stop, profile_id, item_id) = {
+        let (tracker, sid, exit_code, stop, profile_id, item_id, log_path) = {
             let g = self.game.lock().unwrap_or_else(|e| e.into_inner());
             let g = g.as_ref().expect("jogo ativo");
-            (g.tracker.clone(), g.sid, g.exit_code.clone(), g.stop.clone(), g.profile_id.clone(), g.item_id.clone())
+            (g.tracker.clone(), g.sid, g.exit_code.clone(), g.stop.clone(), g.profile_id.clone(), g.item_id.clone(), g.log.clone())
         };
         let start = Instant::now();
         let launch_timeout = Duration::from_secs(if matches!(tracker, Tracker::SteamApp(_)) { 120 } else { 10 });
@@ -142,6 +145,7 @@ impl Core {
         let mut last_acct = Instant::now();
         let mut warned = false;
         let mut failed = false;
+        let mut surfaced = false;
         loop {
             tokio::time::sleep(Duration::from_millis(400)).await;
             let alive = !members(&tracker, sid).is_empty();
@@ -176,6 +180,12 @@ impl Core {
             if stop.load(Ordering::SeqCst) && !alive {
                 break;
             }
+            // A Steam pode estar pedindo login, atualização ou confirmação: mostra a janela dela em vez de deixar o Nexus "abrindo" sem fim.
+            if !surfaced && seen_at.is_none() && matches!(tracker, Tracker::SteamApp(_)) && start.elapsed() > Duration::from_secs(7) {
+                surfaced = true;
+                self.compositor.show_game();
+                self.emit("game.waiting", json!({ "itemId": item_id, "hint": "A Steam está preparando o jogo. Se ela pedir login ou atualização, resolva na janela dela e use o botão Guia para voltar ao Nexus." }));
+            }
             if seen_at.is_some() && last_acct.elapsed() >= Duration::from_secs(5) {
                 let secs = last_acct.elapsed().as_secs();
                 last_acct = Instant::now();
@@ -208,8 +218,11 @@ impl Core {
         let title = self.game.lock().unwrap_or_else(|e| e.into_inner()).take().map(|g| g.title).unwrap_or_default();
         self.compositor.show_shell();
         if failed {
+            let tail = std::fs::read_to_string(&log_path).ok().map(|t| t.lines().rev().filter(|l| !l.trim().is_empty()).take(2).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join(" · ")).unwrap_or_default();
+            let base = if code > 0 { format!("saiu com código {code}") } else if matches!(tracker, Tracker::SteamApp(_)) { "a Steam não iniciou o jogo (confira se está logada e se o jogo está instalado; jogos de Windows precisam do Steam Play/Proton ativado)".to_string() } else { "o jogo não iniciou".to_string() };
+            let reason = if tail.is_empty() { base } else { format!("{base} — {}", tail.chars().take(160).collect::<String>()) };
             self.notify("alert", "Não foi possível abrir", &title, None);
-            self.emit("game.failed", json!({ "itemId": item_id, "reason": if code > 0 { format!("saiu com código {code}") } else { "o jogo não iniciou".to_string() } }));
+            self.emit("game.failed", json!({ "itemId": item_id, "reason": reason }));
         }
         self.emit("game.exited", json!({ "itemId": item_id, "code": if code == i32::MIN { Value::Null } else { json!(code) }, "playSec": play_sec }));
         self.refresh_library().await;

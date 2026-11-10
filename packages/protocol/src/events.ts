@@ -7,6 +7,7 @@ export interface Events {
   'game.started': { session: GameSession };
   'game.exited': { itemId: string; code: number | null; playSec: number };
   'game.failed': { itemId: string; reason: string };
+  'game.waiting': { itemId: string; hint: string };
   'session.changed': SessionInfo | null;
   'profiles.changed': Record<string, never>;
   'notification.added': Notification;

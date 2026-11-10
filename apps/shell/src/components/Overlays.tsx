@@ -271,7 +271,7 @@ export function Launch(p: { id: string }) {
     <Show when={it()}>
       {(i) => (
         <>
-          <div class="lbg" style={i().kind === 'app' ? { background: appBg(i()), opacity: '.35' } : { 'background-image': `url("${artUrl(i().id, 'hero')}")` }} />
+          <div class="lbg" style={i().art.hero ? { 'background-image': `url("${artUrl(i().id, 'hero')}")` } : { background: appBg(i()), opacity: '.35' }} />
           <div class="lc">
             <Show when={i().kind === 'app'}><div class="appico"><Tile it={i()} noProg /></div></Show>
             <h2 class={i().kind === 'game' && i().logo ? `lg-${i().logo}` : ''}>{i().title}</h2>
@@ -279,6 +279,7 @@ export function Launch(p: { id: string }) {
               <>
                 <div class="bar indet"><i /></div>
                 <p><span class="spin" />{closing() ? 'Fechando…' : 'Abrindo…'}</p>
+                <Show when={S.launchHint}><p class="lnote">{S.launchHint}</p></Show>
                 <div class="lacts">
                   <div class="btn f" data-autofocus data-r="p" data-pad="8" data-a="closegame" data-verb="Cancelar"><Icon n="x" /> Cancelar</div>
                 </div>

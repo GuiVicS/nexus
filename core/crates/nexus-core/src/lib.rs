@@ -3,6 +3,7 @@ pub mod art;
 pub mod compositor;
 pub mod config;
 pub mod core;
+pub mod customart;
 pub mod db;
 pub mod game;
 pub mod guide;
@@ -37,6 +38,7 @@ pub async fn run(cfg: config::Config) -> anyhow::Result<Running> {
             if let Err(e) = st.sync_owned().await {
                 tracing::warn!("Steam Web API: {e}");
             }
+            st.resolve_local_names().await;
         });
     }
     Ok(Running { core, started })

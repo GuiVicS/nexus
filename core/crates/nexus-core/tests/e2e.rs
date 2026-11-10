@@ -75,6 +75,7 @@ impl Client {
 }
 
 async fn boot(dir: &Path, tweak: impl FnOnce(&mut Config)) -> (nexus_core::Running, Client) {
+    std::env::set_var("NEXUS_OFFLINE", "1");
     let mut cfg = Config::for_test(dir);
     tweak(&mut cfg);
     let r = nexus_core::run(cfg).await.unwrap();
@@ -113,6 +114,7 @@ async fn profiles_parental_and_kid_rules() {
     assert!(c.ok("profiles.list", json!({})).await.as_array().unwrap().is_empty());
     assert_eq!(c.code("library.list", json!({})).await, 1009, "sem perfil ativo");
     let lia = first_adult(&mut c).await;
+    c.ok("apps.add", json!({ "fileId": "jogo.desktop" })).await;
     assert_eq!(c.code("profiles.create", json!({ "name": "Pipo", "kind": "kid" })).await, 1010, "perfil infantil exige PIN dos responsáveis");
     c.ok("parental.set", json!({ "newPin": "4321" })).await;
     assert_eq!(c.code("profiles.create", json!({ "name": "Pipo", "kind": "kid" })).await, 1001, "criar perfil agora pede o PIN");
@@ -174,6 +176,8 @@ async fn native_launch_roundtrip_and_playtime() {
     let apps = desktop_dir(d.path(), &[("jogo.desktop", "Jogo", r#"sh -c "sleep 30; true""#)]);
     let (r, mut c) = boot(d.path(), |cfg| cfg.apps_dirs = vec![apps]).await;
     let lia = first_adult(&mut c).await;
+    assert_eq!(c.ok("library.list", json!({})).await["total"], 0, "app do sistema não entra sozinho");
+    c.ok("apps.add", json!({ "fileId": "jogo.desktop" })).await;
     let it = c.ok("library.get", json!({ "id": "native:jogo.desktop" })).await;
     assert_eq!(it["title"], "Jogo");
     assert_eq!(it["kind"], "game");
@@ -205,6 +209,8 @@ async fn failing_command_reports_failure_and_returns() {
     let apps = desktop_dir(d.path(), &[("quebrado.desktop", "Quebrado", r#"sh -c "exit 3""#), ("inexistente.desktop", "Inexistente", "/nao/existe/mesmo")]);
     let (_r, mut c) = boot(d.path(), |cfg| cfg.apps_dirs = vec![apps]).await;
     first_adult(&mut c).await;
+    c.ok("apps.add", json!({ "fileId": "quebrado.desktop" })).await;
+    c.ok("apps.add", json!({ "fileId": "inexistente.desktop" })).await;
     c.ok("item.launch", json!({ "id": "native:quebrado.desktop" })).await;
     let f = c.event("game.failed", 8).await;
     assert!(f["reason"].as_str().unwrap().contains('3'), "{f}");
@@ -318,6 +324,7 @@ async fn kid_time_limit_blocks_launch() {
     let apps = desktop_dir(d.path(), &[("a.desktop", "A", "sleep 30")]);
     let (_r, mut c) = boot(d.path(), |cfg| cfg.apps_dirs = vec![apps]).await;
     first_adult(&mut c).await;
+    c.ok("apps.add", json!({ "fileId": "a.desktop" })).await;
     c.ok("parental.set", json!({ "newPin": "1111" })).await;
     let kid = c.ok("profiles.create", json!({ "name": "Zeca", "kind": "kid", "parentPin": "1111", "dailyLimitMin": 5 })).await["id"].as_str().unwrap().to_string();
     let g = c.ok("parental.verify", json!({ "pin": "1111" })).await["grant"].as_str().unwrap().to_string();
@@ -488,4 +495,93 @@ async fn unix_socket_is_private() {
     assert_eq!(c.code("nada.existe", json!({})).await, -32601);
     let h = c.ok("hardware.profile", json!({})).await;
     assert!(h["memoryMb"].as_u64().unwrap() > 0);
+}
+
+#[tokio::test]
+async fn custom_apps_images_and_file_browser() {
+    let d = tempfile::tempdir().unwrap();
+    let apps = d.path().join("apps/applications");
+    std::fs::create_dir_all(&apps).unwrap();
+    std::fs::write(apps.join("calc.desktop"), "[Desktop Entry]\nType=Application\nName=Calculadora\nExec=sleep 30\nCategories=Utility;\n").unwrap();
+    std::fs::write(apps.join("steam.desktop"), "[Desktop Entry]\nType=Application\nName=Steam\nExec=steam %U\nCategories=Game;\n").unwrap();
+    let home = d.path().join("home");
+    std::fs::create_dir_all(home.join("Imagens")).unwrap();
+    std::fs::write(home.join("Imagens/capa.png"), b"\x89PNG\r\n\x1a\n1234").unwrap();
+    std::fs::write(home.join("Imagens/texto.png"), "não é imagem").unwrap();
+    let (r, mut c) = boot(d.path(), |cfg| cfg.apps_dirs = vec![apps.clone()]).await;
+    first_adult(&mut c).await;
+    let sys = c.ok("apps.system", json!({})).await;
+    assert_eq!(sys.as_array().unwrap().iter().map(|a| a["name"].as_str().unwrap()).collect::<Vec<_>>(), vec!["Calculadora"], "Steam não aparece no seletor");
+    assert_eq!(c.ok("library.list", json!({})).await["total"], 0);
+    let app = c.ok("apps.add", json!({ "fileId": "calc.desktop" })).await;
+    assert_eq!((app["kind"].as_str(), app["available"].as_bool()), (Some("app"), Some(true)));
+    assert_eq!(c.ok("library.list", json!({})).await["total"], 1);
+    assert_eq!(c.code("apps.add", json!({ "fileId": "steam.desktop" })).await, 1006, "a Steam não pode ser adicionada como app");
+
+    // navegador de arquivos: só imagens e pastas dentro das pastas permitidas
+    let l = c.ok("fs.list", json!({ "path": home.join("Imagens").to_str().unwrap() })).await;
+    let names: Vec<_> = l["entries"].as_array().unwrap().iter().map(|e| e["name"].as_str().unwrap()).collect();
+    assert_eq!(names, vec!["capa.png", "texto.png"]);
+    assert_eq!(c.code("fs.list", json!({ "path": "/etc" })).await, 1011, "fora das pastas permitidas");
+
+    // personaliza: nome, tipo e imagens (a de conteúdo falso é recusada)
+    let capa = home.join("Imagens/capa.png");
+    let up = c.ok("apps.update", json!({ "id": "native:calc.desktop", "name": "Contas", "kind": "game", "cover": capa.to_str().unwrap(), "hero": capa.to_str().unwrap() })).await;
+    assert_eq!((up["name"].as_str(), up["kind"].as_str(), up["hasCover"].as_bool(), up["hasHero"].as_bool()), (Some("Contas"), Some("game"), Some(true), Some(true)));
+    assert_eq!(c.code("apps.update", json!({ "id": "native:calc.desktop", "icon": home.join("Imagens/texto.png").to_str().unwrap() })).await, 1011);
+    let it = c.ok("library.get", json!({ "id": "native:calc.desktop" })).await;
+    assert_eq!((it["title"].as_str(), it["kind"].as_str(), it["art"]["cover"].as_bool()), (Some("Contas"), Some("game"), Some(true)));
+    let addr = r.started.dev_addr.unwrap();
+    let status = tokio::task::spawn_blocking(move || {
+        let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).build().into();
+        let mut res = agent.get(&format!("http://{addr}/art/native%3Acalc.desktop/cover")).call().unwrap();
+        (res.status().as_u16(), res.body_mut().read_to_vec().unwrap().len())
+    })
+    .await
+    .unwrap();
+    assert_eq!(status, (200, 12), "a capa personalizada é servida pelo Core");
+
+    // criança não edita; remover apaga o app
+    c.ok("parental.set", json!({ "newPin": "1111" })).await;
+    let kid = c.ok("profiles.create", json!({ "name": "Zeca", "kind": "kid", "parentPin": "1111" })).await["id"].as_str().unwrap().to_string();
+    let g = c.ok("parental.verify", json!({ "pin": "1111" })).await["grant"].as_str().unwrap().to_string();
+    c.ok("apps.remove", json!({ "id": "native:calc.desktop", "grant": g })).await;
+    assert_eq!(c.ok("library.list", json!({})).await["total"], 0);
+    c.ok("profiles.select", json!({ "id": kid, "grant": g })).await;
+    assert_eq!(c.code("apps.system", json!({})).await, 1004);
+    assert_eq!(c.code("fs.list", json!({})).await, 1004);
+}
+
+#[tokio::test]
+async fn steam_store_and_open_actions() {
+    let d = tempfile::tempdir().unwrap();
+    let root = d.path().join("Steam");
+    std::fs::create_dir_all(root.join("steamapps")).unwrap();
+    let rec = d.path().join("calls.txt");
+    let fake = d.path().join("steam");
+    write_exec(&fake, &format!("#!/bin/sh\necho \"$@\" >> {}\nexit 0\n", rec.display()));
+    let (r, mut c) = boot(d.path(), |cfg| {
+        cfg.steam_root = Some(root.clone());
+        cfg.steam_bin = fake.display().to_string();
+    })
+    .await;
+    first_adult(&mut c).await;
+    let entries = json!([{ "appid": 1, "name": "Pago", "final_cents": 5949, "orig_cents": 6999, "discount": 15, "free": false, "linux": false }, { "appid": 2, "name": "Livre", "final_cents": 0, "orig_cents": null, "discount": 0, "free": true, "linux": true }]);
+    r.core.db.kv_set("sf:destaques", &serde_json::to_string(&json!([nexus_protocol::now_unix(), entries])).unwrap()).unwrap();
+    let store = c.ok("store.list", json!({ "category": "destaques" })).await;
+    let by = |id: &str| store.as_array().unwrap().iter().find(|i| i["id"] == id).cloned().unwrap();
+    assert_eq!((by("steam:1")["price"].as_str(), by("steam:1")["caps"]["install"].as_bool()), (Some("R$ 59,49"), Some(false)));
+    assert_eq!((by("steam:2")["price"].as_str(), by("steam:2")["caps"]["install"].as_bool()), (Some("Grátis"), Some(true)));
+    c.ok("steam.store_page", json!({ "id": "steam:1" })).await;
+    c.ok("steam.open", json!({})).await;
+    c.ok("item.install", json!({ "id": "steam:2" })).await;
+    sleep_ms(500).await;
+    let calls = std::fs::read_to_string(&rec).unwrap();
+    assert!(calls.contains("steam://store/1") && calls.contains("steam://install/2"), "{calls}");
+    assert_eq!(calls.lines().filter(|l| l.trim().is_empty()).count(), 1, "steam.open chama a Steam sem argumentos");
+    assert_eq!(c.code("steam.store_page", json!({ "id": "native:x" })).await, -32602);
+}
+
+async fn sleep_ms(ms: u64) {
+    tokio::time::sleep(Duration::from_millis(ms)).await;
 }

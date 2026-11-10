@@ -12,9 +12,10 @@ import { Hub } from './Hub';
 import { Confirm, Guide, Launch, Notifs, Search, Sheet, TimeUp, clock } from './Overlays';
 import { PinPad, TextEntry } from './Entry';
 import { Settings } from './Settings';
+import { AppEditor, AppPicker, FilePicker } from './Apps';
 import { Boot, Onboarding, ProfileEditor, ProfilePicker, Standby } from './Profiles';
 
-const FULL: Ov['kind'][] = ['hub', 'search', 'settings', 'launch', 'profile', 'timeup'];
+const FULL: Ov['kind'][] = ['hub', 'search', 'settings', 'launch', 'profile', 'timeup', 'appicker', 'appedit', 'filepick'];
 
 function OvBody(p: { o: Ov }) {
   const o = p.o;
@@ -31,6 +32,9 @@ function OvBody(p: { o: Ov }) {
       <Match when={o.kind === 'text'}><TextEntry title={o.props.title} value={o.props.value} max={o.props.max} kind={o.props.kind} oid={o.id} /></Match>
       <Match when={o.kind === 'profile'}><ProfileEditor id={o.props.id} first={o.props.first} oid={o.id} /></Match>
       <Match when={o.kind === 'timeup'}><TimeUp /></Match>
+      <Match when={o.kind === 'appicker'}><AppPicker oid={o.id} /></Match>
+      <Match when={o.kind === 'appedit'}><AppEditor id={o.props.id} fresh={o.props.fresh} oid={o.id} /></Match>
+      <Match when={o.kind === 'filepick'}><FilePicker title={o.props.title} oid={o.id} /></Match>
       <Match when={o.kind === 'confirm'}><Confirm title={o.props.title} sub={o.props.sub} yes={o.props.yes} no={o.props.no} danger={o.props.danger} oid={o.id} /></Match>
     </Switch>
   );
@@ -48,7 +52,7 @@ function Background() {
       next.classList.remove('on');
       return;
     }
-    next.style.background = it.kind === 'app' ? appBg(it) : `url("${artUrl(it.id, 'hero')}") 70% 40%/cover, linear-gradient(135deg,hsl(${it.hue[0]} 55% 30%),hsl(${it.hue[1]} 55% 14%))`;
+    next.style.background = !it.art.hero ? appBg(it) : `url("${artUrl(it.id, 'hero')}") 70% 40%/cover, linear-gradient(135deg,hsl(${it.hue[0]} 55% 30%),hsl(${it.hue[1]} 55% 14%))`;
     next.classList.add('on');
     prev.classList.remove('on');
   });
@@ -78,6 +82,7 @@ function Prompts() {
       else if (ov === 'hub') out.push(['A', f.verb], ['B', 'Voltar'], ['OPT', 'Opções'], ['LB', 'RB', 'Abas']);
       else if (ov === 'settings') out.push(sl ? ['◀', 'Ajustar'] : ['A', f.verb], ['B', sl ? 'Sair do controle' : 'Voltar']);
       else if (ov === 'pin' || ov === 'text') out.push(['A', 'Digitar'], ['B', 'Cancelar']);
+      else if (ov === 'filepick') out.push(['A', f.verb], ['B', 'Cancelar']);
       else if (ov === 'timeup') out.push(['A', f.verb]);
       else if (ov) out.push(sl ? ['◀', 'Ajustar'] : ['A', f.verb], ['B', 'Fechar']);
       else {

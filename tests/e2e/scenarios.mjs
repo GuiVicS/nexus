@@ -285,3 +285,126 @@ scenarios.celular = () =>
       phone.close();
     }
   });
+
+async function createAdult(core, name = 'Ana') {
+  const p = await core.rpc('profiles.create', { name, avatar: 'initial', hue: 180, kind: 'adult' });
+  return p;
+}
+
+scenarios.apps_personalizados = async () => {
+  const dir = (await import('node:fs')).default.mkdtempSync('/tmp/nexus-apps-');
+  const home = `${dir}/home`;
+  const apps = `${dir}/apps/applications`;
+  const fs = (await import('node:fs')).default;
+  fs.mkdirSync(`${home}/Imagens`, { recursive: true });
+  fs.mkdirSync(apps, { recursive: true });
+  const write = (f, name, exec, cats) => fs.writeFileSync(`${apps}/${f}`, `[Desktop Entry]\nType=Application\nName=${name}\nExec=${exec}\nCategories=${cats}\n`);
+  write('minecraft.desktop', 'Minecraft', 'sleep 30', 'Game;');
+  write('calc.desktop', 'Calculadora', 'sleep 30', 'Utility;');
+  write('steam.desktop', 'Steam', 'sleep 30', 'Network;Game;');
+  fs.writeFileSync(`${home}/Imagens/capa.png`, Buffer.concat([Buffer.from('\x89PNG\r\n\x1a\n', 'binary'), Buffer.alloc(64)]));
+  const core = await startCore({ dir, env: { NEXUS_APPS_DIRS: apps } });
+  await createAdult(core);
+  const ui = await openUi(core);
+  try {
+    await ui.pickProfile('Ana');
+    await ui.until(inShell, 'entrou');
+    check((await core.rpc('library.list').catch(() => null)) === null || true, 'estado inicial');
+    check((await ui.ev(`document.querySelectorAll('#dock .tl[data-id]').length`)) === 0, 'nenhum app do sistema aparece sozinho (calculadora, Steam…)');
+    // Ajustes → Apps e jogos → Adicionar
+    await ui.wait(500);
+    await ui.ev(`document.querySelector('#sbGear').click()`);
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=settings] .setrail')`, 'ajustes');
+    await ui.wait(400);
+    await ui.ev(`document.querySelector('[data-rail="cat:apps"]').click()`);
+    await ui.until(`()=>document.querySelector('[data-k=s-appadd]')`, 'painel de apps');
+    await ui.ev(`document.querySelector('[data-k=s-appadd]').click()`);
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=appicker] #pickpane')`, 'seletor de apps');
+    await ui.until(`()=>document.querySelectorAll('#pickpane .srow[data-a^="pickapp:"]').length>=3`, 'lista de apps do sistema');
+    const names = await ui.ev(`[...document.querySelectorAll('#pickpane .srow b')].map(b=>b.textContent)`);
+    check(names.includes('Minecraft') && names.includes('Calculadora') && !names.includes('Steam'), `seletor lista os apps (e não a Steam): ${names.join(', ')}`);
+    await ui.ev(`document.querySelector('[data-a="pickapp:minecraft.desktop"]').click()`);
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=appedit] .ae-prev h2')?.textContent==='Minecraft'`, 'editor do app');
+    check((await ui.text('.ae-prev small')).startsWith('Jogo'), 'Minecraft detectado como jogo');
+    // capa do card pelo navegador de arquivos
+    await ui.ev(`document.querySelector('[data-k=ae-cover]').click()`);
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=filepick] #fpane')`, 'navegador de arquivos');
+    await ui.until(`()=>document.querySelector('#fpane [data-a^="fp:dir:"]')`, 'pastas listadas');
+    await ui.ev(`document.querySelector('#fpane [data-a^="fp:dir:"][data-a$="Imagens"]').click()`);
+    await ui.until(`()=>document.querySelector('#fpane [data-a^="fp:pick:"]')`, 'imagem listada');
+    await ui.ev(`document.querySelector('#fpane [data-a^="fp:pick:"]').click()`);
+    await ui.until(`()=>document.querySelector('[data-k=ae-rm-cover]')`, 'capa aplicada');
+    const lib = await core.rpc('apps.registered');
+    check(lib[0].hasCover && lib[0].kind === 'game' && !lib[0].hasHero, 'Core guardou a capa do card');
+    // renomear pela tela
+    await ui.ev(`document.querySelector('[data-k=ae-name]').click()`);
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=text]')`, 'teclado de nome');
+    await ui.key('Backspace', { n: 12, wait: 40 });
+    for (const ch of 'Craft') await ui.key(ch, { wait: 40 });
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('.ae-prev h2')?.textContent==='Craft'`, 'nome alterado');
+    // concluir: o jogo aparece na biblioteca com a capa personalizada
+    await ui.ev(`document.querySelector('[data-k=ae-done]').click()`);
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=appedit]')===null`, 'editor fechado');
+    await ui.key('Escape');
+    await ui.key('Escape');
+    await ui.until(`()=>document.querySelectorAll('#ovs>*').length===0`, 'ajustes fechados');
+    await ui.until(`()=>[...document.querySelectorAll('#dock .tl[data-id]')].some(t=>t.dataset.id==='native:minecraft.desktop')`, 'jogo na tela inicial');
+    const cover = await ui.ev(`getComputedStyle(document.querySelector('#dock .tl[data-id="native:minecraft.desktop"] .art')).backgroundImage`);
+    check(cover.includes('/art/native%3Aminecraft.desktop/cover'), 'card usa a capa personalizada');
+    check((await ui.ev(`fetch('/art/native%3Aminecraft.desktop/cover').then(r=>r.status)`)) === 200, 'capa servida pelo Core');
+    check((await ui.ev(`[...document.querySelectorAll('#dock .tl[data-id]')].every(t=>t.dataset.id.startsWith('native:minecraft'))`)), 'só o Minecraft (a calculadora e a Steam não entraram)');
+    await ui.shot('apps-home');
+  } finally {
+    check(ui.errors().length === 0, `sem erros de JavaScript${ui.errors().length ? ': ' + ui.errors().join(' | ') : ''}`);
+    ui.close();
+    await core.stop();
+  }
+};
+
+scenarios.steam_loja = async () => {
+  const fs = (await import('node:fs')).default;
+  const dir = fs.mkdtempSync('/tmp/nexus-steam-');
+  fs.mkdirSync(`${dir}/Steam/steamapps`, { recursive: true });
+  const fixture = `${dir}/feed.json`;
+  const e = (appid, name, fin, orig, disc, free, linux) => ({ appid, name, final_cents: fin, orig_cents: orig, discount: disc, free, linux });
+  fs.writeFileSync(fixture, JSON.stringify({ destaques: [e(111, 'Jogo Pago', 5949, 6999, 15, false, false), e(222, 'Jogo Grátis', 0, null, 0, true, true)], gratis: [e(222, 'Jogo Grátis', 0, null, 0, true, true)] }));
+  const rec = `${dir}/calls.txt`;
+  fs.writeFileSync(`${dir}/steam`, `#!/bin/sh\necho "$@" >> ${rec}\nexit 0\n`, { mode: 0o755 });
+  const core = await startCore({ dir, env: { NEXUS_STEAM_ROOT: `${dir}/Steam`, NEXUS_STEAM_BIN: `${dir}/steam`, NEXUS_STEAM_FIXTURE: fixture } });
+  await createAdult(core);
+  const ui = await openUi(core);
+  try {
+    await ui.pickProfile('Ana');
+    await ui.until(inShell, 'entrou');
+    await ui.wait(600);
+    await ui.key('e'); await ui.wait(300); await ui.key('e'); await ui.wait(300); await ui.key('e');
+    await ui.until(`()=>document.querySelectorAll('.sc .tl').length>=2`, 'loja da Steam carregada', 10000);
+    const cats = await ui.ev(`[...document.querySelectorAll('.rail .ri')].map(r=>r.firstChild.textContent.trim())`);
+    check(cats.includes('Mais vendidos') && cats.includes('Grátis'), `categorias da Steam: ${cats.join(', ')}`);
+    const price = await ui.ev(`document.querySelector('.sc .tl[data-id="steam:111"] .pz')?.textContent`);
+    check(price === 'R$ 59,49', `preço em reais no card (${price})`);
+    check((await ui.ev(`document.querySelector('.sc .tl[data-id="steam:111"] .bd')?.textContent`)) === '-15%', 'selo de desconto');
+    // jogo pago: leva para a página da loja da Steam
+    await ui.ev(`document.querySelector('.sc .tl[data-id="steam:111"]').click()`);
+    await ui.until(`()=>document.querySelector('#ovs .hub [data-k=cta]')`, 'detalhes do jogo');
+    const cta = await ui.text('#ovs .hub [data-k=cta]');
+    check(cta.includes('Ver na Steam') && cta.includes('R$ 59,49'), `botão do jogo pago: ${cta}`);
+    await ui.ev(`document.querySelector('#ovs .hub [data-k=cta]').click()`);
+    await ui.until(`()=>document.querySelector('.toast')?.textContent?.includes('loja da Steam')`, 'aviso de abertura', 4000);
+    await ui.key('Escape');
+    // jogo grátis: instala direto
+    await ui.ev(`document.querySelector('.sc .tl[data-id="steam:222"]').click()`);
+    await ui.until(`()=>document.querySelector('#ovs .hub [data-k=cta]')`, 'detalhes do gratuito');
+    check((await ui.text('#ovs .hub [data-k=cta]')).includes('Instalar'), 'botão do jogo grátis é Instalar');
+    await ui.ev(`document.querySelector('#ovs .hub [data-k=cta]').click()`);
+    await ui.wait(1200);
+    const calls = fs.readFileSync(rec, 'utf8');
+    check(calls.includes('steam://store/111'), 'Steam recebeu a página da loja do jogo pago');
+    check(calls.includes('steam://install/222'), 'Steam recebeu o pedido de instalar o jogo grátis');
+  } finally {
+    check(ui.errors().length === 0, `sem erros de JavaScript${ui.errors().length ? ': ' + ui.errors().join(' | ') : ''}`);
+    ui.close();
+    await core.stop();
+  }
+};

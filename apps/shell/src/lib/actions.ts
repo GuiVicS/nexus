@@ -301,6 +301,37 @@ export const ACT: Record<string, Fn> = {
   toast(m) {
     toast(m, '', 'info');
   },
+  appadd() {
+    void pushOv('appicker', {});
+  },
+  appedit(id) {
+    void pushOv('appedit', { id });
+  },
+  pickapp(a) {
+    document.dispatchEvent(new CustomEvent('nexus:pickapp', { detail: a }));
+  },
+  ae(a) {
+    document.dispatchEvent(new CustomEvent('nexus:ae', { detail: a }));
+  },
+  fp(a) {
+    document.dispatchEvent(new CustomEvent('nexus:fp', { detail: a }));
+  },
+  async steamopen() {
+    try {
+      await api.steamOpen();
+      toast('Abrindo a Steam…', 'Entre na conta e use o botão Guia para voltar ao Nexus', 'download');
+    } catch (e) {
+      fail(e);
+    }
+  },
+  async steamstore(id) {
+    try {
+      await api.steamStorePage(id);
+      toast('Abrindo a loja da Steam…', 'Use o botão Guia para voltar ao Nexus', 'bag');
+    } catch (e) {
+      fail(e);
+    }
+  },
   clearnotifs() {
     void api.clearNotifications().then(() => {
       setS('notifs', []);

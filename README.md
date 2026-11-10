@@ -15,11 +15,11 @@ Plano completo: [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTU
 ## Instalar (Debian/Ubuntu x86_64)
 Gere o pacote único e leve-o ao Linux:
 ```sh
-tools/bundle.sh          # gera dist/nexus-0.1.2-linux-x86_64.tar.gz (precisa de Rust, Node 24, pnpm)
+tools/bundle.sh          # gera dist/nexus-0.2.0-linux-x86_64.tar.gz (precisa de Rust, Node 24, pnpm)
 ```
 No Linux:
 ```sh
-tar xzf nexus-0.1.2-linux-x86_64.tar.gz && cd nexus-0.1.2
+tar xzf nexus-0.2.0-linux-x86_64.tar.gz && cd nexus-0.2.0
 sudo ./install.sh                                # Nexus + Steam
 sudo ./install.sh --autologin SEU_USUARIO        # opcional: entrar direto no Nexus
 sudo ./install.sh --emulation                    # opcional: RetroArch (Flatpak)

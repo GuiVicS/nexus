@@ -4,7 +4,7 @@ import { sfx } from '@nexus/ui';
 import { ACT, hubTab, setHubTab, verbOf } from '../lib/actions';
 import { findItem, isInstalled, isKid, S } from '../lib/state';
 import { effectivePrice, fmtAgo, fmtBytes, fmtEta, fmtPlaytime, fmtSpeed, metaOf, priceNum, ratingLabel } from '../lib/format';
-import { appBg, Avatar, Bar, Icon } from './ui';
+import { Avatar, Bar, heroStyle, Icon } from './ui';
 import { artUrl } from '../lib/api';
 
 interface Cta { l: string; ic: string; a: string; verb: string; off?: boolean }
@@ -14,6 +14,7 @@ export function ctaFor(it: Item): Cta {
   if (it.state === 'installing') return { l: `Baixando… ${Math.floor(it.install?.percent ?? 0)}%`, ic: 'download', a: 'noop', verb: 'Aguarde', off: true };
   if (it.state === 'updating') return { l: `Atualizando… ${Math.floor(it.install?.percent ?? 0)}%`, ic: 'download', a: 'noop', verb: 'Aguarde', off: true };
   if (it.state === 'not_installed') {
+    if (!it.caps.install && it.provider === 'steam') return { l: `Ver na Steam${it.price ? ` · ${effectivePrice(it)}` : ''}`, ic: 'bag', a: `steamstore:${it.id}`, verb: 'Ver na Steam' };
     if (!it.caps.install) return { l: 'Indisponível', ic: 'lock', a: 'noop', verb: 'Indisponível', off: true };
     const price = priceNum(effectivePrice(it));
     return price > 0 ? { l: `Comprar · ${effectivePrice(it)}`, ic: 'bag', a: `buy:${it.id}`, verb: 'Comprar' } : { l: 'Instalar', ic: 'download', a: `buy:${it.id}`, verb: 'Instalar' };
@@ -27,7 +28,7 @@ function chipOf(it: Item) {
   if (S.game?.itemId === it.id) return 'EM EXECUÇÃO';
   if (it.state === 'installing') return 'BAIXANDO';
   if (it.state === 'updating') return 'ATUALIZANDO';
-  if (it.state === 'not_installed') return it.offer ? `OFERTA ${it.offer.pct}` : it.tags.includes('owned') ? 'NA SUA CONTA' : 'NA LOJA';
+  if (it.state === 'not_installed') return it.offer ? `OFERTA ${it.offer.pct}` : it.tags.includes('owned') ? 'NA SUA CONTA' : it.provider === 'steam' ? 'NA STEAM' : 'NA LOJA';
   if (it.kind === 'app') return 'APP';
   if (it.tags.includes('cloud')) return 'NA NUVEM';
   if (it.tags.includes('update')) return 'ATUALIZAÇÃO';
@@ -80,7 +81,7 @@ export function Hub(p: { id: string; oid: number }) {
         const c = () => ctaFor(i());
         return (
           <>
-            <div class="hbg" style={i().kind === 'app' ? { background: appBg(i()) } : { 'background-image': `url("${artUrl(i().id, 'hero')}")`, 'background-color': `hsl(${i().hue[0]} 40% 20%)` }} />
+            <div class="hbg" style={heroStyle(i())} />
             <div class="hsc" />
             <div class="hmain">
               <span class="chip">{chipOf(i())}</span>

@@ -325,7 +325,15 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
         }
         "library.get" => {
             let p = need_session(core)?;
-            let it = core.find_item(&s(&v, "id")?).await.ok_or_else(|| RpcError::new(E_NOT_FOUND, "Item não encontrado"))?;
+            let id = s(&v, "id")?;
+            let found = match core.provider_for(&id) {
+                Some(prov) => prov.get(&id).await.ok().flatten(),
+                None => None,
+            };
+            let it = match found {
+                Some(i) => i,
+                None => core.find_item(&id).await.ok_or_else(|| RpcError::new(E_NOT_FOUND, "Item não encontrado"))?,
+            };
             if !core.visible_to(Some(&p), &it) {
                 return Err(RpcError::new(E_FORBIDDEN, "Este perfil não pode ver este item"));
             }
@@ -421,6 +429,65 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             if core.game_info().is_some() {
                 core.compositor.show_game();
             }
+            Ok(json!({ "ok": true }))
+        }
+
+        // ---------- apps e jogos do Linux adicionados pelo usuário ----------
+        "apps.system" | "apps.registered" | "apps.add" | "apps.update" | "apps.remove" | "fs.list" => {
+            let p = need_session(core)?;
+            if p.kind == ProfileKind::Kid {
+                return Err(RpcError::new(E_FORBIDDEN, "Indisponível neste perfil"));
+            }
+            match method {
+                "apps.system" => ok(core.native.system_apps()),
+                "apps.registered" => ok(core.native.custom_apps()),
+                "fs.list" => ok(crate::customart::list(core.native.roots(), os(&v, "path").as_deref()).map_err(|e| RpcError::new(E_FAILED, &e))?),
+                _ => {
+                    parental(core, &v)?;
+                    let opt = |k: &str| -> Option<Option<String>> { v.get(k).map(|x| x.as_str().filter(|s| !s.is_empty()).map(String::from)) };
+                    let id = match method {
+                        "apps.add" => core.native.add(&s(&v, "fileId")?, os(&v, "kind").as_deref())?,
+                        "apps.update" => {
+                            let id = s(&v, "id")?;
+                            core.native.update(&id, crate::providers::native::RegPatch { name: opt("name"), kind: os(&v, "kind"), icon: opt("icon"), cover: opt("cover"), hero: opt("hero") })?;
+                            id
+                        }
+                        _ => {
+                            let id = s(&v, "id")?;
+                            core.native.remove(&id)?;
+                            let mut prefs = core.accounts.prefs(&p.id);
+                            prefs.pins.retain(|x| x != &id);
+                            prefs.favs.retain(|x| x != &id);
+                            core.accounts.set_prefs(&p.id, &prefs)?;
+                            id
+                        }
+                    };
+                    core.refresh_library().await;
+                    if method == "apps.remove" {
+                        return Ok(json!({ "ok": true }));
+                    }
+                    ok(core.native.custom_apps().into_iter().find(|a| a.id == id))
+                }
+            }
+        }
+
+        // ---------- Steam: abrir o cliente e a página da loja ----------
+        "steam.open" => {
+            need_session(core)?;
+            let st = core.steam.as_ref().expect("steam provider");
+            st.open_client()?;
+            core.compositor.show_game();
+            Ok(json!({ "ok": true }))
+        }
+        "steam.store_page" => {
+            let p = need_session(core)?;
+            if p.kind == ProfileKind::Kid {
+                return Err(RpcError::new(E_FORBIDDEN, "Indisponível neste perfil"));
+            }
+            let id = s(&v, "id")?;
+            let n: u32 = id.strip_prefix("steam:").and_then(|x| x.parse().ok()).ok_or_else(|| RpcError::invalid("id da Steam inválido"))?;
+            core.steam.as_ref().expect("steam provider").open_store(n)?;
+            core.compositor.show_game();
             Ok(json!({ "ok": true }))
         }
 

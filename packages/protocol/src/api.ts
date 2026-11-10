@@ -1,5 +1,5 @@
 import { RpcClient } from './client';
-import type { Friend, GameSession, HardwareProfile, Hello, Item, LibraryPage, Notification, Parental, Prefs, Profile, RemotePairing, SessionInfo, SteamAccount } from './generated';
+import type { CustomApp, FsListing, SystemApp, Friend, GameSession, HardwareProfile, Hello, Item, LibraryPage, Notification, Parental, Prefs, Profile, RemotePairing, SessionInfo, SteamAccount } from './generated';
 
 type Auth = { pin?: string; parentPin?: string; grant?: string };
 
@@ -10,6 +10,14 @@ export function createApi(c: RpcClient) {
     hello: () => call<Hello>('core.hello'),
     hardware: () => call<HardwareProfile>('hardware.profile'),
     power: (action: 'off' | 'restart' | 'suspend') => call<{ simulated: boolean }>('system.power', { action }),
+    steamOpen: () => call<{ ok: true }>('steam.open'),
+    steamStorePage: (id: string) => call<{ ok: true }>('steam.store_page', { id }),
+    systemApps: () => call<SystemApp[]>('apps.system'),
+    customApps: () => call<CustomApp[]>('apps.registered'),
+    addApp: (fileId: string, kind: 'game' | 'app' | undefined, a: Auth) => call<CustomApp>('apps.add', { fileId, kind, ...a }),
+    updateApp: (p: { id: string; name?: string | null; kind?: 'game' | 'app'; icon?: string | null; cover?: string | null; hero?: string | null } & Auth) => call<CustomApp>('apps.update', p),
+    removeApp: (id: string, a: Auth) => call<{ ok: true }>('apps.remove', { id, ...a }),
+    fsList: (path?: string) => call<FsListing>('fs.list', { path }),
     steamAccount: () => call<SteamAccount>('steam.account'),
     steamSetKey: (key: string) => call<{ ok: true }>('steam.set_key', { key }),
     steamSync: () => call<{ count: number; hasKey: boolean }>('steam.sync'),

@@ -1,4 +1,5 @@
-import { createEffect, createMemo, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, type JSX } from 'solid-js';
+import type { CustomApp } from '@nexus/protocol';
 import { api } from '../lib/api';
 import { ACT, THEME_LABEL, cycHandlers, editProfile } from '../lib/actions';
 import { askConfirm, askPin, fail, guarded, isKid, me, prefs, S, setS, toast } from '../lib/state';
@@ -12,6 +13,7 @@ const CATS: Cat[] = [
   { id: 'acess', label: 'Acessibilidade', icon: 'access' },
   { id: 'ctrl', label: 'Controles', icon: 'pad' },
   { id: 'remote', label: 'Controle no celular', icon: 'tv', adult: true },
+  { id: 'apps', label: 'Apps e jogos', icon: 'grid', adult: true },
   { id: 'conta', label: 'Conta e perfis', icon: 'user', adult: true },
   { id: 'parental', label: 'Controle parental', icon: 'lock', adult: true },
   { id: 'steam', label: 'Steam', icon: 'download', adult: true },
@@ -128,6 +130,31 @@ function PaneRemote() {
   );
 }
 
+function PaneApps() {
+  const [list, setList] = createSignal<CustomApp[] | null>(null);
+  const load = () => void api.customApps().then(setList).catch(fail);
+  onMount(() => {
+    load();
+    document.addEventListener('nexus:apps-changed', load);
+    onCleanup(() => document.removeEventListener('nexus:apps-changed', load));
+  });
+  return (
+    <Pane title="Apps e jogos">
+      <Info label="Só aparece o que você adicionar" desc="Jogos da Steam entram sozinhos. Programas do Linux (Minecraft, Firefox, Kodi…) entram por aqui, com nome, ícone e capas à sua escolha." />
+      <ActRow a="appadd" icon="plus" label="Adicionar app ou jogo" desc="Escolha entre os programas instalados no sistema" verb="Adicionar" k="s-appadd" />
+      <h3 class="sh2">Adicionados ao Nexus</h3>
+      <For each={list() ?? []} fallback={<Info label={list() === null ? 'Carregando…' : 'Nada adicionado ainda'} desc={list() === null ? '' : 'Use “Adicionar app ou jogo” acima'} />}>
+        {(a) => (
+          <div class="srow f" data-k={`ap-${a.id}`} data-r="22" data-a={`appedit:${a.id}`} data-verb="Editar">
+            <div><b>{a.name}</b><small>{a.kind === 'game' ? 'Jogo' : 'App'}{a.hasCover || a.hasHero || a.hasIcon ? ' · personalizado' : ''}{a.available ? '' : ' · programa não encontrado'}</small></div>
+            <Icon n="gear" />
+          </div>
+        )}
+      </For>
+    </Pane>
+  );
+}
+
 function PaneConta() {
   const p = () => me()!;
   return (
@@ -187,6 +214,7 @@ function PaneSteam() {
             <Show when={s().installed}>
               <Info label="Conta" desc={s().persona ? `${s().persona}${s().account ? ` (${s().account})` : ''}` : 'Nenhuma conta conectada. Abra a Steam uma vez para entrar.'} />
               <Info label="Jogos na biblioteca" desc={String(s().libraryGames)} />
+              <ActRow a="steamopen" icon="play" label="Abrir a Steam" desc="Para entrar na conta pela primeira vez, atualizar ou comprar. Volte com o botão Guia." verb="Abrir" k="s-open" />
               <ActRow a="steamsync" icon="refresh" label="Sincronizar biblioteca" desc="Busca os jogos da conta que ainda não estão instalados" verb="Sincronizar" k="s-sync" />
               <ActRow a="steamkey" icon="lock" label="Chave da Web API" desc="Necessária para listar jogos não instalados (perfil Steam público)" verb="Informar" k="s-key" />
             </Show>
@@ -253,6 +281,7 @@ export function Settings() {
         <Show when={S.setCat === 'acess'}><PaneAcess /></Show>
         <Show when={S.setCat === 'ctrl'}><PaneCtrl /></Show>
         <Show when={S.setCat === 'remote' && !isKid()}><PaneRemote /></Show>
+        <Show when={S.setCat === 'apps' && !isKid()}><PaneApps /></Show>
         <Show when={S.setCat === 'conta' && !isKid()}><PaneConta /></Show>
         <Show when={S.setCat === 'parental' && !isKid()}><PaneParental /></Show>
         <Show when={S.setCat === 'steam' && !isKid()}><PaneSteam /></Show>

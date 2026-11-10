@@ -8,7 +8,7 @@ import { api } from './api';
 
 export type Screen = 'boot' | 'standby' | 'onboarding' | 'profiles' | 'shell';
 export type Tab = 'home' | 'biblioteca' | 'midia' | 'loja';
-export type OvKind = 'sheet' | 'hub' | 'search' | 'settings' | 'guide' | 'notif' | 'launch' | 'pin' | 'text' | 'profile' | 'timeup' | 'confirm';
+export type OvKind = 'sheet' | 'hub' | 'search' | 'settings' | 'guide' | 'notif' | 'launch' | 'pin' | 'text' | 'profile' | 'timeup' | 'confirm' | 'appicker' | 'appedit' | 'filepick';
 export type Mode = 'key' | 'pad' | 'ptr';
 
 export const DEFAULT_PREFS: Prefs = { theme: 'dark', sfx: true, vol: 60, reduce: false, hc: false, subs: false, invy: false, vib: true, pins: [], favs: [] };
@@ -38,6 +38,7 @@ interface State {
   pairing: RemotePairing | null;
   steam: SteamAccount | null;
   grant: { token: string; at: number } | null;
+  launchHint: string;
 }
 
 export const [S, setS] = createStore<State>({
@@ -65,6 +66,7 @@ export const [S, setS] = createStore<State>({
   pairing: null,
   steam: null,
   grant: null,
+  launchHint: '',
 });
 
 export const prefs = (): Prefs => S.session?.prefs ?? DEFAULT_PREFS;
