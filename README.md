@@ -10,6 +10,7 @@ Shell (Electron + SolidJS) ⇄ Core (Rust) ⇄ Providers (Steam · Apps Linux ·
        └── Celular (PWA): controle, mouse, teclado
 ```
 
+**Continuando o desenvolvimento (outra sessão/agente): leia [HANDOFF.md](HANDOFF.md).**
 Plano completo: [docs/architecture/ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) · estado atual: [docs/STATUS.md](docs/STATUS.md)
 
 ## Instalar (Debian/Ubuntu x86_64)

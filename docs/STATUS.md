@@ -23,3 +23,12 @@ Legenda: ✔ feito e testado aqui · ◐ feito, **não validado em hardware real
 | Nexus Sysd (ações privilegiadas via D-Bus + polkit) | ✗ | só a política polkit existe; o serviço não foi implementado |
 | Botão Guia com jogo aberto (evdev) | ◐ | código pronto, sem controle físico para testar |
 | gamescope, NVIDIA, Fedora/Arch, emulação (RetroArch), atualização in-app | ✗ | V2+ conforme o plano |
+
+## Atualização 0.2.0
+| Área | Estado | Observações |
+|---|---|---|
+| Apps Linux só se adicionados (nome, tipo, ícone, capa do card, fundo) + navegador de imagens | ✔ | e2e Core + UI |
+| Loja da Steam (mais vendidos, ofertas, grátis, Linux, lançamentos) com preços em R$ | ✔ | testado ao vivo na rede pública; pago → "Ver na Steam" |
+| Jogos da conta não instalados | ◐ | exige chave da Web API; sem chave só jogos já abertos (localconfig) |
+| Abrir jogo Steam (caminho /usr/games/steam, Flatpak, janela da Steam, motivo do erro) | ◐ | corrigido, **não reproduzido nem confirmado no aparelho** |
+| Provedor de apps web, emulação, Sysd | ✗ | ver HANDOFF.md §10 |
