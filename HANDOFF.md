@@ -38,7 +38,7 @@ Sessão: nexus.desktop → nexus-session → sway kiosk (ws1 = Shell, ws2 = jogo
 - **Supervisor de jogos**: `game.rs` — lança em sessão própria (`setsid`), acompanha por processos (`/proc`; Steam via `reaper … SteamLaunch AppId=N`), fecha com SIGTERM→SIGKILL, registra tempo de jogo e limite diário infantil.
 - **Segurança**: socket 0600; HTTP local só com `Host` loopback (anti DNS-rebinding); Remote com token de 96 bits + bloqueio por IP; PIN com Argon2 e bloqueio por tentativas; imagens personalizadas validadas por conteúdo e restritas a pastas permitidas (`customart.rs`); Shell sem Node (`contextIsolation`, sandbox, CSP).
 
-## 4. Estado atual (0.3.0)
+## 4. Estado atual (0.3.2)
 
 **Funciona e tem teste automatizado** (ver §6): perfis/PIN/controle parental/tempo diário, perfil infantil, supervisor de jogos,
 provedor Steam (dados locais + loja pública + detalhes), apps Linux registrados com nome/tipo/ícone/capa/fundo personalizados e navegador de imagens,
@@ -76,6 +76,10 @@ responsáveis), item "Voltar ao Início" nos Ajustes, modo simulação (§5). Am
   mínimo 2 GB de RAM/3 GB de disco no ARM, autologin no **LightDM** (Pi OS). Núcleos do RetroArch vêm de `linux/aarch64` no buildbot (os 36 existem).
   Sem Steam possível a aba Loja some. **Validado só com QEMU** (`qemu-aarch64 -L /usr/aarch64-linux-gnu`): testes do Core (56 + 13 e2e) e do
   instalador (12) passam em ARM; **nunca rodou num Pi de verdade** (GPU V3D, desempenho, sway/Electron no Pi OS).
+- **0.3.1:** `install.sh` instala tudo por padrão (Steam no PC, RetroArch, navegador se faltar); `tools/update.sh` baixa da release do GitHub.
+- **0.3.2 (release `v0.3.2`, commit `c55285f`):** capas da Loja resolvidas pela API do catálogo da Steam (0 faltando na VM, validado na tela);
+  adoção de jogo Steam só com Steam presente (corrigiu e2e instável); `nexus-session` fecha app órfão da sessão anterior. Testes: 57 unidade + 13 e2e.
+  ROMs de teste na VM: `~/ROMs/{nes,gb,gba}` (240p Test Suite, homebrew livre).
 - Abertos: o 1º e2e completo sob QEMU falhou 1 vez por tempo (passou em 3 repetições seguintes); `systemctl --user stop nexus-shell` derruba a sessão
   inteira (target com `Requires=`; travamentos reais não propagam); na sessão aninhada o teclado virtual vai para a sessão de fora (por isso o Enter
   do Unity só é usado com saídas reais, `compositor::sway_nested`).
