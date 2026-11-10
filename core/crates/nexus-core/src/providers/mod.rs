@@ -93,6 +93,10 @@ pub trait Provider: Send + Sync {
         Ok(self.library().await?.into_iter().find(|i| i.id == id))
     }
     fn art(&self, id: &str, kind: ArtKind) -> ArtSource;
+    /// Endereços extras descobertos só depois que os de `art` falharam (ex.: imagens novas da Steam). Padrão: nenhum.
+    async fn art_late(&self, _id: &str, _kind: ArtKind) -> Vec<String> {
+        vec![]
+    }
 }
 
 /// "steam:570" -> ("steam", "570")

@@ -298,6 +298,62 @@ pub fn parse_details(json: &str, appid: u32) -> Option<Details> {
     })
 }
 
+/// Endereços reais das imagens de um jogo. Jogos mais novos não usam mais `/steam/apps/<id>/library_600x900.jpg`:
+/// cada imagem fica numa pasta com um código (`store_item_assets/steam/apps/<id>/<hash>/library_capsule_2x.jpg`),
+/// que só a API pública do catálogo informa (IStoreBrowseService/GetItems, sem chave).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Assets {
+    pub cover: Vec<String>,
+    pub hero: Vec<String>,
+}
+
+pub fn parse_assets(json: &str) -> HashMap<u32, Assets> {
+    let mut out = HashMap::new();
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else { return out };
+    for it in v["response"]["store_items"].as_array().into_iter().flatten() {
+        let Some(appid) = it["appid"].as_u64().map(|n| n as u32) else { continue };
+        let a = &it["assets"];
+        let Some(fmt) = a["asset_url_format"].as_str() else {
+            out.insert(appid, Assets::default());
+            continue;
+        };
+        let url = |k: &str| a[k].as_str().filter(|f| !f.is_empty()).map(|f| format!("https://shared.akamai.steamstatic.com/store_item_assets/{}", fmt.replace("${FILENAME}", f)));
+        let pick = |ks: &[&str]| ks.iter().filter_map(|k| url(k)).collect::<Vec<_>>();
+        out.insert(appid, Assets { cover: pick(&["library_capsule_2x", "library_capsule", "hero_capsule_2x", "hero_capsule", "header", "main_capsule"]), hero: pick(&["library_hero", "raw_page_background", "page_background", "header"]) });
+    }
+    out
+}
+
+fn assets_cache() -> &'static Mutex<HashMap<u32, Assets>> {
+    static C: std::sync::OnceLock<Mutex<HashMap<u32, Assets>>> = std::sync::OnceLock::new();
+    C.get_or_init(Default::default)
+}
+
+/// Pergunta à API do catálogo os endereços das imagens dos jogos ainda não conhecidos (até 50 por pedido).
+pub fn resolve_assets(ids: &[u32]) {
+    let todo: Vec<u32> = {
+        let c = assets_cache().lock().unwrap_or_else(|e| e.into_inner());
+        let mut v: Vec<u32> = ids.iter().copied().filter(|i| !c.contains_key(i)).collect();
+        v.sort_unstable();
+        v.dedup();
+        v
+    };
+    for chunk in todo.chunks(50) {
+        let ids: Vec<String> = chunk.iter().map(|i| format!("{{\"appid\":{i}}}")).collect();
+        let input = format!("{{\"ids\":[{}],\"context\":{{\"language\":\"brazilian\",\"country_code\":\"BR\"}},\"data_request\":{{\"include_assets\":true}}}}", ids.join(","));
+        let Some(body) = http_get(&format!("https://api.steampowered.com/IStoreBrowseService/GetItems/v1/?input_json={}", url_encode(&input))) else { continue };
+        let got = parse_assets(&body);
+        let mut c = assets_cache().lock().unwrap_or_else(|e| e.into_inner());
+        for id in chunk {
+            c.insert(*id, got.get(id).cloned().unwrap_or_default());
+        }
+    }
+}
+
+fn known_assets(appid: u32) -> Option<Assets> {
+    assets_cache().lock().unwrap_or_else(|e| e.into_inner()).get(&appid).cloned()
+}
+
 fn http_get(url: &str) -> Option<String> {
     if std::env::var("NEXUS_OFFLINE").is_ok_and(|v| v == "1") {
         return None;
@@ -678,6 +734,8 @@ impl SteamProvider {
                 let _ = self.db.kv_set("sf:busca", &j);
             }
         }
+        let ids: Vec<u32> = entries.iter().map(|e| e.appid).collect();
+        let _ = tokio::task::spawn_blocking(move || resolve_assets(&ids)).await;
         let (installed, owned) = (self.installed_map(), self.owned_ids());
         entries.iter().map(|e| self.item_from_entry(e, "busca", &installed, &owned)).collect()
     }
@@ -775,6 +833,8 @@ impl Provider for SteamProvider {
             return Ok(vec![]);
         }
         let entries = self.feed(category).await;
+        let ids: Vec<u32> = entries.iter().map(|e| e.appid).collect();
+        let _ = tokio::task::spawn_blocking(move || resolve_assets(&ids)).await;
         let (installed, owned) = (self.installed_map(), self.owned_ids());
         Ok(entries.iter().map(|e| self.item_from_entry(e, category, &installed, &owned)).collect())
     }
@@ -836,10 +896,23 @@ impl Provider for SteamProvider {
             }
         }
         let base = format!("https://cdn.akamai.steamstatic.com/steam/apps/{n}");
-        ArtSource::Urls(match kind {
+        let fixed = match kind {
             ArtKind::Cover => vec![format!("{base}/library_600x900.jpg"), format!("{base}/header.jpg")],
             _ => vec![format!("{base}/library_hero.jpg"), format!("{base}/page_bg_generated_v6b.jpg"), format!("{base}/header.jpg")],
-        })
+        };
+        // endereços informados pelo catálogo (jogos novos) primeiro; os fixos continuam valendo para os antigos
+        let mut v = known_assets(n).map(|a| if kind == ArtKind::Cover { a.cover } else { a.hero }).unwrap_or_default();
+        v.extend(fixed);
+        ArtSource::Urls(v)
+    }
+
+    async fn art_late(&self, id: &str, kind: ArtKind) -> Vec<String> {
+        let Some(n) = split_id(id).and_then(|(_, a)| a.parse::<u32>().ok()) else { return vec![] };
+        if known_assets(n).is_some() {
+            return vec![]; // já tentado com os endereços do catálogo
+        }
+        let _ = tokio::task::spawn_blocking(move || resolve_assets(&[n])).await;
+        known_assets(n).map(|a| if kind == ArtKind::Cover { a.cover } else { a.hero }).unwrap_or_default()
     }
 }
 
@@ -851,6 +924,16 @@ mod tests {
 
     fn acf(flags: u64, dl: u64, tot: u64) -> Acf {
         Acf { appid: 1, name: "X".into(), state_flags: flags, size_on_disk: 0, bytes_to_download: tot, bytes_downloaded: dl, last_updated: 0 }
+    }
+
+    #[test]
+    fn parses_catalog_assets() {
+        let j = r#"{"response":{"store_items":[{"appid":3393110,"assets":{"asset_url_format":"steam/apps/3393110/${FILENAME}?t=1","library_capsule":"aa/library_capsule.jpg","library_capsule_2x":"aa/library_capsule_2x.jpg","library_hero":"bb/library_hero.jpg","header":"cc/header.jpg"}},{"appid":5}]}}"#;
+        let a = parse_assets(j);
+        assert_eq!(a[&3393110].cover[..2], ["https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/3393110/aa/library_capsule_2x.jpg?t=1", "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/3393110/aa/library_capsule.jpg?t=1"]);
+        assert!(a[&3393110].cover[2].ends_with("cc/header.jpg?t=1"), "sem capa vertical (DLC): usa o cabeçalho");
+        assert_eq!(a[&3393110].hero[0], "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/3393110/bb/library_hero.jpg?t=1");
+        assert_eq!(a[&5], Assets::default(), "jogo sem imagens fica registrado como vazio (não pergunta de novo)");
     }
 
     #[test]

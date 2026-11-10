@@ -175,7 +175,11 @@ impl Core {
                 return;
             }
         }
-        // 2) jogo da Steam (reaper "SteamLaunch AppId=N")
+        // 2) jogo da Steam (reaper "SteamLaunch AppId=N") — só se este Core tem uma Steam (sem ela, um processo de outro lugar não é dele;
+        //    nos testes em paralelo, o "jogo" falso de um teste era adotado pelo Core de outro)
+        if self.steam.as_ref().and_then(|s| s.root()).is_none() {
+            return;
+        }
         let Some(appid) = crate::procs::running_steam_appid() else { return };
         let item_id = format!("steam:{appid}");
         let title = self.library.read().unwrap_or_else(|e| e.into_inner()).iter().find(|i| i.id == item_id).map(|i| i.title.clone()).unwrap_or_else(|| "Jogo da Steam".into());

@@ -1,7 +1,7 @@
 # HANDOFF — Nexus
 
 > Documento para continuar o desenvolvimento em **outra sessão ou outro agente** sem perder contexto.
-> Atualize a seção "Estado atual" e "Próximos passos" **ao fim de cada sessão**. Última atualização: 2026-11-10 (versão 0.3.1).
+> Atualize a seção "Estado atual" e "Próximos passos" **ao fim de cada sessão**. Última atualização: 2026-11-10 (versão 0.3.2).
 
 ## 1. O que é
 
@@ -169,6 +169,9 @@ Saídas de emergência: Ctrl+Alt+F3 (terminal; na VirtualBox Right-Ctrl+F3), `su
 - `pkill -f padrão` dentro de um `bash -c` mata o próprio shell (o padrão aparece na linha de comando); use `pgrep -f "[p]adrão" | xargs kill`.
 - Estado `Solid`: o foco do anel é recalculado quando o elemento focado some do DOM (`onLost` em `packages/focus`); overlays restauram o foco anterior (`ret`).
 - A Steam **não** oferece API aberta para "jogos que possuo" sem chave (testado: `GetAppList`, perfil em XML, etc.). A vitrine pública (`featuredcategories`, `search/results?json=1`, `appdetails`) funciona sem chave; a busca não traz `appid` (extraído da URL da imagem).
+- **Capas da loja (0.3.2):** jogos novos da Steam usam endereço com hash (`store_item_assets/steam/apps/<id>/<hash>/library_capsule_2x.jpg`); o endereço fixo dá 404. O Core resolve pela API pública `IStoreBrowseService/GetItems/v1` (`include_assets`, sem chave) em `providers/steam.rs` (`resolve_assets`/`parse_assets`, `art_late` quando o download falha); DLC sem capa vertical cai em `hero_capsule`/`header`.
+- Testes e2e em paralelo: um Core adotava o processo falso "SteamLaunch AppId" de outro teste (launch dava Busy). A adoção de jogo Steam em execução só acontece se o Core tem uma Steam (`root()`).
+- `nexus-session` (0.3.2) encerra o grupo do app que sobrou de uma sessão anterior (`game.json` → `kill -- -sid`) antes de subir o Core.
 - Teste de interface: o campo de PIN/texto precisa de uma pausa depois de abrir; setas ◀▶ em seletores alteram valores (navegue na vertical em formulários).
 
 ## 10. Próximos passos sugeridos (prioridade)

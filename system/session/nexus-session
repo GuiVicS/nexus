@@ -28,6 +28,18 @@ if [ "$recent" -ge 3 ]; then
 fi
 echo "$now" >> "$STATE/starts"
 
+# App/jogo que ficou aberto de uma sessão gráfica anterior (ex.: a sessão caiu com o YouTube aberto): a janela dele
+# morreu com o compositor, então o Core o "reencontraria" sem nada na tela. Encerra e esquece antes de começar.
+GAME="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/nexus/game.json"
+if [ -f "$GAME" ]; then
+  sid=$(sed -n 's/.*"process":\([0-9][0-9]*\).*/\1/p' "$GAME")
+  if [ -n "$sid" ] && [ "$sid" -gt 1 ]; then
+    echo "encerrando app da sessão anterior (sessão $sid)"
+    kill -TERM -- "-$sid" 2>/dev/null || true
+  fi
+  rm -f "$GAME"
+fi
+
 export XDG_SESSION_TYPE=wayland
 export XDG_CURRENT_DESKTOP=Nexus
 export XDG_SESSION_DESKTOP=Nexus

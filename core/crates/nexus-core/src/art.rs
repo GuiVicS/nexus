@@ -122,7 +122,21 @@ async fn ensure(core: &Arc<Core>, id: &str, kind: &str) -> Option<PathBuf> {
     match lookup() {
         (Some(p), _) => Some(p),
         (None, true) => None,
-        (None, false) => fetch(urls, base.clone(), base.with_extension("miss")).await,
+        (None, false) => match fetch(urls, base.clone(), base.with_extension("miss")).await {
+            Some(p) => Some(p),
+            None => {
+                // última tentativa: endereços que o provedor só descobre consultando a fonte (ex.: catálogo da Steam)
+                let late = provider.art_late(id, kind_e).await;
+                if late.is_empty() {
+                    return None;
+                }
+                let p = fetch(late, base.clone(), base.with_extension("miss")).await;
+                if p.is_some() {
+                    let _ = std::fs::remove_file(base.with_extension("miss"));
+                }
+                p
+            }
+        },
     }
 }
 
