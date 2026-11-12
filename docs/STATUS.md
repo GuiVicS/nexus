@@ -111,3 +111,20 @@ A CPU alta dos três é do compositor headless sem limite de quadros (na sessão
 só para comparar entre eles. **Recomendação: manter o Electron.** Nenhuma alternativa ganha em RAM de forma clara
 (Chromium empata, WebKitGTK gasta mais) e todas custam reescrever a ponte. O ganho grande já veio de congelar a Shell
 durante o jogo. Repetir a comparação no Raspberry Pi (com GPU V3D) antes de fechar a questão.
+
+### Item 4 — compositor e lançamento de jogos (2026-11-12)
+
+Feito e testado:
+- **Shell volta a ter a tela quando sobe sem jogo aberto** (`core.hello` → `show_shell`). Visto nesta sessão: a Shell
+  reiniciou com a área dos jogos em foco e a TV ficaria preta. Teste real: área 2 em foco → Shell reinicia → área 1.
+- **Jogo travado**: "Fechar jogo" pede com SIGTERM e força com SIGKILL depois de 5 s; agora também mata o escopo
+  systemd inteiro do jogo (`systemctl --user kill --signal=SIGKILL nexus-game-*.scope`), pegando processos que saíram
+  da árvore. O menu rápido abre mesmo com o jogo travado (botão Guia/Select+Start lidos direto do evdev, F1 pelo
+  sway; nada depende da janela do jogo responder).
+- e2e `hung_game_is_killed_and_crash_returns`: jogo que ignora SIGTERM com filho em outra sessão (`setsid`) é encerrado
+  entre 4 e 9 s sem sobrar processo; jogo que cai com SIGSEGV volta sozinho; dá para abrir outro em seguida.
+- Já existia: regras do sway (`system/sway/nexus-kiosk.conf`: Steam e avisos de falha no scratchpad, sem foco
+  automático de janelas novas), tela "Abrindo…" até a janela do jogo estabilizar, `show_shell` repetido por 3 s ao
+  fechar.
+
+**gamescope — avaliação (não implementado, decisão de arquitetura):** ver `docs/decisions/0004-gamescope.md`.

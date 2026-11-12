@@ -204,6 +204,49 @@ async fn native_launch_roundtrip_and_playtime() {
 }
 
 #[tokio::test]
+async fn hung_game_is_killed_and_crash_returns() {
+    // jogo travado: ignora o pedido para fechar (SIGTERM) e tem um filho que saiu para outra sessão
+    let d = tempfile::tempdir().unwrap();
+    let apps = desktop_dir(
+        d.path(),
+        &[
+            ("travado.desktop", "Travado", r#"sh -c "trap '' TERM; setsid sh -c 'trap \"\" TERM; sleep 120' & while :; do sleep 1; done""#),
+            ("quebra.desktop", "Quebra", r#"sh -c "sleep 1; kill -SEGV $$""#),
+        ],
+    );
+    let (_r, mut c) = boot(d.path(), |cfg| cfg.apps_dirs = vec![apps]).await;
+    first_adult(&mut c).await;
+    c.ok("apps.add", json!({ "fileId": "travado.desktop" })).await;
+    c.ok("apps.add", json!({ "fileId": "quebra.desktop" })).await;
+    let s = c.ok("item.launch", json!({ "id": "native:travado.desktop" })).await;
+    c.event("game.started", 5).await;
+    let pid = s["pid"].as_u64().unwrap() as u32;
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    let before = nexus_core::procs::session_members(pid);
+    assert!(before.len() >= 2, "jogo e filhos rodando: {before:?}");
+    // "Fechar jogo" no menu: pede com SIGTERM, ninguém obedece; depois de 5 s o Core força (SIGKILL)
+    let t = std::time::Instant::now();
+    c.ok("game.close", json!({})).await;
+    let ex = c.event("game.exited", 12).await;
+    assert!(t.elapsed() >= Duration::from_secs(4), "esperou o jogo fechar sozinho antes de forçar");
+    assert!(t.elapsed() < Duration::from_secs(9), "não ficou preso: {:?}", t.elapsed());
+    assert_eq!(ex["itemId"], "native:travado.desktop");
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    for p in &before {
+        assert!(!nexus_core::procs::alive(*p), "processo {p} sobrou");
+    }
+    assert!(c.ok("game.current", json!({})).await.is_null(), "volta ao Nexus");
+
+    // jogo que trava de verdade e cai (SIGSEGV): volta sozinho, sem sessão presa, e dá para abrir outro
+    c.ok("item.launch", json!({ "id": "native:quebra.desktop" })).await;
+    c.event("game.exited", 10).await;
+    assert!(c.ok("game.current", json!({})).await.is_null());
+    c.ok("item.launch", json!({ "id": "native:travado.desktop" })).await;
+    c.ok("game.close", json!({ "force": true })).await;
+    c.event("game.exited", 5).await;
+}
+
+#[tokio::test]
 async fn failing_command_reports_failure_and_returns() {
     let d = tempfile::tempdir().unwrap();
     let apps = desktop_dir(d.path(), &[("quebrado.desktop", "Quebrado", r#"sh -c "exit 3""#), ("inexistente.desktop", "Inexistente", "/nao/existe/mesmo")]);

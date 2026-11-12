@@ -134,7 +134,14 @@ fn kid_session(core: &Core) -> bool {
 
 pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
     match method {
-        "core.hello" => ok(core.nexus_hello()),
+        "core.hello" => {
+            // a Shell acabou de subir (ou reconectou): sem jogo aberto, ela é a única coisa a mostrar. Evita a TV
+            // presa na área dos jogos (tela preta) se a Shell reiniciou enquanto outra janela tinha o foco.
+            if core.game_info().is_none() && !core.steam_ui.load(std::sync::atomic::Ordering::SeqCst) {
+                core.compositor.show_shell();
+            }
+            ok(core.nexus_hello())
+        }
         "hardware.profile" => ok(crate::hardware::detect(core.provider_names(), &core.cfg.data_dir)),
         "system.power" => {
             let a = s(&v, "action")?;

@@ -23,6 +23,8 @@ pub struct ActiveGame {
     pub exit_code: Arc<AtomicI32>,
     pub stop: Arc<AtomicBool>,
     pub log: std::path::PathBuf,
+    /// escopo systemd do jogo (`nexus-game-*.scope`), quando lançado pelo Nexus nesta execução do Core
+    pub scope: Option<String>,
 }
 
 #[derive(Debug)]
@@ -132,7 +134,7 @@ impl Core {
         let log_path = logs.join(format!("{}.log", item_id.replace([':', '/'], "_")));
         let log = std::fs::File::create(&log_path).map_err(|e| LaunchError::Failed(e.to_string()))?;
         let scope = self.cfg.systemd_scope.then(|| format!("nexus-game-{}", crate::util::random_hex(6)));
-        let mut child = spawn(&plan, scope, log).map_err(|e| LaunchError::Failed(format!("{}: {e}", plan.argv[0])))?;
+        let mut child = spawn(&plan, scope.clone(), log).map_err(|e| LaunchError::Failed(format!("{}: {e}", plan.argv[0])))?;
         let pid = child.id();
         let exit_code = Arc::new(AtomicI32::new(i32::MIN));
         let ec = exit_code.clone();
@@ -153,6 +155,7 @@ impl Core {
             exit_code,
             stop,
             log: log_path,
+            scope,
         };
         let info = g.info();
         self.persist_game(&g);
@@ -198,6 +201,7 @@ impl Core {
                     exit_code: Arc::new(AtomicI32::new(i32::MIN)),
                     stop: Arc::new(AtomicBool::new(false)),
                     log: self.cfg.cache_dir.join("logs").join("readotado.log"),
+                    scope: None,
                 };
                 tracing::info!("reencontrado após reiniciar: {}", g.item_id);
                 *self.game.lock().unwrap_or_else(|e| e.into_inner()) = Some(g);
@@ -226,6 +230,7 @@ impl Core {
             exit_code: Arc::new(AtomicI32::new(i32::MIN)),
             stop: Arc::new(AtomicBool::new(false)),
             log: self.cfg.cache_dir.join("logs").join(format!("{}.log", item_id.replace(':', "_"))),
+            scope: None,
         };
         tracing::info!("reencontrado jogo aberto antes do reinício: {item_id}");
         *self.game.lock().unwrap_or_else(|e| e.into_inner()) = Some(g);
@@ -422,11 +427,11 @@ impl Core {
 
     /// Fecha o jogo atual: SIGTERM para a sessão e, se ainda existir após o prazo, SIGKILL.
     pub async fn close_game(&self, force: bool) -> bool {
-        let (tracker, sid, stop) = {
+        let (tracker, sid, stop, scope) = {
             let mut g = self.game.lock().unwrap_or_else(|e| e.into_inner());
             let Some(g) = g.as_mut() else { return false };
             g.state = GameState::Closing;
-            (g.tracker.clone(), g.sid, g.stop.clone())
+            (g.tracker.clone(), g.sid, g.stop.clone(), g.scope.clone())
         };
         stop.store(true, Ordering::SeqCst);
         procs::signal(&members(&tracker, sid), if force { libc::SIGKILL } else { libc::SIGTERM });
@@ -434,6 +439,10 @@ impl Core {
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(grace)).await;
             procs::signal(&members(&tracker, sid), libc::SIGKILL);
+            // jogo travado que escapou da árvore de processos (setsid, daemon): o escopo dele tem todos
+            if let Some(unit) = scope {
+                let _ = tokio::process::Command::new("systemctl").args(["--user", "kill", "--signal=SIGKILL", &format!("{unit}.scope")]).stderr(std::process::Stdio::null()).status().await;
+            }
         });
         true
     }
