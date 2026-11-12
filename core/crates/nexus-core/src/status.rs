@@ -69,6 +69,31 @@ pub fn snapshot(dir: &std::path::Path) -> Value {
     json!({ "net": net, "bt": bt, "audio": audio, "disk": disk, "alerts": alerts })
 }
 
+/// Avisos novos quando um problema aparece: controle com bateria baixa, disco cheio e controle que desconectou.
+/// `prev` é o estado anterior (Null na primeira leitura: problemas que já existem ao ligar também avisam, uma vez).
+pub fn transitions(prev: &Value, cur: &Value) -> Vec<(String, String)> {
+    let ids = |v: &Value| -> Vec<String> { v["alerts"].as_array().map(|a| a.iter().filter_map(|x| x["id"].as_str().map(String::from)).collect()).unwrap_or_default() };
+    let before = ids(prev);
+    let mut out = vec![];
+    for a in cur["alerts"].as_array().into_iter().flatten() {
+        let id = a["id"].as_str().unwrap_or("");
+        if (id == "disk" || id.starts_with("pad:")) && !before.iter().any(|b| b == id) {
+            let title = if id == "disk" { "Pouco espaço no disco" } else { "Bateria do controle baixa" };
+            out.push((title.to_string(), a["text"].as_str().unwrap_or("").to_string()));
+        }
+    }
+    // controle que estava conectado e sumiu (com o Bluetooth ainda ligado)
+    if cur["bt"]["powered"].as_bool().unwrap_or(false) {
+        let now: Vec<&str> = cur["bt"]["connected"].as_array().into_iter().flatten().filter_map(|d| d["mac"].as_str()).collect();
+        for d in prev["bt"]["connected"].as_array().into_iter().flatten() {
+            if d["kind"] == "controle" && !now.contains(&d["mac"].as_str().unwrap_or("")) {
+                out.push(("Controle desconectado".to_string(), d["name"].as_str().unwrap_or("Controle").to_string()));
+            }
+        }
+    }
+    out
+}
+
 pub fn spawn(core: Arc<Core>) {
     let secs = std::env::var("NEXUS_STATUS_SECS").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(15).max(1);
     tokio::spawn(async move {
@@ -77,6 +102,9 @@ pub fn spawn(core: Arc<Core>) {
             let dir = core.cfg.data_dir.clone();
             if let Ok(cur) = tokio::task::spawn_blocking(move || snapshot(&dir)).await {
                 if cur != last {
+                    for (title, body) in transitions(&last, &cur) {
+                        core.notify("alert", &title, &body, None);
+                    }
                     *core.status.lock().unwrap_or_else(|e| e.into_inner()) = cur.clone();
                     core.emit("status.changed", cur.clone());
                     last = cur;
@@ -115,6 +143,28 @@ mod tests {
         let n = net_part(&json!({ "available": true, "online": false, "main": null }));
         assert_eq!(n["kind"], "none");
         assert_eq!(alerts(&n, &json!({}), &json!({}))[0]["text"], "Sem conexão com a rede");
+    }
+
+    #[test]
+    fn avisos_novos_so_na_transicao() {
+        let pad = |b: u64| json!({ "mac": "AA", "name": "Pad", "kind": "controle", "battery": b });
+        let snap = |b: u64, disk: u64, conn: Vec<Value>| {
+            let bt = json!({ "powered": true, "connected": conn });
+            let d = json!({ "freePct": disk, "totalBytes": 100 });
+            json!({ "net": { "available": true, "online": true }, "bt": bt, "disk": d, "alerts": alerts(&json!({ "available": true, "online": true }), &json!({ "connected": [pad(b)] }), &d) })
+        };
+        let ok = snap(80, 50, vec![pad(80)]);
+        assert!(transitions(&ok, &ok).is_empty());
+        let low = snap(15, 5, vec![pad(15)]);
+        let t = transitions(&ok, &low);
+        assert_eq!(t.iter().map(|x| x.0.as_str()).collect::<Vec<_>>(), ["Bateria do controle baixa", "Pouco espaço no disco"]);
+        assert!(transitions(&low, &low).is_empty(), "o mesmo problema não avisa de novo");
+        assert_eq!(transitions(&Value::Null, &low).len(), 2, "problema já existente ao ligar avisa uma vez");
+        let gone = snap(80, 50, vec![]);
+        assert_eq!(transitions(&ok, &gone), [("Controle desconectado".to_string(), "Pad".to_string())]);
+        let mut off = gone.clone();
+        off["bt"]["powered"] = json!(false);
+        assert!(transitions(&ok, &off).is_empty(), "Bluetooth desligado de propósito não é queda do controle");
     }
 
     #[test]

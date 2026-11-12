@@ -374,6 +374,9 @@ export const ACT: Record<string, Fn> = {
   bt(a) {
     document.dispatchEvent(new CustomEvent('nexus:bt', { detail: a }));
   },
+  ntf(a) {
+    document.dispatchEvent(new CustomEvent('nexus:ntf', { detail: a }));
+  },
   drive(a) {
     document.dispatchEvent(new CustomEvent('nexus:drive', { detail: a }));
   },

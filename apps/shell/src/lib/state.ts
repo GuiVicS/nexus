@@ -55,6 +55,8 @@ interface State {
   steam: SteamAccount | null;
   grant: { token: string; at: number } | null;
   launchHint: string;
+  /** "Silenciar durante jogos" (Ajustes → Notificações) */
+  notifSilence: boolean;
   /** ROM do Google Drive baixando antes de abrir */
   fetch: { id: string; done: number; total: number } | null;
 }
@@ -94,6 +96,7 @@ export const [S, setS] = createStore<State>({
   grant: null,
   launchHint: '',
   fetch: null,
+  notifSilence: true,
 });
 
 export const prefs = (): Prefs => S.session?.prefs ?? DEFAULT_PREFS;
@@ -118,8 +121,10 @@ export interface Toast { id: number; title: string; sub: string; icon: string; o
 export const [toasts, setToasts] = createSignal<Toast[]>([]);
 let toastId = 0;
 export function toast(title: string, sub = '', icon = 'info') {
+  // fila curta: no máximo 3 na tela e o mesmo aviso não se repete enquanto o primeiro ainda aparece
+  if (toasts().some((x) => !x.out && x.title === title && x.sub === sub)) return;
   const t: Toast = { id: ++toastId, title, sub, icon, out: false };
-  setToasts((l) => [...l.slice(-3), t]);
+  setToasts((l) => [...l.slice(-2), t]);
   sfx('notify');
   setTimeout(() => setToasts((l) => l.map((x) => (x.id === t.id ? { ...x, out: true } : x))), 3200);
   setTimeout(() => setToasts((l) => l.filter((x) => x.id !== t.id)), 3600);

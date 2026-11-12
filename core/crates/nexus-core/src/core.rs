@@ -121,6 +121,13 @@ impl Core {
     }
 
     pub fn notify(&self, kind: &str, title: &str, body: &str, action: Option<&str>) {
+        // não acumula repetidas: o mesmo aviso nos últimos 2 minutos não entra de novo
+        {
+            let v = self.notifs.lock().unwrap_or_else(|e| e.into_inner());
+            if v.iter().any(|x| x.title == title && x.body == body && now_unix().saturating_sub(x.ts) < 120) {
+                return;
+            }
+        }
         let n = Notification { id: self.next_notif.fetch_add(1, Ordering::Relaxed), kind: kind.into(), title: title.into(), body: body.into(), action: action.map(String::from), ts: now_unix() };
         {
             let mut v = self.notifs.lock().unwrap_or_else(|e| e.into_inner());

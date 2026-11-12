@@ -798,6 +798,26 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             Ok(json!({ "ok": true }))
         }
 
+        // ---------- preferências de notificação ----------
+        "notifications.settings" => {
+            need_session(core)?;
+            Ok(json!({ "silenceInGame": core.silence_in_game() }))
+        }
+        "notifications.set" => {
+            sys_access(core, &v, false)?;
+            if let Some(b) = v.get("silenceInGame").and_then(|x| x.as_bool()) {
+                core.db.kv_set("notif_silence_game", if b { "1" } else { "0" })?;
+            }
+            Ok(json!({ "silenceInGame": core.silence_in_game() }))
+        }
+        "notifications.test" => {
+            sys_access(core, &v, false)?;
+            // aviso de teste: `important` simula um alerta (passa por cima do jogo mesmo silenciado)
+            let important = v.get("important").and_then(|x| x.as_bool()).unwrap_or(false);
+            core.notify(if important { "alert" } else { "bell" }, if important { "Aviso importante de teste" } else { "Aviso de teste" }, &format!("Aviso número {}", core.next_notif.load(std::sync::atomic::Ordering::Relaxed)), None);
+            Ok(json!({ "ok": true }))
+        }
+
         // ---------- barra de status ----------
         "status.get" => {
             need_session(core)?;

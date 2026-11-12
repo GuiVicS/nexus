@@ -466,3 +466,16 @@ Pedido: rclone instalado com o app, login na instalação ou depois, pasta próp
 - **Não testado:** o aviso GTK (`game.toast` → `nexus-overlay`) só foi checado com `py_compile` (a sessão sway real não pode ser
   reiniciada aqui) e o evento é conferido no cenário `notificacoes` (A4); a retenção real de 3 s no botão Guia precisa de
   controle físico (`/dev/uinput` não existe na VM).
+
+### A4 — notificações (2026-11-12) ✅
+
+- **Fila curta:** no máximo 3 avisos na tela e o mesmo aviso não se repete enquanto o primeiro aparece (`toast()`); o Core
+  (`notify`) não deixa o mesmo título+texto entrar duas vezes em 2 minutos.
+- **Avisos novos** (Core, `status.rs`, só na transição, não a cada leitura): **disco com < 10 %**, **bateria do controle ≤ 20 %**
+  e **controle desconectado** (Bluetooth ainda ligado). "Erro ao abrir jogo" já existia. Alertas de tipo `alert` são os "importantes".
+- **Silenciar durante jogos** (Ajustes → **Notificações**, ligado por padrão; RPC `notifications.settings/set/test`): com jogo
+  aberto só os importantes aparecem (a Shell não mostra nem toca som; o Core emite `game.toast` para o overlay do A3); o resto
+  fica no sino. Há botões de aviso de teste (comum e importante) e "Limpar notificações".
+- **Testes:** unidade (transições de alerta) e cenário `notificacoes` (disco/bateria/desconexão sem repetir, 6 avisos → máx. 3 na
+  tela, silêncio por cima do jogo conferido pelo evento `game.toast`). Captura `a4-notificacoes`.
+- **Não testado:** o desenho do aviso por cima do jogo (GTK, ver A3).

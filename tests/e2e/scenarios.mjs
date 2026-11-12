@@ -1180,3 +1180,65 @@ scenarios.emergencia = async () => {
     await core.stop();
   }
 };
+
+// A4: notificações — avisos novos (disco cheio, bateria do controle, controle que desconecta) sem repetir, fila curta
+// (no máximo 3 na tela) e "silenciar durante jogos" (só os importantes passam por cima do jogo: evento game.toast).
+scenarios.notificacoes = async () => {
+  const core = await startCore({ demo: true, env: { NEXUS_FAKE_DISK: '5000000000:100000000000' } });
+  fs.mkdirSync(`${core.dir}/fake-bt`, { recursive: true });
+  fs.writeFileSync(`${core.dir}/fake-bt/paired`, '11:22:33:44:55:01\n');
+  fs.writeFileSync(`${core.dir}/fake-bt/conn`, '11:22:33:44:55:01\n');
+  fs.writeFileSync(`${core.dir}/fake-bt/battery`, '15\n');
+  fs.writeFileSync(`${core.dir}/fake-net`, 'Casa Nexus\n');
+  const ev = await listenEvents(core);
+  const toasts = `()=>[...document.querySelectorAll('.toast')].map(t=>t.textContent)`;
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    const titles = async () => (await core.rpc('notifications.list')).map((n) => n.title);
+    await waitNode(() => ev.got.some((m) => m.method === 'notification.added' && /Pouco espaço/.test(m.params.title)), 'aviso de disco cheio', 9000);
+    const t1 = await titles();
+    check(t1.includes('Pouco espaço no disco') && t1.includes('Bateria do controle baixa'), 'avisos de disco e de bateria do controle no sino');
+    await ui.wait(5000); // o Core relê a cada 2 s: o mesmo problema não vira aviso de novo
+    check((await titles()).filter((t) => t === 'Pouco espaço no disco').length === 1, 'aviso repetido não acumula');
+    // controle some: aviso
+    fs.writeFileSync(`${core.dir}/fake-bt/conn`, '');
+    await waitNode(() => ev.got.some((m) => m.method === 'notification.added' && m.params.title === 'Controle desconectado'), 'aviso de controle desconectado', 9000);
+    // fila curta: 6 avisos seguidos, no máximo 3 na tela
+    for (let i = 0; i < 6; i++) await core.rpc('notifications.test', { important: false });
+    await ui.wait(400);
+    const n = (await ui.ev(`(${toasts})().length`));
+    check(n <= 3 && n >= 1, `no máximo 3 avisos ao mesmo tempo na tela (${n})`);
+    // Ajustes → Notificações
+    await openSettingsCat(ui, 'notif', 'Notificações');
+    await ui.key('ArrowRight');
+    await goTo(ui, 'nt-silence', 'silenciar durante jogos');
+    check((await ui.ev(`document.querySelector('[data-k=nt-silence] .sw')?.getAttribute('aria-checked')`)) === 'true', 'silenciar vem ligado');
+    await ui.screens('a4-notificacoes');
+    // fecha os Ajustes e abre um jogo
+    for (let i = 0; i < 3 && (await ui.count('#ovs>*')) > 0; i++) await ui.key('Escape', { wait: 300 });
+    await ui.until(`()=>document.querySelectorAll('#ovs>*').length===0`, 'ajustes fechados');
+    await ui.until(`()=>document.querySelectorAll('.toast:not(.out)').length===0`, 'avisos sumiram', 6000);
+    await core.rpc('item.launch', { id: 'demo:g1' });
+    await waitNode(() => true, 'jogo aberto');
+    const mark = ev.got.length;
+    await core.rpc('notifications.test', { important: false });
+    await ui.wait(700);
+    check(!ev.got.slice(mark).some((m) => m.method === 'game.toast'), 'silenciado: aviso comum não vai por cima do jogo');
+    check(!(await ui.ev(`(${toasts})().some(t=>/Aviso de teste/.test(t))`)), 'silenciado: a Shell também não faz barulho nem mostra');
+    await core.rpc('notifications.test', { important: true });
+    await waitNode(() => ev.got.slice(mark).some((m) => m.method === 'game.toast' && /importante/.test(m.params.title)), 'aviso importante passa por cima do jogo', 4000);
+    // desliga o silêncio: o aviso comum passa a aparecer
+    await core.rpc('notifications.set', { silenceInGame: false });
+    await ui.until(`()=>true`, 'pref');
+    const mark2 = ev.got.length;
+    await core.rpc('notifications.test', { important: false });
+    await waitNode(() => ev.got.slice(mark2).some((m) => m.method === 'game.toast' && /Aviso de teste/.test(m.params.title)), 'sem silêncio: aviso comum passa por cima do jogo', 4000);
+    ev.close();
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};

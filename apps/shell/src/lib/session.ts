@@ -43,6 +43,7 @@ export async function enterShell(info: SessionInfo) {
   void api.emuStatus().then((st) => setS('emuReady', !!st.retroarch)).catch(() => {});
   void loadAppUpdates();
   startStatus();
+  void api.notificationSettings().then((s) => setS('notifSilence', s.silenceInGame)).catch(() => {});
   void loadStatus();
   sfx('profile');
   queueMicrotask(() => requestAnimationFrame(() => document.dispatchEvent(new CustomEvent('nexus:focus-home'))));
@@ -174,8 +175,10 @@ export function startEvents() {
   });
   client.on('notification.added', (n) => {
     if (isKid()) return;
-    setS('notifs', (l) => [n, ...l].slice(0, 30));
+    setS('notifs', (l) => [n, ...l.filter((x) => x.id !== n.id)].slice(0, 30));
     setS('unread', true);
+    // "silenciar durante jogos": com jogo aberto só os importantes (alert) aparecem; o resto espera no sino
+    if (S.game && S.notifSilence && n.kind !== 'alert') return;
     toast(n.title, n.body, n.kind === 'alert' ? 'info' : n.kind);
   });
   client.on('parental.warning', (p: { minutes: number }) => toast(`Faltam ${p.minutes} minutos`, 'O tempo de jogo de hoje está acabando', 'clock'));
