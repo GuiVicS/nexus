@@ -209,6 +209,8 @@ export function replaceTop(kind: OvKind, props: Record<string, any>) {
 export const askPin = (o: { title: string; sub?: string; confirm?: boolean }) => pushOv<string | null>('pin', o).then((v) => v ?? null);
 export const askText = (o: { title: string; sub?: string; value?: string; max?: number; kind?: 'name' | 'key' | 'secret' | 'ip' }) => pushOv<string | null>('text', o).then((v) => (v === undefined ? null : v));
 export const askConfirm = (o: { title: string; sub?: string; yes?: string; no?: string; danger?: boolean }) => pushOv<boolean>('confirm', o).then((v) => !!v);
+/** Duas opções de verdade (sim/não) + Voltar: true, false ou null (voltou sem escolher). */
+export const askChoice = (o: { title: string; sub?: string; yes: string; no: string; danger?: boolean }) => pushOv<boolean | null>('confirm', o).then((v) => (v === true || v === false ? v : null));
 
 const GRANT_MS = 9 * 60 * 1000;
 export const hasGrant = () => !!S.grant && Date.now() - S.grant.at < GRANT_MS;

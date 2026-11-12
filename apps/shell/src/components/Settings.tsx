@@ -6,12 +6,13 @@ import { askConfirm, askPin, effectsLevel, fail, guarded, isKid, me, prefs, S, s
 import { fmtBytes, ratingLabel } from '../lib/format';
 import { Avatar, Icon, Switch } from './ui';
 import { PadsSection } from './Pads';
-import { LocalePanel, NetPanel } from './System';
+import { BtPanel, LocalePanel, NetPanel } from './System';
 import { sfx } from '@nexus/ui';
 
 interface Cat { id: string; label: string; icon: string; adult?: boolean }
 const CATS: Cat[] = [
   { id: 'rede', label: 'Rede', icon: 'wifi', adult: true },
+  { id: 'bt', label: 'Bluetooth', icon: 'bt', adult: true },
   { id: 'som', label: 'Tela e som', icon: 'vol' },
   { id: 'acess', label: 'Acessibilidade', icon: 'access' },
   { id: 'ctrl', label: 'Controles', icon: 'pad' },
@@ -337,6 +338,7 @@ export function Settings() {
       </nav>
       <div class="setpane" id="setpane">
         <Show when={S.setCat === 'rede' && !isKid()}><Pane title="Rede"><NetPanel /></Pane></Show>
+        <Show when={S.setCat === 'bt' && !isKid()}><Pane title="Bluetooth"><BtPanel /></Pane></Show>
         <Show when={S.setCat === 'hora' && !isKid()}><Pane title="Idioma e hora"><LocalePanel /></Pane></Show>
         <Show when={S.setCat === 'som'}><PaneSom /></Show>
         <Show when={S.setCat === 'acess'}><PaneAcess /></Show>

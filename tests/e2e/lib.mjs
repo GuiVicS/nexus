@@ -26,7 +26,7 @@ export async function startCore({ demo = false, env = {}, args = [], dir: given,
   const a = ['--dev', '--dev-http', `127.0.0.1:${dev}`, '--remote-bind', `127.0.0.1:${remote}`, '--runtime-dir', `${dir}/run`, '--data-dir', `${dir}/data`, '--shell-dir', `${ROOT}/apps/shell/dist`, '--remote-dir', `${ROOT}/apps/remote/dist`, '--demo-assets', `${ROOT}/assets/demo`, ...(demo ? ['--demo'] : []), ...args];
   const p = spawn(`${ROOT}/target/debug/nexus-core`, a, { env: { ...process.env, NEXUS_UINPUT: '0', NEXUS_WEB_APPS: '0', NEXUS_EMULATION: '0', NEXUS_GUIDE_WATCH: '0', NEXUS_CACHE_DIR: `${dir}/cache`, NEXUS_DEMO_DL_SECS: '2', NEXUS_REMOTE_HOST: '127.0.0.1', NEXUS_OFFLINE: '1', NEXUS_FS_ROOTS: `${dir}/home`, NEXUS_APPS_DIRS: `${dir}/noapps`, NEXUS_STEAM_ROOT: `${dir}/nosteam`,
     // rede, relógio e teclado falsos: os cenários nunca mexem no sistema de verdade
-    NEXUS_NMCLI: `${ROOT}/tests/e2e/fake/nmcli`, NEXUS_FAKE_NET: `${dir}/fake-net`, NEXUS_TIMEDATECTL: `${ROOT}/tests/e2e/fake/timedatectl`, NEXUS_FAKE_TZ: `${dir}/fake-tz`, NEXUS_LOCALECTL: 'true', NEXUS_SWAYMSG: 'true', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    NEXUS_NMCLI: `${ROOT}/tests/e2e/fake/nmcli`, NEXUS_FAKE_NET: `${dir}/fake-net`, NEXUS_TIMEDATECTL: `${ROOT}/tests/e2e/fake/timedatectl`, NEXUS_FAKE_TZ: `${dir}/fake-tz`, NEXUS_LOCALECTL: 'true', NEXUS_SWAYMSG: 'true', NEXUS_BLUETOOTHCTL: `${ROOT}/tests/e2e/fake/bluetoothctl`, NEXUS_FAKE_BT: `${dir}/fake-bt`, NEXUS_BT_SYSFS: `${ROOT}/tests/e2e/fake/sysfs-bt`, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
   let log = '';
   p.stdout.on('data', (d) => (log += d));
   p.stderr.on('data', (d) => (log += d));
@@ -99,6 +99,7 @@ export async function openUi(core, o = {}) {
     focusInfo: () => c.ev(`(()=>{const e=document.querySelector('.f.focus');return e?{a:e.dataset.a||'',k:e.dataset.k||'',id:e.dataset.id||'',t:(e.textContent||'').trim().slice(0,40),cls:e.className}:null})()`),
     overlays: () => c.ev(`[...document.querySelectorAll('#ovs>[data-kind]')].map(e=>e.dataset.kind)`),
     text: (sel) => c.ev(`document.querySelector(${JSON.stringify(sel)})?.textContent?.trim() ?? null`),
+    has: (sel) => c.ev(`!!document.querySelector(${JSON.stringify(sel)})`),
     count: (sel) => c.ev(`document.querySelectorAll(${JSON.stringify(sel)}).length`),
     /** varre a tela em "cobrinha" (direita/esquerda e desce nas pontas) até o foco satisfazer `match` */
     async focusOn(match, max = 80, vertical = false) {

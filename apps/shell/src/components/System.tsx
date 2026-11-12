@@ -1,11 +1,12 @@
-// Telas de sistema compartilhadas entre o assistente de primeiro uso e os Ajustes: Rede (B1) e Idioma/hora (B8).
+// Telas de sistema compartilhadas entre o assistente de primeiro uso e os Ajustes: Rede (B1), Bluetooth (B2) e
+// Idioma/hora (B8).
 // Tudo passa pelo Core (sysnet.rs, locale.rs); a Shell só mostra e pede.
 import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
-import type { LocaleStatus, NetStatus, NetTest, WifiNet } from '@nexus/protocol';
+import type { BtDevice, BtStatus, LocaleStatus, NetStatus, NetTest, WifiNet } from '@nexus/protocol';
 import { sfx } from '@nexus/ui';
 import { api, client } from '../lib/api';
 import { cycHandlers } from '../lib/actions';
-import { askConfirm, askText, fail, guarded, toast } from '../lib/state';
+import { askChoice, askConfirm, askText, fail, guarded, toast } from '../lib/state';
 import { Icon, Switch } from './ui';
 
 function Info(p: { label: string; desc?: string; k?: string }) {
@@ -113,7 +114,8 @@ export function NetPanel(p: { wizard?: boolean; onOnline?: () => void }) {
     const s = st();
     const con = s?.main?.connection;
     if (!con) return toast('Sem conexão ativa', 'Conecte-se a uma rede primeiro', 'info');
-    const manual = await askConfirm({ title: 'Endereço IP', sub: `Conexão “${con}”. Automático (DHCP) serve para quase todo mundo.`, yes: 'IP fixo', no: 'Automático' });
+    const manual = await askChoice({ title: 'Endereço IP', sub: `Conexão “${con}”. Automático (DHCP) serve para quase todo mundo.`, yes: 'IP fixo', no: 'Automático' });
+    if (manual === null) return;
     if (!manual) {
       const r = await guarded((a) => api.setIpv4({ connection: con, method: 'auto', ...a }), 'Ajuste avançado: PIN dos responsáveis');
       if (r) toast('IP automático', con, 'check');
@@ -298,6 +300,187 @@ export function LocalePanel() {
         <div><b>Teclado</b><small>Para teclado físico ligado ao aparelho · use ← →</small></div>
         <div class="cv"><Icon n="left" /><span>{kbName()}</span><Icon n="right" /></div>
       </div>
+    </Show>
+  );
+}
+
+// ---------- B2 Bluetooth ----------
+const BT_KIND: Record<string, [string, string]> = {
+  controle: ['Controle', 'pad'],
+  fone: ['Fone ou caixa de som', 'music'],
+  teclado: ['Teclado', 'grid'],
+  mouse: ['Mouse', 'grid'],
+  celular: ['Celular', 'bt'],
+  outro: ['Aparelho Bluetooth', 'bt'],
+};
+const btKind = (d: BtDevice) => BT_KIND[d.kind ?? (d.gamepad ? 'controle' : 'outro')] ?? BT_KIND.outro;
+
+/** Como colocar cada controle em modo de pareamento: o caso que mais trava quem está começando. */
+export const PAD_HELP: [string, string][] = [
+  ['Xbox (Series, One com Bluetooth)', 'Ligue com o botão Xbox e segure o botão de sincronizar (em cima, perto do USB) até o Xbox piscar rápido.'],
+  ['PlayStation 5 (DualSense)', 'Com o controle desligado, segure Create + PS até a luz em volta do touchpad piscar.'],
+  ['PlayStation 4 (DualShock 4)', 'Com o controle desligado, segure Share + PS até a barra de luz piscar em dupla.'],
+  ['Nintendo Switch Pro / Joy-Con', 'Segure o botão de sincronizar (pequeno, perto do USB ou no trilho do Joy-Con) até as luzes correrem.'],
+  ['8BitDo', 'Ligue em modo Switch/X-input (Start + Y ou Start + X) e segure o botão de pareamento por 3 s.'],
+  ['Outros', 'Procure no manual “modo de pareamento”. Se não aparecer, use o cabo USB: funciona sem configurar nada.'],
+];
+
+/** Bluetooth: liga/desliga, aparelhos pareados (tipo, bateria, conectar), procurar e parear, e ajuda por modelo. */
+export function BtPanel(p: { onlyPads?: boolean }) {
+  const [st, setSt] = createSignal<BtStatus | null>(null);
+  const [found, setFound] = createSignal<BtDevice[] | null>(null);
+  const [scanning, setScanning] = createSignal(false);
+  const [busy, setBusy] = createSignal<string | null>(null);
+  const [help, setHelp] = createSignal(0);
+  const load = () => void api.btStatus().then(setSt).catch(() => setSt({ available: false, powered: false, paired: [] }));
+
+  const scan = async () => {
+    if (scanning()) return;
+    setScanning(true);
+    setFound(null);
+    try {
+      const r = (await api.btScan(12)).devices;
+      setFound(p.onlyPads ? r.filter((d) => d.gamepad) : r);
+      load();
+    } catch (e) {
+      fail(e);
+      setFound([]);
+    } finally {
+      setScanning(false);
+    }
+  };
+  const pair = async (d: BtDevice) => {
+    setBusy(d.mac);
+    try {
+      const r = await guarded((a) => api.btPair(d.mac, a), 'Confirme para parear o aparelho');
+      if (r) {
+        sfx('on');
+        toast('Pareado', d.name, 'check');
+        setFound((f) => (f ?? []).filter((x) => x.mac !== d.mac));
+      }
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(null);
+      load();
+    }
+  };
+  const manage = async (d: BtDevice) => {
+    const c = await askChoice({ title: d.name, sub: `${btKind(d)[0]}${d.battery != null ? ` · bateria ${d.battery}%` : ''} · ${d.connected ? 'conectado' : 'desconectado'}`, yes: d.connected ? 'Desconectar' : 'Conectar', no: 'Esquecer' });
+    if (c === null) return;
+    if (c) {
+      setBusy(d.mac);
+      try {
+        await (d.connected ? api.btDisconnect(d.mac) : api.btConnect(d.mac));
+        toast(d.connected ? 'Desconectado' : 'Conectado', d.name, d.connected ? 'bt' : 'check');
+      } catch (e) {
+        fail(e);
+      } finally {
+        setBusy(null);
+        load();
+      }
+      return;
+    }
+    if (!(await askConfirm({ title: `Esquecer “${d.name}”?`, sub: 'Para usar de novo, será preciso parear outra vez.', yes: 'Esquecer', no: 'Cancelar', danger: true }))) return;
+    const r = await guarded((a) => api.btRemove(d.mac, a), 'Confirme para esquecer o aparelho');
+    if (r) toast('Aparelho esquecido', d.name, 'trash');
+    load();
+  };
+  const power = async () => {
+    const on = !st()?.powered;
+    try {
+      await api.btPower(on);
+      if (!on) setFound(null);
+    } catch (e) {
+      fail(e);
+    }
+    load();
+  };
+
+  onMount(() => {
+    load();
+    const h = (e: Event) => {
+      const a = (e as CustomEvent<string>).detail;
+      if (a === 'reload') load();
+      else if (a === 'power') void power();
+      else if (a === 'scan') void scan();
+      else if (a.startsWith('dev:')) {
+        const d = st()?.paired[Number(a.slice(4))];
+        if (d) void manage(d);
+      } else if (a.startsWith('pair:')) {
+        const d = (found() ?? [])[Number(a.slice(5))];
+        if (d) void pair(d);
+      }
+    };
+    document.addEventListener('nexus:bt', h);
+    cycHandlers.set('bt:help', (d) => {
+      setHelp((i) => (i + d + PAD_HELP.length) % PAD_HELP.length);
+      sfx('tab');
+    });
+    // conexão e bateria mudam sozinhas (controle desligou, fone saiu de perto)
+    const t = setInterval(load, 8000);
+    onCleanup(() => {
+      clearInterval(t);
+      cycHandlers.delete('bt:help');
+      document.removeEventListener('nexus:bt', h);
+    });
+  });
+
+  const paired = () => (st()?.paired ?? []).filter((d) => !p.onlyPads || d.gamepad);
+  return (
+    <Show when={st()} fallback={<Info label="Verificando o Bluetooth…" />}>
+      {(b) => (
+        <Show
+          when={b().available}
+          fallback={
+            <>
+              <Info k="bt-none" label="Bluetooth indisponível" desc="Este aparelho não tem adaptador Bluetooth (ou o serviço está desligado). Use um controle USB ou um adaptador Bluetooth USB." />
+              <div class="srow f" data-k="bt-reload" data-r="22" data-a="bt:reload" data-verb="Tentar"><div><b>Tentar de novo</b><small>Verifica o adaptador outra vez</small></div><Icon n="refresh" /></div>
+            </>
+          }
+        >
+          <div class="srow f" data-k="bt-power" data-r="22" data-a="bt:power" data-verb="Alternar">
+            <div><b>Bluetooth</b><small>{b().powered ? 'Ligado' : 'Desligado · controles e fones sem fio não conectam'}</small></div>
+            <Switch on={b().powered} />
+          </div>
+          <Show when={b().powered}>
+            <h3 class="sh2">Meus aparelhos</h3>
+            <For each={paired()} fallback={<Info label="Nenhum aparelho pareado" desc="Procure abaixo para parear um controle, fone ou teclado" />}>
+              {(d) => {
+                const i = () => b().paired.indexOf(d);
+                return (
+                  <div class={`srow f ${busy() === d.mac ? 'off' : ''}`} data-k={`bt-d-${i()}`} data-r="22" data-a={`bt:dev:${i()}`} data-verb="Opções">
+                    <Icon n={btKind(d)[1]} />
+                    <div>
+                      <b>{d.name}</b>
+                      <small>{busy() === d.mac ? 'Aguarde…' : `${btKind(d)[0]} · ${d.connected ? 'conectado' : 'desconectado'}${d.battery != null ? ` · bateria ${d.battery}%${d.battery <= 20 ? ' (baixa)' : ''}` : ''}`}</small>
+                    </div>
+                    <Icon n={d.connected ? 'check' : 'more'} />
+                  </div>
+                );
+              }}
+            </For>
+            <h3 class="sh2">Parear novo</h3>
+            <div class={`srow f ${scanning() ? 'off' : ''}`} data-k="bt-scan" data-r="22" data-a="bt:scan" data-verb="Procurar">
+              <div><b>{scanning() ? 'Procurando… (12 s)' : p.onlyPads ? 'Procurar controles' : 'Procurar aparelhos'}</b><small>Deixe o aparelho em modo de pareamento antes</small></div>
+              <Icon n="search" />
+            </div>
+            <For each={found() ?? []} fallback={<Show when={found()}><Info k="bt-empty" label="Nada encontrado" desc="Confira se o aparelho está piscando (modo de pareamento) e procure de novo" /></Show>}>
+              {(d, i) => (
+                <div class={`srow f ${busy() === d.mac ? 'off' : ''}`} data-k={`bt-f-${i()}`} data-r="22" data-a={`bt:pair:${i()}`} data-verb="Parear">
+                  <Icon n={btKind(d)[1]} />
+                  <div><b>{d.name}</b><small>{busy() === d.mac ? 'Pareando…' : `${btKind(d)[0]} · toque para parear`}</small></div>
+                  <Icon n="plus" />
+                </div>
+              )}
+            </For>
+            <div class="srow f" data-k="bt-help" data-r="22" data-cyc="bt:help" data-a="cyc:bt:help" data-verb="Trocar">
+              <div><b>Controle não pareia? {PAD_HELP[help()][0]}</b><small>{PAD_HELP[help()][1]}</small></div>
+              <div class="cv"><Icon n="left" /><span>{help() + 1}/{PAD_HELP.length}</span><Icon n="right" /></div>
+            </div>
+          </Show>
+        </Show>
+      )}
     </Show>
   );
 }

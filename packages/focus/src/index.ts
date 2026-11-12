@@ -69,6 +69,9 @@ export function pickNeighbor(d: Dir, r: DOMRect, candidates: { el: HTMLElement; 
 export class Focus {
   cur: HTMLElement | null = null;
   private rg = { x: 0, y: 0, w: 0, h: 0, init: false };
+  /** Onde estava o item focado (centro, em px de tela): se ele sumir (ex.: item removido da lista), o foco vai para o
+   * vizinho mais próximo dali, e não para o primeiro item da tela (que poderia trocar de aba/categoria). */
+  private lastAt: { x: number; y: number } | null = null;
   private raf = 0;
 
   private o: FocusOptions;
@@ -98,6 +101,7 @@ export class Focus {
     if (!el || !el.isConnected) return null;
     const r = el.getBoundingClientRect();
     if (!r.width) return null;
+    this.lastAt = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
     const sr = this.o.stage.getBoundingClientRect();
     const s = sr.width / 1920;
     const pad = +(el.dataset.pad || 12);
@@ -159,12 +163,37 @@ export class Focus {
     this.set(r.querySelector<HTMLElement>('.f[data-autofocus]') ?? focusables(r)[0], o);
   }
 
+  /** O focável da raiz mais perto do lugar onde o foco estava (null se não houver lugar guardado). */
+  private nearest(r: ParentNode): HTMLElement | null {
+    const at = this.lastAt;
+    if (!at) return null;
+    let best: HTMLElement | null = null;
+    let bd = Infinity;
+    for (const el of focusables(r)) {
+      const b = el.getBoundingClientRect();
+      if (!b.width) continue;
+      const dx = Math.max(b.left - at.x, 0, at.x - b.right);
+      const dy = Math.max(b.top - at.y, 0, at.y - b.bottom);
+      const d = dx * 2 + dy; // prefere ficar na mesma coluna (mesmo painel)
+      if (d < bd) {
+        bd = d;
+        best = el;
+      }
+    }
+    return best;
+  }
+
   /** Garante que o foco esteja em algo visível da raiz atual. Devolve true se precisou reposicionar. */
   ensure(): boolean {
     const r = this.root();
     if (!r) return false;
     if (this.cur && this.cur.isConnected && r.contains(this.cur) && visible(this.cur)) return false;
-    this.first(r);
+    // o item focado sumiu desta mesma camada: vizinho mais próximo; camada nova: o primeiro
+    const lost = !this.cur || !this.cur.isConnected;
+    const n = lost && !r.querySelector('.f[data-autofocus]') ? this.nearest(r) : null;
+    if (n) this.set(n, { silent: true, still: true });
+    else this.first(r);
+    this.lastAt = null;
     return true;
   }
 
@@ -173,7 +202,7 @@ export class Focus {
     if (!L) return;
     const cur = this.cur;
     if (!cur || !cur.isConnected || !L.contains(cur) || !visible(cur)) {
-      this.first(L);
+      this.ensure();
       return;
     }
     if ((cur.dataset.cyc || cur.dataset.slider) && (d === 'l' || d === 'r')) {

@@ -615,6 +615,13 @@ scenarios.rede = async () => {
     await ui.until(`()=>/Internet funcionando/.test(document.querySelector('[data-k=net-test]')?.textContent||'')`, 'teste de conexão', 15000);
     // IP automático: ajuste avançado pede o PIN dos responsáveis
     await to((f) => f?.k === 'net-ipfix', 'IP fixo');
+    // B (Voltar) na escolha não aplica nada (antes caía em "Automático")
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'escolha automático/fixo');
+    await ui.key('Escape');
+    await ui.until(`()=>!document.querySelector('#ovs [data-kind=confirm]')`, 'B fecha a escolha');
+    await new Promise((r) => setTimeout(r, 400));
+    check(!fs.existsSync(`${core.dir}/fake-net.log`) && !(await ui.has('#ovs [data-kind=pin]')), 'Voltar não muda o IP nem pede PIN');
     await ui.key('Enter');
     await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'escolha automático/fixo');
     await to((f) => f?.t === 'Automático', 'Automático');
@@ -628,6 +635,88 @@ scenarios.rede = async () => {
     await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação para esquecer');
     await ui.key('Enter');
     await ui.until(`()=>/Sem conexão/.test(document.querySelector('[data-k=net-sum]')?.textContent||'')`, 'rede esquecida: sem conexão', 8000);
+    check(ui.errors().length === 0, `sem erros de JavaScript${ui.errors().length ? ': ' + ui.errors().join(' | ') : ''}`);
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};
+
+// B2: Ajustes → Bluetooth só com o controle: pareados com tipo/bateria, procurar, parear (e recusa), desconectar,
+// Voltar sem efeito, ajuda por modelo e desligar.
+scenarios.bluetooth = async () => {
+  const core = await startCore({ demo: true });
+  fs.mkdirSync(`${core.dir}/fake-bt`, { recursive: true });
+  fs.writeFileSync(`${core.dir}/fake-bt/paired`, '11:22:33:44:55:02\n');
+  fs.writeFileSync(`${core.dir}/fake-bt/conn`, '11:22:33:44:55:02\n');
+  const bt = (f) => fs.readFileSync(`${core.dir}/fake-bt/${f}`, 'utf8');
+  const ui = await openUi(core);
+  // anda com ↑/↓ na direção do item (sem sair do painel para a lista lateral)
+  const to = async (pred, what) => {
+    const k = what.k;
+    for (let n = 0; n < 20; n++) {
+      if (pred(await ui.focusInfo())) return;
+      const dir = await ui.ev(`(()=>{const t=document.querySelector('[data-k="${k}"]'),f=document.querySelector('.f.focus');if(!t||!f)return 'ArrowDown';return t.getBoundingClientRect().top<f.getBoundingClientRect().top?'ArrowUp':'ArrowDown'})()`);
+      await ui.key(dir, { wait: 80 });
+    }
+    check(pred(await ui.focusInfo()), `foco em ${what.label}`);
+  };
+  const toast = (re) => `()=>[...document.querySelectorAll('.toast')].some(t=>${re}.test(t.textContent))`;
+  const pinIfAsked = async () => {
+    await new Promise((r) => setTimeout(r, 500));
+    if (await ui.has('#ovs [data-kind=pin]')) await ui.typePin('1234');
+  };
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    for (let n = 0; n < 4; n++) await ui.key('ArrowUp', { wait: 80 });
+    for (let n = 0; n < 12 && (await ui.focusInfo())?.a !== 'settings'; n++) await ui.key('ArrowRight', { wait: 80 });
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=settings] .setrail')`, 'ajustes');
+    await to((f) => f?.k === 'sc-bt', { k: 'sc-bt', label: 'categoria Bluetooth' });
+    await ui.key('Enter');
+    await ui.until(`()=>/Ligado/.test(document.querySelector('[data-k=bt-power]')?.textContent||'')`, 'Bluetooth ligado');
+    await ui.until(`()=>/JBL Flip 5.*Fone ou caixa de som · conectado · bateria 15% \\(baixa\\)/.test(document.querySelector('[data-k=bt-d-0]')?.textContent||'')`, 'pareado com tipo, conexão e bateria baixa');
+    await ui.key('ArrowRight'); // entra no painel
+    await to((f) => f?.k === 'bt-scan', { k: 'bt-scan', label: 'Procurar aparelhos' });
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelectorAll('[data-k^=bt-f-]').length===2`, 'encontrou 2 novos (o pareado não repete)');
+    check(/Xbox Wireless Controller.*Controle/.test(await ui.text('[data-k=bt-f-0]')), 'controle aparece primeiro');
+    await ui.screens('b2-bluetooth');
+    await to((f) => f?.k === 'bt-f-0', { k: 'bt-f-0', label: 'controle encontrado' });
+    await ui.key('Enter');
+    await pinIfAsked();
+    await ui.until(toast('/Pareado/'), 'controle pareado');
+    check(bt('paired').includes('11:22:33:44:55:01') && bt('conn').includes('11:22:33:44:55:01'), 'Core pareou e conectou o controle');
+    check(/^bt-/.test((await ui.focusInfo())?.k || ''), 'item pareado some da lista e o foco fica no painel (não pula para Rede)');
+    await ui.until(`()=>/Xbox.*bateria 76%/.test(document.querySelector('[data-k=bt-d-1]')?.textContent||'')`, 'controle na lista com bateria');
+    // o teclado recusa: mensagem clara
+    await to((f) => f?.k === 'bt-f-0', { k: 'bt-f-0', label: 'teclado encontrado' });
+    await ui.key('Enter');
+    await pinIfAsked();
+    await ui.until(toast('/recusou o pareamento/'), 'recusa explicada');
+    // Voltar na escolha não faz nada; A desconecta
+    await to((f) => f?.k === 'bt-d-0', { k: 'bt-d-0', label: 'caixa de som' });
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'opções do aparelho');
+    await ui.key('Escape');
+    await ui.until(`()=>!document.querySelector('#ovs [data-kind=confirm]')`, 'B fecha as opções');
+    check(bt('paired').includes('11:22:33:44:55:02') && bt('conn').includes('11:22:33:44:55:02'), 'Voltar não esqueceu nem desconectou');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'opções do aparelho');
+    await ui.key('Enter');
+    await ui.until(toast('/Desconectado/'), 'caixa de som desconectada');
+    check(!bt('conn').includes('11:22:33:44:55:02'), 'Core desconectou');
+    // ajuda por modelo: ←/→ troca
+    await to((f) => f?.k === 'bt-help', { k: 'bt-help', label: 'ajuda de pareamento' });
+    await ui.key('ArrowRight');
+    check(/PlayStation 5.*Create \+ PS/.test(await ui.text('[data-k=bt-help]')), 'ajuda do DualSense');
+    // desligar
+    await to((f) => f?.k === 'bt-power', { k: 'bt-power', label: 'liga/desliga' });
+    await ui.key('Enter');
+    await ui.until(`()=>/Desligado/.test(document.querySelector('[data-k=bt-power]')?.textContent||'') && !document.querySelector('[data-k=bt-scan]')`, 'Bluetooth desligado');
+    check(bt('power').trim() === 'no', 'Core desligou o adaptador');
     check(ui.errors().length === 0, `sem erros de JavaScript${ui.errors().length ? ': ' + ui.errors().join(' | ') : ''}`);
   } finally {
     ui.close();

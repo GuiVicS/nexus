@@ -208,7 +208,7 @@ Legenda: ✅ existe · 🟡 parcial · ❌ falta. Serviços disponíveis na VM: 
 | A6 Boot e transições | ✅ (ver A6) | Tela "Carregando" da Shell, "Reconectando ao Core…", Shell recarrega se o renderer cai | Plymouth com a marca, tela de erro amigável (reiniciar sessão / recuperação) se Core ou Shell falham |
 | A7 Primeiro uso | ✅ (ver A7) | Boas-vindas → criar perfil → PIN (opcional) → pronto | Idioma/fuso/teclado, rede, parear controle, pasta de ROMs, parear celular, Steam |
 | B1 Rede | ✅ (ver B1) | — | Tudo (Wi-Fi, cabo, IP/DNS, oculta, esquecer, teste, IP fixo) |
-| B2 Bluetooth | 🟡 | Buscar/parear/remover **controles** (Controles → Bluetooth) | Ligar/desligar, fones/teclados, conectar, bateria, ajuda por modelo |
+| B2 Bluetooth | ✅ (ver B2) | Buscar/parear/remover **controles** (Controles → Bluetooth) | Ligar/desligar, fones/teclados, conectar, bateria, ajuda por modelo |
 | B3 Áudio | ❌ | Só volume dos sons da UI | Saída, volume geral, teste, microfone, saída por perfil |
 | B4 Tela e vídeo | ❌ | Mostra a resolução | Resolução, Hz, escala, margem, rotação, HDR/VRR, confirmação de 15 s |
 | B5 HDMI-CEC | ❌ | — | Tudo (depende de hardware) |
@@ -285,3 +285,26 @@ Ordem de implementação: A6, A7, B1–B4 → A1–A4, B10, B9 → B6, B7, B11, 
   automática (NTP via `timedatectl`), teclado físico (aplicado na hora no sway e lembrado pelo Core; `localectl`
   quando o polkit deixa).
 - **Falta:** outros idiomas (sem tradução da interface) e formato de hora 12/24 h.
+
+### B2 — Bluetooth (2026-11-12) ✅
+
+- Ajustes → **Bluetooth** (nova categoria): liga/desliga, "Meus aparelhos" com tipo (controle, fone/caixa, teclado,
+  mouse), conectado ou não e **bateria** (avisa quando ≤ 20 %), conectar/desconectar (sem PIN: é do dia a dia),
+  esquecer (confirmação + PIN), procurar e parear qualquer aparelho, e **ajuda por modelo** (Xbox, DualSense,
+  DualShock 4, Switch, 8BitDo, outros) trocada com ←/→. Ajustes → Controles e o assistente usam o mesmo painel,
+  filtrado para controles.
+- Core: novo `bluetooth.rs` (substitui o código em `controllers.rs`): tipo pelo ícone do BlueZ (e pelo nome),
+  bateria do `info`, erros em português (bloqueado/rfkill, sem adaptador, recusa de pareamento). Sem adaptador não chama o
+  `bluetoothctl` (ele trava esperando). Estados: verificando, indisponível + "Tentar de novo", desligado, vazio.
+- **Bugs corrigidos no caminho:**
+  - Voltar (B) em diálogos de duas opções contava como "não": no IP fixo, apertar B aplicava "Automático".
+    Agora B devolve "nada escolhido" (`askChoice`).
+  - Quando o item focado sumia (ex.: aparelho pareado sai da lista "encontrados"), o foco ia para o primeiro item da
+    tela, a categoria Rede, e trocava de tela. Agora vai para o vizinho mais próximo (`packages/focus`).
+- **Testes:** unidade (ícone → tipo, bateria) e cenário de UI `bluetooth` com um `bluetoothctl` falso: tipo/bateria,
+  procurar (pareado não repete, controle primeiro), parear, recusa explicada, Voltar sem efeito, desconectar,
+  ajuda e desligar. O cenário `rede` passou a conferir que B não muda o IP.
+- **Não testado com hardware:** a VM não tem adaptador Bluetooth. A Shell real mostra corretamente o estado
+  "Bluetooth indisponível".
+- **Captura:** `b2-bluetooth` 1080p/720p. **Memória da Shell:** 162 MB com Ajustes → Bluetooth aberto e 170 MB no
+  Início logo depois. A variação vem do coletor de lixo (±10 MB); a tela não pesa de forma mensurável.

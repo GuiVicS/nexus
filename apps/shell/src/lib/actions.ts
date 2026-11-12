@@ -69,7 +69,7 @@ export function back() {
     }
     if (top.kind === 'profile' && top.props.first) return sfx('bump');
     if (top.kind === 'guide') return closeGuide();
-    return popOv(top.kind === 'pin' || top.kind === 'text' || top.kind === 'confirm' ? (top.kind === 'confirm' ? false : null) : undefined);
+    return popOv(top.kind === 'pin' || top.kind === 'text' || top.kind === 'confirm' ? null : undefined);
   }
   if (S.scr === 'onboarding') return void document.dispatchEvent(new CustomEvent('nexus:onb', { detail: 'back' }));
   if (S.scr !== 'shell') return;
@@ -352,6 +352,9 @@ export const ACT: Record<string, Fn> = {
   },
   loc(a) {
     document.dispatchEvent(new CustomEvent('nexus:loc', { detail: a }));
+  },
+  bt(a) {
+    document.dispatchEvent(new CustomEvent('nexus:bt', { detail: a }));
   },
   emufetch(a) {
     document.dispatchEvent(new CustomEvent('nexus:emufetch', { detail: a }));

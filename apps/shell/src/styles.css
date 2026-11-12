@@ -74,6 +74,9 @@
 .onb .onbqr small{font-size:26px}
 .netsum{gap:22px;justify-content:flex-start}
 .netsum>.i{width:44px;height:44px;flex:none;color:var(--primary)}
+/* linha com ícone na frente (Bluetooth): ícone, texto ocupando o meio, ação à direita */
+.srow>.i:first-child{width:40px;height:40px;flex:none;color:var(--primary)}
+.srow>.i:first-child+div{flex:1}
 .onb .hwline{font-size:24px;color:var(--muted);border:1px solid var(--line);padding:10px 28px;border-radius:999px}
 .ob-ic{font-size:96px;color:var(--primary)}
 .ob-ic.ok{color:var(--ok)}

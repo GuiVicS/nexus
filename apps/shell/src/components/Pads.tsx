@@ -1,75 +1,26 @@
 import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
-import type { BtDevice, BtStatus, Pad, PadBinding } from '@nexus/protocol';
+import type { Pad, PadBinding } from '@nexus/protocol';
 import { sfx } from '@nexus/ui';
 import { api } from '../lib/api';
 import { askConfirm, askText, closeOv, fail, guarded, pushOv, S, setS, toast } from '../lib/state';
 import { cycHandlers } from '../lib/actions';
 import { Icon } from './ui';
+import { BtPanel } from './System';
 
 const BUS: Record<Pad['bus'], string> = { usb: 'USB', bluetooth: 'Bluetooth', virtual: 'Virtual', outro: 'Conectado' };
 
 // ---------- Ajustes → Controles: conectados, Bluetooth e USB ----------
 export function PadsSection() {
   const [pads, setPads] = createSignal<Pad[] | null>(null);
-  const [bt, setBt] = createSignal<BtStatus | null>(null);
-  const [found, setFound] = createSignal<BtDevice[] | null>(null);
-  const [scanning, setScanning] = createSignal(false);
-  const [busy, setBusy] = createSignal<string | null>(null);
   const loadPads = () => void api.pads().then(setPads).catch(() => setPads([]));
-  const loadBt = () => void api.btStatus().then(setBt).catch(() => setBt({ available: false, powered: false, paired: [] }));
-
-  const scan = async () => {
-    if (scanning()) return;
-    setScanning(true);
-    setFound(null);
-    toast('Procurando controles…', 'Deixe o controle em modo de pareamento', 'search');
-    try {
-      setFound((await api.btScan(12)).devices);
-    } catch (e) {
-      fail(e);
-    } finally {
-      setScanning(false);
-    }
-  };
-  const pair = async (d: BtDevice) => {
-    setBusy(d.mac);
-    try {
-      const r = await guarded((a) => api.btPair(d.mac, a), 'Confirme para parear o controle');
-      if (r) {
-        sfx('on');
-        toast('Controle pareado', d.name, 'check');
-        loadBt();
-        setTimeout(loadPads, 1500);
-      }
-    } finally {
-      setBusy(null);
-    }
-  };
-  const remove = async (d: BtDevice) => {
-    const r = await guarded((a) => api.btRemove(d.mac, a), 'Confirme para esquecer o controle');
-    if (r) {
-      toast('Controle esquecido', d.name, 'trash');
-      loadBt();
-      loadPads();
-    }
-  };
 
   onMount(() => {
     loadPads();
-    loadBt();
     // controles USB/Bluetooth entram e saem sozinhos: atualiza a lista
     const t = setInterval(loadPads, 3000);
     const h = (e: Event) => {
       const a = (e as CustomEvent<string>).detail;
-      if (a === 'scan') void scan();
-      else if (a.startsWith('edit:')) void pushOv('padedit', { pad: (pads() ?? []).find((p) => p.id === a.slice(5)) }).then(loadPads);
-      else if (a.startsWith('pair:')) {
-        const d = (found() ?? []).find((x) => x.mac === a.slice(5));
-        if (d) void pair(d);
-      } else if (a.startsWith('forget:')) {
-        const d = (bt()?.paired ?? []).find((x) => x.mac === a.slice(7));
-        if (d) void remove(d);
-      }
+      if (a.startsWith('edit:')) void pushOv('padedit', { pad: (pads() ?? []).find((p) => p.id === a.slice(5)) }).then(loadPads);
     };
     document.addEventListener('nexus:pads', h);
     onCleanup(() => {
@@ -96,33 +47,7 @@ export function PadsSection() {
       </Show>
 
       <h3 class="sh2">Bluetooth</h3>
-      <Show when={bt()} fallback={<div class="srow info"><div><b>Verificando…</b></div></div>}>
-        {(b) => (
-          <Show when={b().available} fallback={<div class="srow info"><div><b>Bluetooth indisponível</b><small>Este aparelho não tem adaptador Bluetooth (ou o serviço está desligado). Use um controle USB ou um adaptador Bluetooth USB.</small></div></div>}>
-            <div class={`srow f ${scanning() ? 'off' : ''}`} data-k="bt-scan" data-r="22" data-a="pads:scan" data-verb="Procurar">
-              <div><b>{scanning() ? 'Procurando…' : 'Parear controle Bluetooth'}</b><small>Coloque o controle em modo de pareamento (ex.: Xbox: botão de sincronizar · PlayStation: Share + PS · 8BitDo: Start + Y)</small></div>
-              <Icon n="search" />
-            </div>
-            <For each={found() ?? []}>
-              {(d) => (
-                <div class={`srow f ${busy() === d.mac ? 'off' : ''}`} data-k={`bt-f-${d.mac}`} data-r="22" data-a={`pads:pair:${d.mac}`} data-verb="Parear">
-                  <div><b>{d.name}</b><small>{busy() === d.mac ? 'Pareando…' : d.gamepad ? 'Controle encontrado · toque para parear' : 'Outro aparelho Bluetooth'}</small></div>
-                  <Icon n="plus" />
-                </div>
-              )}
-            </For>
-            <Show when={found() && found()!.length === 0}><div class="srow info"><div><b>Nada encontrado</b><small>Confira se o controle está piscando (modo de pareamento) e procure de novo</small></div></div></Show>
-            <For each={b().paired}>
-              {(d) => (
-                <div class="srow f" data-k={`bt-p-${d.mac}`} data-r="22" data-a={`pads:forget:${d.mac}`} data-verb="Esquecer">
-                  <div><b>{d.name}</b><small>Pareado · toque para esquecer</small></div>
-                  <Icon n="trash" />
-                </div>
-              )}
-            </For>
-          </Show>
-        )}
-      </Show>
+      <BtPanel onlyPads />
 
       <h3 class="sh2">USB</h3>
       <div class="srow info"><div><b>Controles com fio</b><small>Conecte em qualquer porta USB: o controle aparece em “Controles conectados” na hora, sem configurar nada.</small></div></div>

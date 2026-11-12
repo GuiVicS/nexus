@@ -1,0 +1,33 @@
+#!/bin/sh
+# bluetoothctl falso para os cenários de UI. Estado na pasta $NEXUS_FAKE_BT: power (yes/no), paired e conn (um MAC
+# por linha), scanned (existe depois de procurar). Aparelhos do "mundo": um controle, uma caixa de som e um teclado.
+D=${NEXUS_FAKE_BT:-/tmp/nexus-fake-bt}
+mkdir -p "$D"; [ -f "$D/power" ] || echo yes > "$D/power"; touch "$D/paired" "$D/conn"
+name() { case $1 in 11:22:33:44:55:01) echo "Xbox Wireless Controller";; 11:22:33:44:55:02) echo "JBL Flip 5";; 11:22:33:44:55:03) echo "Teclado K380";; esac; }
+icon() { case $1 in 11:22:33:44:55:01) echo input-gaming;; 11:22:33:44:55:02) echo audio-card;; 11:22:33:44:55:03) echo input-keyboard;; esac; }
+bat() { case $1 in 11:22:33:44:55:01) echo "0x4c (76)";; 11:22:33:44:55:02) echo "0x0f (15)";; esac; }
+has() { grep -qx "$1" "$2"; }
+del() { grep -vx "$1" "$2" > "$2.t"; mv "$2.t" "$2"; }
+[ "$1" = "--timeout" ] && shift 2
+case "$1" in
+  show) printf 'Controller AA:BB:CC:DD:EE:FF (public)\n\tName: nexus\n\tPowered: %s\n' "$(cat "$D/power")" ;;
+  devices)
+    if [ "$2" = "Paired" ]; then L=$(cat "$D/paired"); elif [ -f "$D/scanned" ]; then L="11:22:33:44:55:01 11:22:33:44:55:02 11:22:33:44:55:03"; else L=$(cat "$D/paired"); fi
+    for m in $L; do echo "Device $m $(name $m)"; done ;;
+  info)
+    m=$2; [ -n "$(name $m)" ] || { echo "Device $m not available"; exit 1; }
+    p=no; has $m "$D/paired" && p=yes; c=no; has $m "$D/conn" && c=yes
+    printf 'Device %s (public)\n\tName: %s\n\tIcon: %s\n\tPaired: %s\n\tTrusted: %s\n\tConnected: %s\n' $m "$(name $m)" "$(icon $m)" $p $p $c
+    [ -n "$(bat $m)" ] && [ $c = yes ] && printf '\tBattery Percentage: %s\n' "$(bat $m)"
+    exit 0 ;;
+  power) [ "$2" = on ] && echo yes > "$D/power" || { echo no > "$D/power"; : > "$D/conn"; }; echo "Changing power $2 succeeded" ;;
+  scan) touch "$D/scanned"; echo "Discovery started" ;;
+  pair)
+    if [ "$2" = 11:22:33:44:55:03 ]; then echo "Failed to pair: org.bluez.Error.AuthenticationFailed"; exit 1; fi
+    has $2 "$D/paired" || echo $2 >> "$D/paired"; echo "Pairing successful" ;;
+  trust) echo "Changing $2 trust succeeded" ;;
+  connect) has $2 "$D/conn" || echo $2 >> "$D/conn"; echo "Connection successful" ;;
+  disconnect) del $2 "$D/conn"; echo "Successful disconnected" ;;
+  remove) del $2 "$D/paired"; del $2 "$D/conn"; echo "Device has been removed" ;;
+  *) echo "bluetoothctl falso: não sei responder a: $*" >&2; exit 2 ;;
+esac

@@ -37,7 +37,8 @@ export interface Pad { id: string; name: string; bus: 'usb' | 'bluetooth' | 'vir
 export type PadBinding = { kind: 'button'; code: number } | { kind: 'axis' | 'hat'; code: number; dir: number };
 export interface EmuSystem { dir: string; name: string; exts: string[]; core: string; games: number; coreReady: boolean }
 export interface EmuStatus { retroarch: boolean; romsDir: string; systems: EmuSystem[] }
-export interface BtDevice { mac: string; name: string; gamepad: boolean }
+export type BtKind = 'controle' | 'fone' | 'teclado' | 'mouse' | 'celular' | 'outro';
+export interface BtDevice { mac: string; name: string; gamepad: boolean; kind?: BtKind; paired?: boolean; connected?: boolean; battery?: number | null }
 export interface BtStatus { available: boolean; powered: boolean; paired: BtDevice[] }
 
 export interface NetDevice { device: string; type: 'ethernet' | 'wifi'; state: string; connection: string }
@@ -72,6 +73,9 @@ export function createApi(c: RpcClient) {
     btScan: (secs = 10) => call<{ devices: BtDevice[] }>('bt.scan', { secs }, (secs + 10) * 1000),
     btPair: (mac: string, a: Auth = {}) => call<{ ok: true }>('bt.pair', { mac, ...a }, 70000),
     btRemove: (mac: string, a: Auth = {}) => call<{ ok: true }>('bt.remove', { mac, ...a }),
+    btPower: (on: boolean) => call<{ ok: true }>('bt.power', { on }, 15000),
+    btConnect: (mac: string) => call<{ ok: true }>('bt.connect', { mac }, 30000),
+    btDisconnect: (mac: string) => call<{ ok: true }>('bt.disconnect', { mac }, 15000),
     hardware: () => call<HardwareProfile>('hardware.profile'),
     // rede (NetworkManager) e relógio/teclado — ver sysnet.rs e locale.rs
     netStatus: () => call<NetStatus>('net.status', {}, 15000),

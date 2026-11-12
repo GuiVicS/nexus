@@ -1,6 +1,6 @@
 //! Controles físicos: lista (USB, Bluetooth, virtual), captura de botões para o mapeamento,
 //! mapa salvo por controle e exportação para o RetroArch (autoconfig udev), além do pareamento
-//! Bluetooth via BlueZ (`bluetoothctl`, sempre com argv fixo e endereço validado).
+//! Bluetooth: ver `bluetooth.rs`.
 use crate::db::Db;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -409,96 +409,9 @@ pub fn actions_json() -> Value {
     Value::Array(ACTIONS.iter().map(|(id, label)| json!({ "id": id, "label": label })).collect())
 }
 
-// ---------------- Bluetooth (BlueZ) ----------------
-
-pub fn valid_mac(m: &str) -> bool {
-    m.len() == 17 && m.split(':').count() == 6 && m.split(':').all(|p| p.len() == 2 && p.chars().all(|c| c.is_ascii_hexdigit()))
-}
-
-fn btctl(args: &[&str], secs: u64) -> Option<String> {
-    let out = std::process::Command::new("timeout").arg(secs.to_string()).arg("bluetoothctl").args(args).stdin(std::process::Stdio::null()).output().ok()?;
-    Some(String::from_utf8_lossy(&out.stdout).to_string())
-}
-
-fn looks_like_pad(name: &str) -> bool {
-    let n = name.to_lowercase();
-    ["controller", "gamepad", "joystick", "xbox", "dualshock", "dualsense", "wireless controller", "8bitdo", "joy-con", "pro controller", "stadia", "gamesir", "ipega", "controle", "pad"].iter().any(|k| n.contains(k))
-}
-
-pub fn parse_devices(out: &str) -> Vec<(String, String)> {
-    out.lines()
-        .filter_map(|l| {
-            let l = l.trim();
-            let rest = l.strip_prefix("Device ")?;
-            let (mac, name) = rest.split_once(' ')?;
-            valid_mac(mac).then(|| (mac.to_string(), name.trim().to_string()))
-        })
-        .collect()
-}
-
-/// Estado do Bluetooth: há adaptador? ligado? quais aparelhos já pareados.
-pub fn bt_status() -> Value {
-    if !Path::new("/sys/class/bluetooth").is_dir() || std::fs::read_dir("/sys/class/bluetooth").map(|mut r| r.next().is_none()).unwrap_or(true) {
-        return json!({ "available": false, "powered": false, "paired": [] });
-    }
-    let show = btctl(&["show"], 5).unwrap_or_default();
-    let powered = show.contains("Powered: yes");
-    let paired: Vec<Value> = parse_devices(&btctl(&["devices", "Paired"], 5).unwrap_or_default()).into_iter().map(|(mac, name)| json!({ "mac": mac, "name": name, "gamepad": looks_like_pad(&name) })).collect();
-    json!({ "available": show.contains("Controller"), "powered": powered, "paired": paired })
-}
-
-/// Liga o Bluetooth, procura por `secs` segundos e devolve o que encontrou (controles primeiro).
-pub fn bt_scan(secs: u64) -> Value {
-    let _ = btctl(&["power", "on"], 5);
-    let _ = btctl(&["--timeout", &secs.to_string(), "scan", "on"], secs + 3);
-    let mut found: Vec<Value> = parse_devices(&btctl(&["devices"], 5).unwrap_or_default())
-        .into_iter()
-        .filter(|(_, n)| !n.is_empty() && !valid_mac(&n.replace('-', ":")))
-        .map(|(mac, name)| json!({ "mac": mac, "name": name, "gamepad": looks_like_pad(&name) }))
-        .collect();
-    found.sort_by_key(|v| !v["gamepad"].as_bool().unwrap_or(false));
-    json!({ "devices": found })
-}
-
-/// Pareia, confia e conecta (controles costumam pedir "trust" para reconectar sozinhos).
-pub fn bt_pair(mac: &str) -> Result<(), String> {
-    if !valid_mac(mac) {
-        return Err("endereço inválido".into());
-    }
-    let pair = btctl(&["--timeout", "25", "pair", mac], 30).unwrap_or_default();
-    if !(pair.contains("Pairing successful") || pair.contains("AlreadyExists")) {
-        return Err("não foi possível parear — coloque o controle em modo de pareamento e tente de novo".into());
-    }
-    let _ = btctl(&["trust", mac], 5);
-    let conn = btctl(&["--timeout", "15", "connect", mac], 20).unwrap_or_default();
-    if !conn.contains("Connection successful") {
-        return Err("pareado, mas não conectou — aperte um botão do controle".into());
-    }
-    Ok(())
-}
-
-pub fn bt_remove(mac: &str) -> Result<(), String> {
-    if !valid_mac(mac) {
-        return Err("endereço inválido".into());
-    }
-    btctl(&["remove", mac], 8).ok_or("bluetoothctl indisponível")?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn mac_and_device_parsing() {
-        assert!(valid_mac("AA:bb:01:23:45:6F"));
-        assert!(!valid_mac("AA:BB:01:23:45"));
-        assert!(!valid_mac("AA:BB:01:23:45:6G"));
-        assert!(!valid_mac("aa:bb:cc:dd:ee:ff; rm -rf"));
-        let d = parse_devices("Device 01:02:03:04:05:06 Xbox Wireless Controller\nDevice zz Lixo\n[CHG] Controller x\nDevice 0A:0B:0C:0D:0E:0F 8BitDo Pro 2");
-        assert_eq!(d, vec![("01:02:03:04:05:06".into(), "Xbox Wireless Controller".into()), ("0A:0B:0C:0D:0E:0F".into(), "8BitDo Pro 2".into())]);
-        assert!(looks_like_pad("DualSense Wireless Controller") && !looks_like_pad("JBL Flip 5"));
-    }
 
     #[test]
     fn retroarch_config_uses_udev_indices() {

@@ -595,7 +595,7 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             };
             r.map_err(|e| RpcError::new(E_FAILED, &e))
         }
-        "controllers.capture" | "controllers.get_map" | "controllers.set_map" | "bt.status" | "bt.scan" | "bt.pair" | "bt.remove" => {
+        "controllers.capture" | "controllers.get_map" | "controllers.set_map" | "bt.status" | "bt.scan" | "bt.pair" | "bt.remove" | "bt.power" | "bt.connect" | "bt.disconnect" => {
             if method.starts_with("bt.") {
                 // parear o controle faz parte do primeiro uso (antes de existir perfil)
                 sys_access(core, &v, false)?;
@@ -621,16 +621,28 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
                     let files = tokio::task::spawn_blocking(move || crate::controllers::set_map(&db, &id, &map)).await.map_err(|e| fail(e.to_string()))?.map_err(fail)?;
                     Ok(json!({ "ok": true, "retroarch": files }))
                 }
-                "bt.status" => Ok(tokio::task::spawn_blocking(crate::controllers::bt_status).await.unwrap_or(Value::Null)),
+                "bt.status" => Ok(tokio::task::spawn_blocking(crate::bluetooth::status).await.unwrap_or(Value::Null)),
                 "bt.scan" => {
                     let secs = v.get("secs").and_then(|t| t.as_u64()).unwrap_or(10).clamp(3, 20);
-                    Ok(tokio::task::spawn_blocking(move || crate::controllers::bt_scan(secs)).await.unwrap_or(Value::Null))
+                    Ok(tokio::task::spawn_blocking(move || crate::bluetooth::scan(secs)).await.unwrap_or(Value::Null))
+                }
+                "bt.power" => {
+                    let on = v.get("on").and_then(|b| b.as_bool()).ok_or_else(|| RpcError::invalid("on ausente"))?;
+                    tokio::task::spawn_blocking(move || crate::bluetooth::set_power(on)).await.map_err(|e| fail(e.to_string()))?.map_err(fail)?;
+                    Ok(json!({ "ok": true }))
+                }
+                "bt.connect" | "bt.disconnect" => {
+                    // reconectar um fone/controle já pareado é do dia a dia: não pede o PIN
+                    let mac = s(&v, "mac")?;
+                    let on = method == "bt.connect";
+                    tokio::task::spawn_blocking(move || if on { crate::bluetooth::connect(&mac) } else { crate::bluetooth::disconnect(&mac) }).await.map_err(|e| fail(e.to_string()))?.map_err(fail)?;
+                    Ok(json!({ "ok": true }))
                 }
                 _ => {
                     parental(core, &v)?;
                     let mac = s(&v, "mac")?;
                     let pair = method == "bt.pair";
-                    tokio::task::spawn_blocking(move || if pair { crate::controllers::bt_pair(&mac) } else { crate::controllers::bt_remove(&mac) }).await.map_err(|e| fail(e.to_string()))?.map_err(fail)?;
+                    tokio::task::spawn_blocking(move || if pair { crate::bluetooth::pair(&mac) } else { crate::bluetooth::remove(&mac) }).await.map_err(|e| fail(e.to_string()))?.map_err(fail)?;
                     Ok(json!({ "ok": true }))
                 }
             }
