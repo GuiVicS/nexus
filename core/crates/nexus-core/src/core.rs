@@ -7,7 +7,7 @@ use crate::providers::{demo::DemoProvider, native::NativeProvider, steam::SteamP
 use crate::remote::Hub;
 use nexus_protocol::*;
 use serde_json::{json, Value};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use tokio::sync::broadcast;
 
@@ -37,6 +37,12 @@ pub struct Core {
     pub pending: Mutex<std::collections::HashMap<String, std::time::Instant>>,
     /// acorda o laço de atualização da biblioteca
     pub kick: tokio::sync::Notify,
+    /// a Steam está na tela porque o usuário pediu (login em modo TV, página de compra); F1/Guia esconde
+    pub steam_ui: AtomicBool,
+    /// a Shell está na frente com o menu rápido aberto por cima de um jogo (F1/Guia de novo volta ao jogo)
+    pub guide_open: AtomicBool,
+    /// resposta do usuário ao contrato de licença (EULA) de um jogo sendo instalado
+    pub eula: Mutex<Option<bool>>,
 }
 
 impl Core {
@@ -78,6 +84,9 @@ impl Core {
             hub,
             pending: Mutex::new(Default::default()),
             kick: tokio::sync::Notify::new(),
+            steam_ui: AtomicBool::new(false),
+            guide_open: AtomicBool::new(false),
+            eula: Mutex::new(None),
         });
         if core.demo.is_some() {
             core.seed_demo()?;
@@ -107,6 +116,38 @@ impl Core {
             v.truncate(30);
         }
         self.emit("notification.added", serde_json::to_value(&n).unwrap());
+    }
+
+    /// Mostra a Steam a pedido do usuário (login em modo TV, compra). Enquanto durar, janelas novas dela também
+    /// aparecem; F1/Guia (`guide::pressed`) ou abrir um jogo encerram e voltam ao Nexus.
+    pub fn show_steam_ui(self: &Arc<Self>) {
+        if self.compositor.name() != "sway" || self.steam_ui.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let c = self.clone();
+        self.emit("steam.ui", serde_json::json!({ "open": true }));
+        std::thread::spawn(move || {
+            let t0 = std::time::Instant::now();
+            while c.steam_ui.load(Ordering::SeqCst) && c.game_info().is_none() && t0.elapsed() < std::time::Duration::from_secs(30 * 60) {
+                compositor::steam_show_all();
+                c.compositor.show_game();
+                std::thread::sleep(std::time::Duration::from_millis(800));
+            }
+            c.hide_steam_ui();
+        });
+    }
+
+    pub fn hide_steam_ui(&self) {
+        if !self.steam_ui.swap(false, Ordering::SeqCst) {
+            return;
+        }
+        if self.compositor.name() == "sway" {
+            compositor::steam_hide_all();
+            if self.game_info().is_none() {
+                self.compositor.show_shell();
+            }
+        }
+        self.emit("steam.ui", serde_json::json!({ "open": false }));
     }
 
     // ---- sessão de perfil ----

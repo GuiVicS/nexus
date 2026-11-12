@@ -47,7 +47,8 @@ export function Hub(p: { id: string; oid: number }) {
   const tabs = createMemo<[string, string][]>(() => {
     const i = it();
     if (!i || i.kind !== 'game') return [];
-    if (i.state === 'not_installed') return [['sobre', 'Sobre']];
+    // jogos da Steam fora do aparelho: capturas de tela primeiro, como na página de uma loja de apps
+    if (i.state === 'not_installed') return i.provider === 'steam' ? [['img', 'Imagens'], ['sobre', 'Sobre']] : [['sobre', 'Sobre']];
     const t: [string, string][] = [['atv', 'Atividades']];
     if (i.achievements) t.push(['ach', 'Conquistas']);
     if (!isKid() && S.friends.some((f) => f.online) && i.provider === 'demo') t.push(['ami', 'Amigos']);
@@ -127,6 +128,23 @@ function Fact(p: { k: string; v: string }) {
   return <div><small>{p.k}</small>{p.v}</div>;
 }
 
+/** Capturas de tela da loja (servidas pelo Core em /art/<id>/shotN); as que não existem somem. */
+function Shots(p: { id: string }) {
+  const [ok, setOk] = createSignal(0);
+  const [bad, setBad] = createSignal(0);
+  return (
+    <div class="hshots">
+      <For each={[0, 1, 2, 3] as const}>
+        {(n) => <img src={artUrl(p.id, `shot${n}`)} alt="" loading="lazy" onLoad={() => setOk((x) => x + 1)} onError={(e) => {
+          e.currentTarget.style.display = 'none';
+          setBad((x) => x + 1);
+        }} />}
+      </For>
+      <Show when={!ok()}><p class="pane-sub">{bad() >= 4 ? 'Este jogo não tem imagens na loja.' : 'Carregando imagens…'}</p></Show>
+    </div>
+  );
+}
+
 function HubBody(p: { it: Item; tab: string }) {
   const it = () => p.it;
   return (
@@ -166,6 +184,9 @@ function HubBody(p: { it: Item; tab: string }) {
             </div>
           )}
         </For>
+      </Show>
+      <Show when={p.tab === 'img'}>
+        <Shots id={it().id} />
       </Show>
       <Show when={p.tab === 'sobre'}>
         <div class="facts">

@@ -223,7 +223,8 @@ export function Guide() {
         <Show when={S.game}>
           <h3>Agora</h3>
           {row('resume', 'play', `Retomar ${S.game!.title}`, S.game!.state === 'closing' ? 'Fechando…' : game()?.kind === 'app' ? 'Aberto' : 'Em execução', 'Retomar')}
-          {row('closegame', 'power', `Fechar ${game()?.kind === 'app' ? 'app' : 'jogo'}`, 'O progresso é salvo pelo próprio jogo', 'Fechar')}
+          {row('exitgame', 'home', 'Ir ao Início', `${game()?.kind === 'app' ? 'O app' : 'O jogo'} continua aberto em segundo plano`, 'Abrir')}
+          {row('closegame', 'power', `Fechar ${game()?.kind === 'app' ? 'app' : 'jogo'}`, game()?.kind === 'app' ? 'Volta ao Nexus' : 'O progresso é salvo pelo próprio jogo', 'Fechar')}
         </Show>
         <h3>Atalhos</h3>
         <div class="row2 f slider" data-r="20" data-slider="vol" data-a="noop" data-verb="Ajustar"><Icon n="vol" /><div class="tr"><i style={{ width: `${prefs().vol}%` }} /></div><span class="v">{prefs().vol}</span></div>
@@ -297,7 +298,7 @@ export function Launch(p: { id: string }) {
               <Show when={closing()}>
                 <div class="lacts"><div class="btn f" data-r="p" data-pad="8" data-a="forceclose" data-verb="Forçar"><Icon n="x" /> Forçar encerramento</div></div>
               </Show>
-              <p class="lnote">O {i().kind === 'app' ? 'app' : 'jogo'} fica em primeiro plano. Para voltar ao Nexus: botão Guia do controle, tecla Super (⊞) ou ☰ no canto da tela.</p>
+              <p class="lnote">O {i().kind === 'app' ? 'app' : 'jogo'} fica em primeiro plano. Menu rápido: botão Guia do controle (ou Select+Start), F1 ou tecla Super (⊞). A mesma tecla volta {i().kind === 'app' ? 'ao app' : 'ao jogo'}.</p>
             </Show>
           </div>
         </>

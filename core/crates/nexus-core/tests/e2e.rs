@@ -632,3 +632,42 @@ async fn profile_photo_import_validate_and_serve() {
     c.ok("profiles.update", json!({ "id": id, "avatar": "lia" })).await;
     assert_eq!(get(format!("/art/{enc}/photo")).await.unwrap(), 404, "foto apagada ao trocar");
 }
+
+#[tokio::test]
+async fn roms_upload_from_phone() {
+    let d = tempfile::tempdir().unwrap();
+    let roms = d.path().join("ROMs");
+    std::env::set_var("NEXUS_ROMS_DIR", &roms);
+    let (r, mut c) = boot(d.path(), |_| {}).await;
+    first_adult(&mut c).await;
+    let link = c.ok("roms.upload_link", json!({})).await;
+    let url = link["url"].as_str().unwrap().to_string();
+    assert!(url.contains("/roms?t=") && link["qrSvg"].as_str().unwrap().contains("<svg"));
+    let token = url.split("t=").nth(1).unwrap().to_string();
+    let addr = r.started.remote_addr.unwrap();
+    let res = tokio::task::spawn_blocking(move || {
+        let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).build().into();
+        let post = |q: &str, body: &[u8]| agent.post(&format!("http://{addr}/remote/upload?{q}")).send(body).unwrap().status().as_u16();
+        let page_bad = agent.get(&format!("http://{addr}/roms?t=errado")).call().unwrap().status().as_u16();
+        let page = agent.get(&format!("http://{addr}/roms?t={token}")).call().unwrap().body_mut().read_to_string().unwrap();
+        (
+            page_bad,
+            page.contains("Super Nintendo"),
+            post("t=errado&system=snes&name=Mario.sfc", b"x"),
+            post(&format!("t={token}&system=snes&name=..%2F..%2Fetc%2Fpasswd"), b"x"),
+            post(&format!("t={token}&system=snes&name=Sonic.md"), b"x"),
+            post(&format!("t={token}&system=snes&name=Mario.sfc"), b"rom-snes"),
+        )
+    })
+    .await
+    .unwrap();
+    assert_eq!(res.0, 403, "página sem o código do QR é recusada");
+    assert!(res.1, "página lista os consoles");
+    assert_eq!(res.2, 403, "envio sem o código do QR é recusado");
+    assert_eq!(res.3, 400, "nome com pastas é recusado");
+    assert_eq!(res.4, 400, "extensão de outro console é recusada");
+    assert_eq!(res.5, 200);
+    assert_eq!(std::fs::read(roms.join("snes/Mario.sfc")).unwrap(), b"rom-snes");
+    assert!(std::fs::read_dir(roms.join("snes")).unwrap().flatten().all(|e| !e.file_name().to_string_lossy().ends_with(".parcial")));
+    assert_eq!(c.event("roms.received", 3).await["name"], "Mario.sfc");
+}

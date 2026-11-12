@@ -96,13 +96,19 @@ pub async fn serve(core: &Arc<Core>, id: &str, kind: &str) -> Response {
 
 /// Caminho local da arte (baixa e guarda em cache se for remota).
 async fn ensure(core: &Arc<Core>, id: &str, kind: &str) -> Option<PathBuf> {
-    let kind_e = ArtKind::parse(kind)?;
     let provider = core.provider_for(id)?;
-    let urls = match provider.art(id, kind_e) {
-        ArtSource::File(p) => return Some(p),
-        ArtSource::Missing => return None,
-        ArtSource::Url(u) => vec![u],
-        ArtSource::Urls(v) => v,
+    // capturas de tela da loja: shot0..shot3
+    let shot = kind.strip_prefix("shot").and_then(|n| n.parse::<usize>().ok()).filter(|n| *n < 4);
+    let kind_e = if shot.is_some() { ArtKind::Hero } else { ArtKind::parse(kind)? };
+    let urls = if let Some(i) = shot {
+        vec![provider.shots(id).await.into_iter().nth(i)?]
+    } else {
+        match provider.art(id, kind_e) {
+            ArtSource::File(p) => return Some(p),
+            ArtSource::Missing => return None,
+            ArtSource::Url(u) => vec![u],
+            ArtSource::Urls(v) => v,
+        }
     };
     let dir = core.cfg.cache_dir.join("art");
     let _ = std::fs::create_dir_all(&dir);
@@ -124,6 +130,7 @@ async fn ensure(core: &Arc<Core>, id: &str, kind: &str) -> Option<PathBuf> {
         (None, true) => None,
         (None, false) => match fetch(urls, base.clone(), base.with_extension("miss")).await {
             Some(p) => Some(p),
+            None if shot.is_some() => None,
             None => {
                 // última tentativa: endereços que o provedor só descobre consultando a fonte (ex.: catálogo da Steam)
                 let late = provider.art_late(id, kind_e).await;

@@ -15,6 +15,7 @@ pub mod net;
 pub mod procs;
 pub mod providers;
 pub mod remote;
+pub mod roms;
 pub mod rpc;
 pub mod util;
 pub mod vdev;

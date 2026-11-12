@@ -384,7 +384,10 @@ scenarios.steam_loja = async () => {
     await ui.wait(600);
     await ui.key('e'); await ui.wait(300); await ui.key('e'); await ui.wait(300); await ui.key('e');
     await ui.until(`()=>document.querySelectorAll('.sc .tl').length>=2`, 'loja da Steam carregada', 10000);
-    const cats = await ui.ev(`[...document.querySelectorAll('.rail .ri')].map(r=>r.firstChild.textContent.trim())`);
+    const cats = await ui.ev(`[...document.querySelectorAll('.stbar .cp')].map(r=>r.textContent.trim())`);
+    check(cats[0] === 'Para você', 'Loja abre em "Para você"');
+    check((await ui.count('.sbanners .sbn')) >= 1, 'banners de destaque');
+    check((await ui.count('.shelf')) >= 2, 'prateleiras por categoria');
     check(cats.includes('Mais vendidos') && cats.includes('Grátis'), `categorias da Steam: ${cats.join(', ')}`);
     const price = await ui.ev(`document.querySelector('.sc .tl[data-id="steam:111"] .pz')?.textContent`);
     check(price === 'R$ 59,49', `preço em reais no card (${price})`);

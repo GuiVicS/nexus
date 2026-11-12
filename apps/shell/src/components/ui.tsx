@@ -5,6 +5,7 @@ import { artUrl } from '../lib/api';
 import { mono, effectivePrice, priceNum } from '../lib/format';
 import { mode, S } from '../lib/state';
 import { verbOf } from '../lib/actions';
+import { SYS_ABBR, sysOf } from '../lib/emu';
 
 export function Icon(p: { n: string; fill?: boolean; class?: string }) {
   const body = () => ICONS[p.n as IconName] ?? ICONS.info;
@@ -14,7 +15,7 @@ export function Icon(p: { n: string; fill?: boolean; class?: string }) {
 /** Glifo de botão (A/B/Y/...) que muda entre controle e teclado. */
 const GLY = {
   pad: { A: 'A', B: 'B', Y: 'Y', X: 'X', OPT: '≡', LB: 'LB', RB: 'RB', LT: 'LT', RT: 'RT', G: '⌂' },
-  key: { A: 'Enter', B: 'Esc', Y: 'S', X: 'M', OPT: 'M', LB: 'Q', RB: 'E', LT: 'PgUp', RT: 'PgDn', G: 'Tab' },
+  key: { A: 'Enter', B: 'Esc', Y: 'S', X: 'M', OPT: 'M', LB: 'Q', RB: 'E', LT: 'PgUp', RT: 'PgDn', G: 'F1' },
 } as const;
 
 export function Glyph(p: { k: keyof typeof GLY.pad }) {
@@ -98,6 +99,9 @@ export function Tile(p: { it: Item; a?: string; dock?: boolean; badge?: string; 
       <div class="in" style={{ background: it().kind === 'app' && !it().art.cover ? undefined : hueGrad(it()) }}>
         <Show when={it().kind === 'app' && !it().art.cover} fallback={
           <>
+            <Show when={it().tags.includes('emu')}>
+              <div class="emuf"><span class="ab">{SYS_ABBR[sysOf(it())] ?? sysOf(it()).toUpperCase()}</span><small>{it().category}</small><b>{it().title}</b></div>
+            </Show>
             <Show when={it().art.cover} fallback={<div class="br br-i" style={{ background: 'transparent' }}><span class="mg">{mono(it().title)}</span></div>}>
               <div class="art" style={{ 'background-image': `url("${artUrl(it().id, 'cover')}")` }} />
             </Show>

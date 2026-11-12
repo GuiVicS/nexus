@@ -85,6 +85,8 @@ impl Core {
             return Err(LaunchError::Busy);
         }
         let item = self.find_item(item_id).await.ok_or(LaunchError::NotFound)?;
+        self.hide_steam_ui();
+        self.guide_open.store(false, Ordering::SeqCst);
         if !self.visible_to(Some(&profile), &item) {
             return Err(LaunchError::Forbidden);
         }
@@ -219,11 +221,14 @@ impl Core {
         let mut surfaced = false;
         let mut unity_checks = 0u32;
         let mut unity_done = std::collections::HashSet::new();
+        let sway = self.compositor.name() == "sway";
+        let mut win_since: Option<Instant> = None;
+        let mut proc_seen: Option<Instant> = None;
         loop {
             tokio::time::sleep(Duration::from_millis(400)).await;
             // diálogo de configuração do Unity (só mouse): confirma "Play!" sozinho. Só nos primeiros ~90 s após o
             // processo aparecer, a cada ~1,2 s; uma vez por janela.
-            if self.compositor.name() == "sway" && seen_at.is_some_and(|t| t.elapsed() < Duration::from_secs(90)) {
+            if sway && proc_seen.or(seen_at).is_some_and(|t| t.elapsed() < Duration::from_secs(90)) {
                 unity_checks += 1;
                 if unity_checks % 3 == 0 {
                     if let Some((con, _)) = tokio::task::spawn_blocking(crate::compositor::unity_config_window).await.ok().flatten() {
@@ -236,6 +241,17 @@ impl Core {
             let alive = !members(&tracker, sid).is_empty();
             if alive {
                 absent = 0;
+                // Como num console, a tela "Abrindo…" do Nexus fica na frente até o jogo desenhar: a janela dele
+                // precisa existir há ~1,2 s (esconde splash do RetroArch, janelas pretas, a Steam preparando).
+                // Sem sway (ou jogo sem janela detectável) segue em frente depois de 12 s.
+                if seen_at.is_none() && sway {
+                    let present = tokio::task::spawn_blocking(crate::compositor::game_window_present).await.unwrap_or(true);
+                    win_since = if present { win_since.or(Some(Instant::now())) } else { None };
+                    let proc_since = *proc_seen.get_or_insert_with(Instant::now);
+                    if !win_since.is_some_and(|t| t.elapsed() >= Duration::from_millis(1200)) && proc_since.elapsed() < Duration::from_secs(12) {
+                        continue;
+                    }
+                }
                 if seen_at.is_none() {
                     seen_at = Some(Instant::now());
                     let info = {
@@ -266,10 +282,12 @@ impl Core {
                 break;
             }
             // A Steam pode estar pedindo login, atualização ou confirmação: mostra a janela dela em vez de deixar o Nexus "abrindo" sem fim.
+            // A Steam fica escondida (é só o motor): se demora, o Nexus avisa na própria tela "Abrindo…".
             if !surfaced && seen_at.is_none() && matches!(tracker, Tracker::SteamApp(_)) && start.elapsed() > Duration::from_secs(7) {
                 surfaced = true;
-                self.compositor.show_game();
-                self.emit("game.waiting", json!({ "itemId": item_id, "hint": "A Steam está preparando o jogo. Se ela pedir login ou atualização, resolva na janela dela e use o botão Guia para voltar ao Nexus." }));
+                let logged = self.steam.as_ref().is_some_and(|s| s.user().is_some());
+                let hint = if logged { "A Steam está preparando o jogo (atualização ou sincronização na nuvem). Aguarde…" } else { "Conecte sua conta da Steam em Ajustes → Steam para abrir este jogo." };
+                self.emit("game.waiting", json!({ "itemId": item_id, "hint": hint }));
             }
             if seen_at.is_some() && last_acct.elapsed() >= Duration::from_secs(5) {
                 let secs = last_acct.elapsed().as_secs();
@@ -302,7 +320,22 @@ impl Core {
         }
         let title = self.game.lock().unwrap_or_else(|e| e.into_inner()).take().map(|g| g.title).unwrap_or_default();
         let _ = std::fs::remove_file(self.game_file());
+        self.guide_open.store(false, Ordering::SeqCst);
         self.compositor.show_shell();
+        // Ao fechar, a Steam (e alguns jogos) ainda abrem janelas por alguns segundos: garante que a tela fica no Nexus.
+        if sway {
+            let c = self.clone();
+            tokio::spawn(async move {
+                for ms in [400u64, 800, 1200, 1600] {
+                    tokio::time::sleep(Duration::from_millis(ms)).await;
+                    if c.game_info().is_some() || c.steam_ui.load(Ordering::SeqCst) {
+                        return;
+                    }
+                    tokio::task::spawn_blocking(crate::compositor::steam_hide_all).await.ok();
+                    c.compositor.show_shell();
+                }
+            });
+        }
         if failed {
             let tail = std::fs::read_to_string(&log_path).ok().map(|t| t.lines().rev().filter(|l| !l.trim().is_empty()).take(2).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join(" · ")).unwrap_or_default();
             let base = if code > 0 { format!("saiu com código {code}") } else if matches!(tracker, Tracker::SteamApp(_)) { "a Steam não iniciou o jogo (confira se está logada e se o jogo está instalado; jogos de Windows precisam do Steam Play/Proton ativado)".to_string() } else { "o jogo não iniciou".to_string() };

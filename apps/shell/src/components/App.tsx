@@ -8,6 +8,8 @@ import { bootstrap, startEvents } from '../lib/session';
 import { bgFront, focusNow, fx, isKid, me, mode, ovs, prefs, S, setS, toasts, topOv, closeAllOv, findItem, setBg, hasOv, type Ov } from '../lib/state';
 import { appBg, Avatar, Glyph, Icon } from './ui';
 import { Home, Library, Media, Store, setStripItem } from './Views';
+import { Emulators } from './Emu';
+import { Roms } from './Roms';
 import { Hub } from './Hub';
 import { Confirm, Guide, Launch, Notifs, Search, Sheet, TimeUp, clock } from './Overlays';
 import { PinPad, TextEntry } from './Entry';
@@ -16,7 +18,7 @@ import { AppEditor, AppPicker, FilePicker } from './Apps';
 import { PadEditor, PadMapper } from './Pads';
 import { Boot, Onboarding, ProfileEditor, ProfilePicker, Standby } from './Profiles';
 
-const FULL: Ov['kind'][] = ['hub', 'search', 'settings', 'launch', 'profile', 'timeup', 'appicker', 'appedit', 'filepick', 'padmap', 'padedit'];
+const FULL: Ov['kind'][] = ['hub', 'search', 'settings', 'launch', 'profile', 'timeup', 'appicker', 'appedit', 'filepick', 'padmap', 'padedit', 'roms'];
 
 function OvBody(p: { o: Ov }) {
   const o = p.o;
@@ -37,6 +39,7 @@ function OvBody(p: { o: Ov }) {
       <Match when={o.kind === 'appedit'}><AppEditor id={o.props.id} fresh={o.props.fresh} oid={o.id} /></Match>
       <Match when={o.kind === 'padedit'}><PadEditor pad={o.props.pad} oid={o.id} /></Match>
       <Match when={o.kind === 'padmap'}><PadMapper pad={o.props.pad} oid={o.id} /></Match>
+      <Match when={o.kind === 'roms'}><Roms oid={o.id} /></Match>
       <Match when={o.kind === 'filepick'}><FilePicker title={o.props.title} oid={o.id} /></Match>
       <Match when={o.kind === 'confirm'}><Confirm title={o.props.title} sub={o.props.sub} yes={o.props.yes} no={o.props.no} danger={o.props.danger} oid={o.id} /></Match>
     </Switch>
@@ -153,6 +156,7 @@ function Shell() {
         <Switch>
           <Match when={S.tab === 'home'}><Home /></Match>
           <Match when={S.tab === 'biblioteca'}><Library /></Match>
+          <Match when={S.tab === 'emu'}><Emulators /></Match>
           <Match when={S.tab === 'midia'}><Media /></Match>
           <Match when={S.tab === 'loja'}><Store /></Match>
         </Switch>
@@ -174,6 +178,8 @@ export function App() {
     return document.getElementById(S.scr);
   };
 
+  // a faixa de título mostra o item focado da aba atual: ao trocar de aba/seção/console, volta ao título dela
+  createEffect(on(() => [S.tab, S.shopCat, S.libFilter, S.emuSys], () => setStripItem(null), { defer: true }));
   let tabT: ReturnType<typeof setTimeout> | undefined;
   let railT: ReturnType<typeof setTimeout> | undefined;
 

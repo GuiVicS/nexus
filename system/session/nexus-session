@@ -59,7 +59,7 @@ export WLR_RENDERER_ALLOW_SOFTWARE=1
 systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP NEXUS_COMPOSITOR NEXUS_SHELL_FLAGS PATH HOME 2>&1 || echo "aviso: import-environment falhou"
 
 run_sway() {
-  /usr/bin/sway --unsupported-gpu -c /usr/share/nexus/sway-kiosk.conf
+  /usr/bin/sway --unsupported-gpu -c "${NEXUS_SWAY_CONF:-/usr/share/nexus/sway-kiosk.conf}"
 }
 
 start=$(date +%s)

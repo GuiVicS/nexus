@@ -7,8 +7,8 @@ import type { Focus } from '@nexus/focus';
 import { api } from './api';
 
 export type Screen = 'boot' | 'standby' | 'onboarding' | 'profiles' | 'shell';
-export type Tab = 'home' | 'biblioteca' | 'midia' | 'loja';
-export type OvKind = 'sheet' | 'hub' | 'search' | 'settings' | 'guide' | 'notif' | 'launch' | 'pin' | 'text' | 'profile' | 'timeup' | 'confirm' | 'appicker' | 'appedit' | 'filepick' | 'padmap' | 'padedit';
+export type Tab = 'home' | 'biblioteca' | 'emu' | 'midia' | 'loja';
+export type OvKind = 'sheet' | 'hub' | 'search' | 'settings' | 'guide' | 'notif' | 'launch' | 'pin' | 'text' | 'profile' | 'timeup' | 'confirm' | 'appicker' | 'appedit' | 'filepick' | 'padmap' | 'padedit' | 'roms';
 export type Mode = 'key' | 'pad' | 'ptr';
 
 export const DEFAULT_PREFS: Prefs = { theme: 'dark', sfx: true, vol: 60, reduce: false, hc: false, subs: false, invy: false, vib: true, pins: [], favs: [] };
@@ -32,6 +32,10 @@ interface State {
   unread: boolean;
   libFilter: string;
   shopCat: string;
+  /** aba Emuladores: console aberto (pasta em ~/ROMs) ou null = lista de consoles */
+  emuSys: string | null;
+  /** RetroArch instalado (mostra a aba Emuladores mesmo sem jogos, para adicionar) */
+  emuReady: boolean;
   setCat: string;
   dockId: string | null;
   bgId: string | null;
@@ -61,7 +65,9 @@ export const [S, setS] = createStore<State>({
   notifs: [],
   unread: false,
   libFilter: 'todos',
-  shopCat: 'jogos',
+  shopCat: 'inicio',
+  emuSys: null,
+  emuReady: false,
   setCat: 'som',
   dockId: null,
   bgId: null,
@@ -280,6 +286,17 @@ export function upsertLib(items: Item[]) {
     }
     if (S.extra[it.id]) setS('extra', it.id, reconcile(it));
   }
+}
+
+/** Atualiza um item onde ele já estiver (biblioteca, vitrines da loja, extras) sem incluí-lo na biblioteca. */
+export function patchItem(it: Item) {
+  const i = S.lib.findIndex((x) => x.id === it.id);
+  if (i >= 0) setS('lib', i, reconcile(it));
+  for (const k in S.shop) {
+    const j = S.shop[k].findIndex((x) => x.id === it.id);
+    if (j >= 0) setS('shop', k, j, reconcile(it));
+  }
+  if (S.extra[it.id]) setS('extra', it.id, reconcile(it));
 }
 
 export function removeLib(ids: string[]) {

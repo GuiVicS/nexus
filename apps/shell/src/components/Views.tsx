@@ -2,9 +2,9 @@ import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Sh
 import type { Item } from '@nexus/protocol';
 import { api } from '../lib/api';
 import { fail, isInstalled, isKid, prefs, S, setS, fx } from '../lib/state';
-import { fmtAgo, fmtBytes, fmtEta, fmtPlaytime, fmtSpeed, metaOf, money, norm, ratingLabel } from '../lib/format';
+import { effectivePrice, fmtAgo, fmtBytes, fmtEta, fmtPlaytime, fmtSpeed, metaOf, money, norm, ratingLabel } from '../lib/format';
 import { verbOf } from '../lib/actions';
-import { Bar, Empty, Glyph, Icon, PriceTag, Tile } from './ui';
+import { Bar, Empty, Glyph, heroStyle, Icon, PriceTag, Tile } from './ui';
 
 export const [stripItem, setStripItem] = createSignal<Item | null>(null);
 
@@ -154,12 +154,13 @@ const filters = (): Filter[] => {
     ['nuvem', 'Na nuvem', (i) => i.tags.includes('cloud')],
     ['classico', 'Clássicos', (i) => i.tags.includes('classic')],
   ];
-  const games = S.lib.filter((i) => i.kind === 'game');
+  const games = S.lib.filter((i) => i.kind === 'game' && !i.tags.includes('emu'));
   return all.filter(([k, , fn]) => k === 'todos' || k === 'fav' || games.some(fn));
 };
 
 export function Library() {
-  const games = createMemo(() => S.lib.filter((i) => i.kind === 'game'));
+  // jogos de console (ROMs) ficam na aba Emuladores, por console
+  const games = createMemo(() => S.lib.filter((i) => i.kind === 'game' && !i.tags.includes('emu')));
   const fl = createMemo(filters);
   const list = createMemo(() => {
     const f = fl().find((x) => x[0] === S.libFilter) ?? fl()[0];
@@ -176,7 +177,7 @@ export function Library() {
         <h4>Jogos</h4>
         <For each={fl()}>
           {([k, l, fn]) => (
-            <div class={`ri f ${S.libFilter === k ? 'on' : ''}`} data-k={`rail-${k}`} data-rail={k} data-r="22" data-a={`rail:${k}`} data-verb="Filtrar">
+            <div class={`ri f ${S.libFilter === k ? 'on' : ''}`} data-k={`rail-${k}`} data-group="lib" data-rail={k} data-r="22" data-a={`rail:${k}`} data-verb="Filtrar">
               {l}<b>{games().filter(fn).length}</b>
             </div>
           )}
@@ -287,47 +288,125 @@ export async function loadShop() {
   setShopLoading(false);
 }
 
+// Loja no jeito de uma loja de apps (Play Store): abas em pílulas no topo; "Para você" com banners grandes
+// e prateleiras horizontais por categoria ("Ver tudo" abre a categoria em grade).
+const SHELVES: [string, string][] = [
+  ['conta', 'Na sua conta para instalar'],
+  ['ofertas', 'Ofertas da semana'],
+  ['gratis', 'Grátis para jogar'],
+  ['destaques', 'Mais vendidos'],
+  ['lancamentos', 'Lançamentos'],
+  ['linux', 'Feitos para Linux'],
+  ['classicos', 'Clássicos'],
+  ['apps', 'Apps'],
+];
+const SHELF_MAX = 14;
+
+function bannerChip(it: Item, cat: string) {
+  if (it.offer?.pct) return `OFERTA ${it.offer.pct}`;
+  if (cat === 'gratis' || effectivePrice(it) === 'Grátis') return 'GRÁTIS';
+  if (cat === 'lancamentos') return 'NOVIDADE';
+  return 'EM DESTAQUE';
+}
+
 export function Store() {
   onMount(() => void loadShop());
   const owned = createMemo(() => S.lib.filter((i) => i.state === 'not_installed' || (i.state === 'installing' && i.tags.includes('owned'))));
   const items = (c: string) => (c === 'conta' ? owned() : (S.shop[c] ?? []));
-  const cats = createMemo(() => SHOP_CATS.filter(([c]) => items(c).length > 0 || (c === 'conta' && S.steam?.installed)));
-  // só escolhe outra categoria depois que tudo carregou (senão a primeira que chegar roubaria a seleção)
+  const cats = createMemo(() => SHOP_CATS.filter(([c]) => items(c).length > 0));
+  const home = () => S.shopCat === 'inicio';
+  // categoria escolhida sumiu (ex.: "Na sua conta" sem jogos): volta para "Para você"
   createEffect(() => {
-    if (shopLoading()) return;
-    const c = cats();
-    // categoria atual sumiu ou está vazia (ex.: "Na sua conta" sem jogos): vai para a primeira com itens
-    if (c.length && (!c.some(([k]) => k === S.shopCat) || items(S.shopCat).length === 0)) setS('shopCat', (c.find(([k]) => items(k).length > 0) ?? c[0])[0]);
+    if (shopLoading() || home()) return;
+    if (!cats().some(([k]) => k === S.shopCat)) setS('shopCat', 'inicio');
   });
+  // banners: os mais vendidos e as ofertas com imagem larga, sem repetir
+  const banners = createMemo(() => {
+    const seen = new Set<string>();
+    const out: [Item, string][] = [];
+    for (const c of ['destaques', 'ofertas', 'lancamentos']) {
+      for (const it of items(c).slice(0, 4)) {
+        if (!it.art.hero || seen.has(it.id)) continue;
+        seen.add(it.id);
+        out.push([it, c]);
+      }
+    }
+    return out.slice(0, 8);
+  });
+  const shelves = createMemo(() => SHELVES.filter(([c]) => items(c).length > 0));
   const list = createMemo(() => items(S.shopCat));
   const title = () => SHOP_CATS.find(([k]) => k === S.shopCat)?.[1] ?? 'Loja';
+  const loadingAll = () => shopLoading() && !banners().length && !shelves().length;
   return (
     <>
-      <nav class="rail">
-        <h4>Loja</h4>
-        <Show when={S.wallet !== null}><div class="wallet">Carteira {money(S.wallet!)}</div></Show>
+      <div class="stbar">
+        <div class={`cp f ${home() ? 'on' : ''}`} data-k="shop-inicio" data-group="shop" data-rail="shop:inicio" data-r="p" data-pad="6" data-a="rail:shop:inicio" data-verb="Ver">Para você</div>
         <For each={cats()}>
-          {([k, l]) => (
-            <div class={`ri f ${S.shopCat === k ? 'on' : ''}`} data-k={`shop-${k}`} data-rail={`shop:${k}`} data-r="22" data-a={`rail:shop:${k}`} data-verb="Filtrar">
-              {l}<b>{items(k).length}</b>
-            </div>
-          )}
+          {([k, l]) => <div class={`cp f ${S.shopCat === k ? 'on' : ''}`} data-k={`shop-${k}`} data-group="shop" data-rail={`shop:${k}`} data-r="p" data-pad="6" data-a={`rail:shop:${k}`} data-verb="Ver">{l}</div>}
         </For>
-      </nav>
-      <Strip fallbackTitle={title()} fallbackSub={shopLoading() && !list().length ? 'Carregando a loja…' : `${list().length} itens${S.wallet !== null ? ` · carteira ${money(S.wallet)}` : ''}`} />
-      <div class="sc" id="sc">
-        <div class="gridt">
-          <For each={list()} fallback={
+        <Show when={S.wallet !== null}><span class="wallet">Carteira {money(S.wallet!)}</span></Show>
+      </div>
+      <Show when={home()} fallback={
+        <>
+          <Strip wide fallbackTitle={title()} fallbackSub={`${list().length} ${list().length === 1 ? 'item' : 'itens'}`} />
+          <div class="sc w st" id="sc">
+            <div class="gridt">
+              <For each={list()}>{(it) => <Tile it={it} a={`open:${it.id}`} badge={it.offer?.pct} price={<PriceTag it={it} />} />}</For>
+            </div>
+          </div>
+        </>
+      }>
+        <div class="sc w st home" id="sc">
+          <Show when={!loadingAll()} fallback={
             <div class="empty-wrap">
               <Empty icon="bag" title={shopLoading() ? 'Carregando a loja…' : 'A loja está vazia'} text={shopLoading() ? 'Buscando os jogos da Steam. Pode levar alguns segundos.' : 'Não consegui carregar a loja da Steam. Confira a conexão com a internet.'}>
                 <div class="btn f" data-autofocus data-r="p" data-pad="8" data-a="settings" data-verb="Abrir" onClick={() => setS('setCat', 'steam')}><Icon n="gear" /> Ajustes</div>
               </Empty>
             </div>
           }>
-            {(it) => <Tile it={it} a={`open:${it.id}`} badge={it.offer?.pct} price={<PriceTag it={it} />} />}
-          </For>
+            <Show when={banners().length}>
+              <div class="sbanners">
+                <For each={banners()}>
+                  {([it, c]) => (
+                    <div class="sbn f" data-k={`bn-${it.id}`} data-id={it.id} data-r="28" data-a={`open:${it.id}`} data-verb="Ver" aria-label={it.title}>
+                      <div class="in" style={heroStyle(it)}>
+                        <div class="shade" />
+                        <div class="tx">
+                          <span class="chip">{bannerChip(it, c)}</span>
+                          <b>{it.title}</b>
+                          <small>{it.subtitle || metaOf(it)}</small>
+                        </div>
+                        <PriceTag it={it} />
+                      </div>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </Show>
+            <For each={shelves()}>
+              {([c, l]) => (
+                <section class="shelf">
+                  <div class="shh">
+                    <h3>{l}</h3>
+                    <Show when={items(c).length > SHELF_MAX || c !== 'conta'}>
+                      <div class="cp f sm" data-k={`all-${c}`} data-r="p" data-pad="6" data-a={`rail:shop:${c}`} data-verb="Ver tudo">Ver tudo <Icon n="right" /></div>
+                    </Show>
+                  </div>
+                  <div class="shr">
+                    <For each={items(c).slice(0, SHELF_MAX)}>{(it) => <Tile it={it} a={`open:${it.id}`} badge={it.offer?.pct} price={<PriceTag it={it} />} />}</For>
+                  </div>
+                </section>
+              )}
+            </For>
+            <Show when={!isKid() && !!S.emuReady}>
+              <div class="spromo f" data-k="shop-roms" data-r="26" data-a="romsadd" data-verb="Abrir">
+                <Icon n="plus" />
+                <div><b>Tem jogos de console antigos?</b><small>Adicione ROMs pelo pendrive ou envie do celular. Eles aparecem na aba Emuladores.</small></div>
+              </div>
+            </Show>
+          </Show>
         </div>
-      </div>
+      </Show>
     </>
   );
 }

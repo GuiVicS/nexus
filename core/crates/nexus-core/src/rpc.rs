@@ -447,37 +447,16 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
                     prov.install(&id).await?;
                     core.pending.lock().unwrap().insert(id.clone(), std::time::Instant::now());
                     core.kick.notify_one();
-                    // A Steam pede confirmação ("Install", dentro da janela dela), que fica no workspace dos jogos.
-                    // Sem isso o usuário aperta Instalar e não vê nada (validado no teste real): traz a Steam à frente
-                    // e volta ao Nexus quando o download começa (aparece o appmanifest) ou após 3 minutos.
+                    // A Steam pede confirmação num diálogo dela ("Install"). O usuário não deve ver a Steam: o overlay do
+                    // Nexus cobre a tela (deixando os cliques passarem), o diálogo vem à frente por baixo da capa, o Core
+                    // clica em "Install" e volta ao Nexus. Se o download não começa (ex.: falta espaço, botão desativado),
+                    // clica em "Cancel" e avisa no Nexus.
                     if let (Some(st), Some(n)) = (core.steam.clone(), id.strip_prefix("steam:").map(String::from)) {
                         if core.compositor.name() == "sway" {
                             let c = core.clone();
-                            std::thread::spawn(move || {
-                                use std::time::{Duration, Instant};
-                                let started = || st.root().is_some_and(|r| st.steamapps_dirs(&r).iter().any(|d| d.join(format!("appmanifest_{n}.acf")).is_file()));
-                                if started() {
-                                    return;
-                                }
-                                let t0 = Instant::now();
-                                while !crate::compositor::sway_windows().iter().any(|(a, _)| a.eq_ignore_ascii_case("steam")) {
-                                    if t0.elapsed() > Duration::from_secs(20) {
-                                        return;
-                                    }
-                                    std::thread::sleep(Duration::from_millis(400));
-                                }
-                                c.compositor.show_game();
-                                c.emit("steam.dialog", json!({ "open": true }));
-                                let t1 = Instant::now();
-                                while !started() && t1.elapsed() < Duration::from_secs(180) {
-                                    crate::compositor::raise_dialogs();
-                                    std::thread::sleep(Duration::from_millis(700));
-                                }
-                                if c.game_info().is_none() {
-                                    c.compositor.show_shell();
-                                }
-                                c.emit("steam.dialog", json!({ "open": false }));
-                            });
+                            let title = core.find_item(&id).await.map(|i| i.title).unwrap_or_default();
+                            let item_id = id.clone();
+                            std::thread::spawn(move || steam_confirm_install(c, st, n, item_id, title));
                         }
                     }
                 }
@@ -506,7 +485,14 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
         "controllers.actions" => Ok(crate::controllers::actions_json()),
         "emu.status" => {
             need_session(core)?;
-            Ok(tokio::task::spawn_blocking(crate::providers::emu::systems_status).await.unwrap_or(Value::Null))
+            let mut st = tokio::task::spawn_blocking(crate::providers::emu::systems_status).await.unwrap_or(Value::Null);
+            // emulação desligada (NEXUS_EMULATION=0): como se o RetroArch não existisse (sem aba Emuladores)
+            if !core.cfg.emulation {
+                if let Some(o) = st.as_object_mut() {
+                    o.insert("retroarch".into(), Value::Null);
+                }
+            }
+            Ok(st)
         }
         "emu.fetch_cores" => {
             let p = need_session(core)?;
@@ -565,15 +551,62 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
                 }
             }
         }
+        "roms.media" | "roms.mount" | "roms.browse" | "roms.import" | "roms.upload_link" => {
+            let p = need_session(core)?;
+            if p.kind == ProfileKind::Kid {
+                return Err(RpcError::new(E_FORBIDDEN, "Peça a um responsável para adicionar jogos"));
+            }
+            let fail = |e: String| RpcError::new(E_FAILED, &e);
+            match method {
+                "roms.media" => Ok(tokio::task::spawn_blocking(crate::roms::media).await.unwrap_or(Value::Null)),
+                "roms.mount" => {
+                    let dev = s(&v, "dev")?;
+                    let path = tokio::task::spawn_blocking(move || crate::roms::mount(&dev)).await.map_err(|e| fail(e.to_string()))?.map_err(fail)?;
+                    Ok(json!({ "path": path }))
+                }
+                "roms.browse" => {
+                    let path = s(&v, "path")?;
+                    Ok(tokio::task::spawn_blocking(move || crate::roms::browse(&path)).await.map_err(|e| fail(e.to_string()))?.map_err(fail)?)
+                }
+                "roms.import" => {
+                    let items: Vec<(std::path::PathBuf, String)> = v["items"].as_array().cloned().unwrap_or_default().iter().filter_map(|i| Some((std::path::PathBuf::from(i["path"].as_str()?), i["system"].as_str()?.to_string()))).collect();
+                    if items.is_empty() {
+                        return Err(RpcError::invalid("nada para copiar"));
+                    }
+                    let c = core.clone();
+                    let r = tokio::task::spawn_blocking(move || crate::roms::import(&items, &|done, total, name| c.emit("roms.progress", json!({ "done": done, "total": total, "name": name })))).await.map_err(|e| fail(e.to_string()))?;
+                    core.refresh_library().await;
+                    Ok(r)
+                }
+                _ => {
+                    // página de envio do celular: mesmo endereço/token do QR do controle, em /roms
+                    let url = core.hub.url().replacen("/?t=", "/roms?t=", 1);
+                    Ok(json!({ "url": url, "qrSvg": crate::remote::qr_svg(&url) }))
+                }
+            }
+        }
+        "steam.eula_answer" => {
+            need_session(core)?;
+            let accept = v.get("accept").and_then(|a| a.as_bool()).unwrap_or(false);
+            *core.eula.lock().unwrap_or_else(|e| e.into_inner()) = Some(accept);
+            Ok(json!({ "ok": true }))
+        }
+        "guide.closed" => {
+            // a Shell fechou o menu rápido sem voltar ao jogo (ex.: "Ir ao Início")
+            core.guide_open.store(false, std::sync::atomic::Ordering::SeqCst);
+            Ok(json!({ "ok": true }))
+        }
         "guide.press" => {
             crate::guide::pressed(core);
             Ok(json!({ "ok": true }))
         }
         "game.show_nexus" => {
+            core.guide_open.store(false, std::sync::atomic::Ordering::SeqCst);
             core.compositor.show_shell();
             Ok(json!({ "ok": true }))
         }
         "game.resume" => {
+            core.guide_open.store(false, std::sync::atomic::Ordering::SeqCst);
             if core.game_info().is_some() {
                 core.compositor.show_game();
             }
@@ -631,7 +664,7 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             need_session(core)?;
             let st = core.steam.as_ref().expect("steam provider");
             st.open_client()?;
-            core.compositor.show_game();
+            core.show_steam_ui();
             Ok(json!({ "ok": true }))
         }
         "steam.store_page" => {
@@ -642,7 +675,7 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             let id = s(&v, "id")?;
             let n: u32 = id.strip_prefix("steam:").and_then(|x| x.parse().ok()).ok_or_else(|| RpcError::invalid("id da Steam inválido"))?;
             core.steam.as_ref().expect("steam provider").open_store(n)?;
-            core.compositor.show_game();
+            core.show_steam_ui();
             Ok(json!({ "ok": true }))
         }
 
@@ -678,4 +711,111 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
         }
         _ => Err(RpcError::new(-32601, &format!("método desconhecido: {method}"))),
     }
+}
+
+
+/// Instala sem mostrar a Steam: confirma o diálogo "Install" dela por trás da capa do Nexus (ver `item.install`).
+/// Se o jogo tem contrato de licença (EULA), quem decide é o usuário: o Nexus pergunta na própria tela e só então
+/// clica em "Accept" (ou "Cancel").
+fn steam_confirm_install(c: Arc<Core>, st: Arc<crate::providers::steam::SteamProvider>, n: String, id: String, title: String) {
+    use crate::compositor::{click_at, hide_window, peek_window, steam_dialog, steam_dialog_points, SteamDialog};
+    use std::time::{Duration, Instant};
+    let started = || st.root().is_some_and(|r| st.steamapps_dirs(&r).iter().any(|d| d.join(format!("appmanifest_{n}.acf")).is_file()));
+    let wait = |secs: u64, done: &dyn Fn() -> bool| {
+        let t = Instant::now();
+        while !done() && t.elapsed() < Duration::from_secs(secs) {
+            std::thread::sleep(Duration::from_millis(300));
+        }
+        done()
+    };
+    let cover = |open: bool| {
+        c.emit("steam.dialog", json!({ "open": open, "title": title }));
+        if open {
+            std::thread::sleep(Duration::from_millis(500)); // a capa aparece antes da Steam
+        }
+    };
+    // clica num botão do diálogo (tirado do scratchpad, por baixo da capa)
+    let press = |kind: SteamDialog, ok: bool| -> bool {
+        let Some((k, con, _)) = steam_dialog().filter(|d| d.0 == kind) else { return false };
+        c.compositor.show_game();
+        peek_window(con);
+        std::thread::sleep(Duration::from_millis(1200)); // o diálogo (CEF) termina de desenhar
+        let Some((_, _, rect)) = steam_dialog().filter(|d| d.1 == con) else { return false };
+        let (yes, no) = steam_dialog_points(k, rect);
+        let (x, y) = if ok { yes } else { no };
+        tracing::info!("instalação {n}: diálogo {k:?} em {rect:?} → clique {} em ({x},{y})", if ok { "confirmar" } else { "cancelar" });
+        click_at(x, y);
+        true
+    };
+    let back = || {
+        for (_, con, _) in steam_dialog().into_iter() {
+            hide_window(con);
+        }
+        crate::compositor::steam_hide_all();
+        if c.game_info().is_none() {
+            c.compositor.show_shell();
+        }
+    };
+    // a Steam pode estar abrindo/atualizando: espera o diálogo até 90 s
+    if !wait(90, &|| started() || steam_dialog().is_some()) || started() {
+        return;
+    }
+    cover(true);
+    let mut outcome = "fail"; // ok | declined | fail
+    'tries: for _ in 0..3 {
+        if !press(SteamDialog::Install, true) && steam_dialog().is_none_or(|d| d.0 != SteamDialog::Eula) {
+            break;
+        }
+        // depois do "Install": começa o download, ou aparece o contrato de licença
+        let t = Instant::now();
+        while t.elapsed() < Duration::from_secs(10) {
+            if started() {
+                outcome = "ok";
+                break 'tries;
+            }
+            if steam_dialog().is_some_and(|d| d.0 == SteamDialog::Eula) {
+                tracing::info!("instalação {n}: contrato de licença — perguntando ao usuário");
+                back();
+                cover(false);
+                *c.eula.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                c.emit("steam.eula", json!({ "itemId": id, "title": title }));
+                let answer = (0..600).find_map(|_| {
+                    std::thread::sleep(Duration::from_millis(500));
+                    c.eula.lock().unwrap_or_else(|e| e.into_inner()).take()
+                });
+                cover(true);
+                let accept = answer == Some(true);
+                press(SteamDialog::Eula, accept);
+                if !accept {
+                    std::thread::sleep(Duration::from_millis(800));
+                    press(SteamDialog::Install, false);
+                    outcome = "declined";
+                    break 'tries;
+                }
+                if wait(15, &|| started()) {
+                    outcome = "ok";
+                }
+                break 'tries;
+            }
+            std::thread::sleep(Duration::from_millis(300));
+        }
+        if steam_dialog().is_none() {
+            break;
+        }
+    }
+    tracing::info!("instalação {n}: resultado {outcome} (diálogos abertos: {:?})", steam_dialog());
+    if outcome != "ok" && !started() {
+        // desiste: fecha o que sobrou (Cancel) e avisa — salvo se o usuário recusou o contrato
+        for kind in [SteamDialog::Eula, SteamDialog::Install] {
+            press(kind, false);
+        }
+        c.pending.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+        if outcome == "fail" {
+            c.notify("alert", "A Steam não começou a instalação", &format!("{title} · confira o espaço livre no disco"), None);
+        }
+    }
+    back();
+    std::thread::sleep(Duration::from_millis(400));
+    cover(false);
+    c.kick.notify_one();
 }

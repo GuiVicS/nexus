@@ -7,6 +7,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const BTN_MODE: u16 = 0x13c;
+const BTN_SELECT: u16 = 0x13a;
+const BTN_START: u16 = 0x13b;
 
 pub fn spawn(core: Arc<Core>) {
     let rt = tokio::runtime::Handle::current();
@@ -26,9 +28,21 @@ pub fn spawn(core: Arc<Core>) {
                 let (core, rt, watched) = (core.clone(), rt.clone(), watched.clone());
                 std::thread::spawn(move || {
                     let mut dev = dev;
+                    let (mut sel, mut start) = (false, false);
                     while let Ok(evs) = dev.fetch_events() {
                         for ev in evs {
-                            if ev.event_type() == evdev::EventType::KEY && ev.code() == BTN_MODE && ev.value() == 1 {
+                            if ev.event_type() != evdev::EventType::KEY {
+                                continue;
+                            }
+                            let down = ev.value() != 0;
+                            let fire = match ev.code() {
+                                BTN_MODE => ev.value() == 1,
+                                // Select+Start juntos = Guia (controles sem botão Guia): dispara ao completar o par
+                                BTN_SELECT => { let f = down && !sel && start; sel = down; f }
+                                BTN_START => { let f = down && !start && sel; start = down; f }
+                                _ => false,
+                            };
+                            if fire {
                                 let c = core.clone();
                                 rt.spawn(async move { pressed(&c) });
                             }
@@ -42,15 +56,36 @@ pub fn spawn(core: Arc<Core>) {
     });
 }
 
-/// Botão Guia (controle, tecla Super ou celular) com um jogo/app aberto: guarda um quadro da tela do jogo
-/// (fundo da Central, para ela parecer aberta por cima do jogo), traz a Shell e abre a Central.
+/// Menu rápido (botão Guia, Select+Start, F1, tecla Super ou celular) — abre e fecha com a mesma tecla, como num console:
+/// - Steam aberta a pedido (login/compra): esconde e volta ao Nexus;
+/// - jogo/app na tela: guarda um quadro dele (fundo desfocado do menu), traz a Shell e abre o menu;
+/// - menu aberto por cima do jogo: fecha e volta ao jogo;
+/// - no Nexus sem jogo (ou no Início com o jogo em segundo plano): abre/fecha a Central.
 pub fn pressed(core: &Core) {
+    use std::sync::atomic::Ordering;
+    if core.steam_ui.load(Ordering::SeqCst) {
+        core.hide_steam_ui();
+        return;
+    }
+    let sway = core.compositor.name() == "sway";
     if core.game_info().is_none() {
+        core.guide_open.store(false, Ordering::SeqCst);
+        core.emit("input.guide", serde_json::json!({ "toggle": true }));
+        return;
+    }
+    if core.guide_open.swap(false, Ordering::SeqCst) {
+        core.compositor.show_game();
+        core.emit("input.guide", serde_json::json!({ "close": true }));
+        return;
+    }
+    if sway && !crate::compositor::games_visible() {
+        // Nexus na frente, jogo em segundo plano: só alterna a Central (sem novo quadro)
+        core.emit("input.guide", serde_json::json!({ "toggle": true }));
         return;
     }
     // PNG: o grim do Debian/Ubuntu vem sem suporte a JPEG
     let frame = core.cfg.runtime_dir.join("frame.png");
-    let ok = core.compositor.name() == "sway"
+    let ok = sway
         && std::process::Command::new("grim")
             .args(["-l", "1"])
             .arg(&frame)
@@ -58,6 +93,7 @@ pub fn pressed(core: &Core) {
             .stderr(std::process::Stdio::null())
             .status()
             .is_ok_and(|s| s.success());
+    core.guide_open.store(true, Ordering::SeqCst);
     core.compositor.show_shell();
     core.emit("input.guide", serde_json::json!({ "frame": if ok { Some(nexus_protocol::now_unix()) } else { None } }));
 }

@@ -1,7 +1,7 @@
 # HANDOFF — Nexus
 
 > Documento para continuar o desenvolvimento em **outra sessão ou outro agente** sem perder contexto.
-> Atualize a seção "Estado atual" e "Próximos passos" **ao fim de cada sessão**. Última atualização: 2026-11-10 (versão 0.3.2).
+> Atualize a seção "Estado atual" e "Próximos passos" **ao fim de cada sessão**. Última atualização: 2026-11-12 (versão 0.4.0).
 
 ## 1. O que é
 
@@ -38,7 +38,27 @@ Sessão: nexus.desktop → nexus-session → sway kiosk (ws1 = Shell, ws2 = jogo
 - **Supervisor de jogos**: `game.rs` — lança em sessão própria (`setsid`), acompanha por processos (`/proc`; Steam via `reaper … SteamLaunch AppId=N`), fecha com SIGTERM→SIGKILL, registra tempo de jogo e limite diário infantil.
 - **Segurança**: socket 0600; HTTP local só com `Host` loopback (anti DNS-rebinding); Remote com token de 96 bits + bloqueio por IP; PIN com Argon2 e bloqueio por tentativas; imagens personalizadas validadas por conteúdo e restritas a pastas permitidas (`customart.rs`); Shell sem Node (`contextIsolation`, sandbox, CSP).
 
-## 4. Estado atual (0.3.2)
+## 4. Estado atual (0.4.0)
+
+**0.4.0 "carenagem de console" (release `v0.4.0`, 2026-11-12, plano em `~/.claude/plans/jiggly-forging-ullman.md`):** a Steam e o RetroArch são só motor, nunca aparecem.
+- **Steam escondida:** janelas da classe `steam` vão para o *scratchpad* do sway (`nexus-kiosk.conf`); `no_focus` impede janela nova de trocar a tela;
+  o Core só mostra o jogo quando a **janela do jogo** existe há ~1,2 s (`compositor::game_window_present`, fallback 12 s) e, ao sair, reafirma o Nexus por 1,6 s.
+  Login/compra: `core.show_steam_ui()` (Ajustes → Steam). Aviso "A Steam está preparando o jogo…" na Shell em vez de mostrar a Steam.
+- **Menu rápido:** F1 (teclado), Guia ou **Select+Start** (controle, `guide.rs` via evdev), Super. Mesma tecla abre/fecha; jogo desfocado atrás;
+  item "Ir ao Início" (jogo continua). Os botões flutuantes do `nexus-overlay` saíram; o overlay agora é só a **capa** "Instalando…".
+- **Instalar sem ver a Steam:** `rpc.rs::steam_confirm_install` acha o diálogo (Install 540×480 / EULA 640×600, `compositor::classify_steam_dialog`),
+  cobre com a capa (região de entrada vazia via ctypes) e clica pelo cursor do sway. **EULA é perguntada ao usuário na Shell** (`steam.eula`), nunca aceita sozinha.
+- **RetroArch sem "RETROARCH":** `~/.config/nexus/retroarch-nexus.cfg` via `--appendconfig` (sem animação/avisos, menu só L3+R3, Select+Start livre).
+- **Aba Emuladores** (`Emu.tsx`): consoles → jogos com capa; sem capa = arte do console + nome. ROMs saíram da Biblioteca.
+- **Adicionar jogos** (`Roms.tsx` + `roms.rs`): pendrive (`lsblk`/`udisksctl`), Downloads/pasta pessoal, marcar e copiar para `~/ROMs/<console>/`;
+  QR + link para `/roms?t=<token>` (página `roms_upload.html`, `POST /remote/upload`, 8 GB, mesmo token do controle no celular).
+- **Loja estilo Play Store** (`Views.tsx::Store`): abas em pílula ("Para você" + categorias, `data-group` no foco faz quem entra cair na aba ativa),
+  banners largos, prateleiras horizontais com "Ver tudo", atalho para adicionar ROMs. Página do jogo da loja: aba **Imagens** (capturas de `appdetails`
+  servidas pelo Core em `/art/<id>/shot0..3`, a CSP da Shell não deixa carregar imagem externa) e descrição/gêneros buscados ao abrir.
+- Validado na VM (sessão aninhada, screenshots): tudo acima, inclusive envio de ROM pela página do celular e cópia de pasta. **Não validado:** pendrive real,
+  controle físico com botão Guia, jogo que pede EULA até o fim (Spacewar ficou sem resposta), Pi.
+- Pendências pequenas: o diálogo de configuração do Unity ainda pisca; a capa "Instalando" fica sem título para jogo fora da biblioteca.
+
 
 **Funciona e tem teste automatizado** (ver §6): perfis/PIN/controle parental/tempo diário, perfil infantil, supervisor de jogos,
 provedor Steam (dados locais + loja pública + detalhes), apps Linux registrados com nome/tipo/ícone/capa/fundo personalizados e navegador de imagens,
@@ -168,7 +188,9 @@ Saídas de emergência: Ctrl+Alt+F3 (terminal; na VirtualBox Right-Ctrl+F3), `su
 - `sway` rejeita diretivas desconhecidas e **sai** (volta ao login). Valide sempre: `XDG_RUNTIME_DIR=/tmp/xr WLR_BACKENDS=headless sway -C -c system/sway/nexus-kiosk.conf` (a linha `titlebar_padding` era inválida).
 - Serviços `systemd --user` **não herdam** `WAYLAND_DISPLAY`/`SWAYSOCK`/`PATH`: o `exec` do kiosk faz `import-environment` antes de iniciar `nexus-session.target`. No Debian/Ubuntu a Steam é `/usr/games/steam` (fora do PATH de serviços).
 - Sandboxing agressivo no `.service` de usuário (`ProtectSystem`, `MemoryDenyWriteExecute`…) pode impedir o serviço de subir; foi removido.
-- No sway kiosk, **toda janela nova vai para o workspace 2**; o Core só troca de workspace quando detecta o jogo (ou após 7 s na Steam). Janelas de login/diálogo da Steam ficam invisíveis se o Core não trouxer o ws2 à frente.
+- No sway kiosk, **toda janela nova (menos a Steam) vai para o workspace 2**; a Steam vai para o scratchpad (invisível). O Core só troca de tela quando a janela do jogo está estável; para mostrar a Steam use `show_steam_ui`/`peek_window`.
+- **Testes na sessão aninhada com `wtype`:** depois de usar `wtype`, a Shell (Electron com `--disable-gpu`) **morre com SEGV ao reiniciar** (`xkb_state_update_mask`: o teclado virtual do wtype deixa um keymap no seat). Não afeta o aparelho real. Reinicie a sessão aninhada inteira em vez de só `nexus-shell`. F1 no kiosk é `bindsym` **sem** `--to-code` (senão o wtype não aciona).
+- `grim` trava com a proteção de tela do GNOME ativa: `gdbus call --session --dest org.gnome.ScreenSaver --object-path /org/gnome/ScreenSaver --method org.gnome.ScreenSaver.SetActive false`.
 - Electron único (`requestSingleInstanceLock`): uma instância antiga sobrando faz a nova sair **em silêncio**.
 - `pkill -f padrão` dentro de um `bash -c` mata o próprio shell (o padrão aparece na linha de comando); use `pgrep -f "[p]adrão" | xargs kill`.
 - Estado `Solid`: o foco do anel é recalculado quando o elemento focado some do DOM (`onLost` em `packages/focus`); overlays restauram o foco anterior (`ret`).
@@ -190,9 +212,9 @@ Saídas de emergência: Ctrl+Alt+F3 (terminal; na VirtualBox Right-Ctrl+F3), `su
 ## 11. Mapa rápido de arquivos
 
 ```
-core/crates/nexus-core/src/  accounts.rs db.rs game.rs rpc.rs net.rs remote.rs vdev.rs inputmap.rs customart.rs art.rs hardware.rs procs.rs guide.rs
-                             providers/{mod,steam,native,demo}.rs   tests/e2e.rs (Core de ponta a ponta)
-apps/shell/src/              main.tsx styles.css lib/{state,actions,input,session,api,format,flows}.ts components/{App,Views,Hub,Overlays,Settings,Profiles,Apps,Entry,ui}.tsx
+core/crates/nexus-core/src/  accounts.rs db.rs game.rs rpc.rs net.rs remote.rs vdev.rs inputmap.rs customart.rs art.rs hardware.rs procs.rs guide.rs compositor.rs roms.rs roms_upload.html
+                             providers/{mod,steam,native,demo,emu,web}.rs   tests/e2e.rs (Core de ponta a ponta)
+apps/shell/src/              main.tsx styles.css lib/{state,actions,input,session,api,format,flows}.ts components/{App,Views,Emu,Roms,Hub,Overlays,Settings,Profiles,Apps,Entry,ui}.tsx
 apps/shell/electron/         main.cjs preload.cjs   (ponte segura com o Core; protocolo nexus-art://)
 apps/remote/src/             App.tsx Gamepad.tsx Touchpad.tsx link.ts remote.css   (celular)
 packages/{protocol,focus,ui} installer/src/{main,detect,plan,autologin}.rs

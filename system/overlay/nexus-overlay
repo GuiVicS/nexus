@@ -1,16 +1,18 @@
 #!/usr/bin/python3 -I
-"""Botões do Nexus por cima de qualquer jogo ou app aberto pelo Nexus (Steam, Proton, navegador, Linux).
+"""Capa do Nexus por cima de tudo (camada de sobreposição do sway, wlr-layer-shell).
 
-Fica na camada de sobreposição do sway (wlr-layer-shell), que é desenhada acima até de janelas em
-tela cheia. Não pega o teclado (o jogo continua recebendo tudo). Aparece só com um jogo/app aberto
-e com o workspace dos jogos à frente; some quando o Nexus está na tela.
-  ☰ Nexus  → abre a Central (o mesmo que o botão Guia ou a tecla Super)
-  ✕ Sair   → fecha o jogo/app e volta ao Nexus
+A Steam é só o motor do Nexus: quando o Core precisa mexer numa janela dela (ex.: confirmar o diálogo
+"Install" de um jogo), esta capa cobre a tela inteira com a cara do Nexus ("Instalando <jogo>…"). A capa não
+pega teclado nem mouse (a região de entrada é vazia), então o clique que o Core manda pelo sway atravessa
+até a janela da Steam por baixo. Ninguém vê a Steam.
+
+(Os botões flutuantes "☰ Nexus / ✕ Sair" das versões anteriores saíram: o menu rápido abre com o botão Guia,
+Select+Start, F1 ou a tecla Super — como num console.)
 """
+import ctypes
 import json
 import os
 import socket
-import subprocess
 import threading
 import time
 
@@ -22,166 +24,116 @@ gi.require_version("GtkLayerShell", "0.1")
 from gi.repository import Gdk, GLib, Gtk, GtkLayerShell  # noqa: E402
 
 SOCK = os.path.join(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"), "nexus", "core.sock")
-COMPACT_AFTER = 6  # segundos expandido ao abrir o jogo
+MAX_SECS = 60  # se o Core sumir no meio, a capa não fica para sempre
 
 CSS = b"""
-window { background: transparent; }
-.pill { background: rgba(11,16,18,.82); border-radius: 999px; padding: 6px; border: 1px solid rgba(43,212,189,.45); }
-.pill.compact { background: rgba(11,16,18,.45); border-color: rgba(255,255,255,.12); }
-button { background: transparent; border: none; box-shadow: none; color: #f3faf9; font-size: 15px; font-weight: 600; padding: 6px 14px; border-radius: 999px; }
-button:hover { background: rgba(43,212,189,.25); }
-button.exit:hover { background: rgba(251,113,133,.35); }
+window.cover { background: #0b1012; }
+.cover .title { color: #f3faf9; font-size: 34px; font-weight: 700; }
+.cover .sub { color: rgba(243,250,249,.62); font-size: 18px; }
+.cover .brand { color: #2bd4bd; font-size: 15px; font-weight: 700; letter-spacing: 6px; }
 """
 
 
-def rpc(method, params=None):
-    """Chamada avulsa ao Core (uma conexão por chamada: simples e sem estado)."""
+def click_through(win):
+    """Região de entrada vazia: cliques e toques passam para a janela de baixo.
+    Via ctypes (GDK + cairo do sistema) porque o python3-gi-cairo nem sempre está instalado."""
     try:
-        s = socket.socket(socket.AF_UNIX)
-        s.settimeout(3)
-        s.connect(SOCK)
-        s.sendall((json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}) + "\n").encode())
-        f = s.makefile("r")
-        while True:
-            line = f.readline()
-            if not line:
-                return None
-            msg = json.loads(line)
-            if msg.get("id") == 1:
-                s.close()
-                return msg.get("result")
-    except (OSError, ValueError):
-        return None
+        gdkwin = win.get_window()
+        if gdkwin is None:
+            return False
+        get_ptr = ctypes.pythonapi.PyCapsule_GetPointer
+        get_ptr.restype = ctypes.c_void_p
+        get_ptr.argtypes = [ctypes.py_object, ctypes.c_char_p]
+        ptr = get_ptr(gdkwin.__gpointer__, None)
+        cairo = ctypes.CDLL("libcairo.so.2")
+        cairo.cairo_region_create.restype = ctypes.c_void_p
+        gdk = ctypes.CDLL("libgdk-3.so.0")
+        gdk.gdk_window_input_shape_combine_region.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int]
+        region = cairo.cairo_region_create()
+        gdk.gdk_window_input_shape_combine_region(ptr, region, 0, 0)
+        cairo.cairo_region_destroy.argtypes = [ctypes.c_void_p]
+        cairo.cairo_region_destroy(region)
+        return True
+    except (OSError, AttributeError, ValueError, TypeError):
+        return False
 
 
-class Overlay:
+class Cover:
     def __init__(self):
-        self.game = False
-        self.games_ws = False
-        self.compact = False
-        self.hide_at = 0.0
-
+        self.until = 0.0
         prov = Gtk.CssProvider()
         prov.load_from_data(CSS)
         Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
 
         self.win = Gtk.Window()
+        self.win.get_style_context().add_class("cover")
         GtkLayerShell.init_for_window(self.win)
-        GtkLayerShell.set_namespace(self.win, "nexus-overlay")
+        GtkLayerShell.set_namespace(self.win, "nexus-cover")
         GtkLayerShell.set_layer(self.win, GtkLayerShell.Layer.OVERLAY)
-        GtkLayerShell.set_anchor(self.win, GtkLayerShell.Edge.TOP, True)
-        GtkLayerShell.set_anchor(self.win, GtkLayerShell.Edge.RIGHT, True)
-        GtkLayerShell.set_margin(self.win, GtkLayerShell.Edge.TOP, 16)
-        GtkLayerShell.set_margin(self.win, GtkLayerShell.Edge.RIGHT, 16)
+        for e in (GtkLayerShell.Edge.TOP, GtkLayerShell.Edge.BOTTOM, GtkLayerShell.Edge.LEFT, GtkLayerShell.Edge.RIGHT):
+            GtkLayerShell.set_anchor(self.win, e, True)
+        GtkLayerShell.set_exclusive_zone(self.win, -1)
         GtkLayerShell.set_keyboard_mode(self.win, GtkLayerShell.KeyboardMode.NONE)
-        self.win.set_app_paintable(True)
-        visual = self.win.get_screen().get_rgba_visual()
-        if visual:
-            self.win.set_visual(visual)
 
-        self.box = Gtk.Box(spacing=4)
-        self.box.get_style_context().add_class("pill")
-        self.menu = Gtk.Button(label="☰  Nexus")
-        self.menu.set_tooltip_text("Abrir a Central do Nexus")
-        self.menu.connect("clicked", lambda *_: threading.Thread(target=rpc, args=("guide.press",), daemon=True).start())
-        self.exit = Gtk.Button(label="✕  Sair")
-        self.exit.get_style_context().add_class("exit")
-        self.exit.connect("clicked", lambda *_: threading.Thread(target=rpc, args=("game.close",), daemon=True).start())
-        self.box.pack_start(self.menu, False, False, 0)
-        self.box.pack_start(self.exit, False, False, 0)
-        ev = Gtk.EventBox()
-        ev.add(self.box)
-        ev.connect("enter-notify-event", lambda *_: self.expand(4))
-        self.win.add(ev)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        box.set_halign(Gtk.Align.CENTER)
+        box.set_valign(Gtk.Align.CENTER)
+        brand = Gtk.Label(label="NEXUS")
+        brand.get_style_context().add_class("brand")
+        self.spin = Gtk.Spinner()
+        self.spin.set_size_request(42, 42)
+        self.title = Gtk.Label()
+        self.title.get_style_context().add_class("title")
+        self.sub = Gtk.Label(label="Preparando o download…")
+        self.sub.get_style_context().add_class("sub")
+        for w in (brand, self.spin, self.title, self.sub):
+            box.pack_start(w, False, False, 0)
+        self.win.add(box)
+        self.win.connect("map-event", lambda *_: click_through(self.win))
 
-        GLib.timeout_add(500, self.tick)
+        GLib.timeout_add(1000, self.tick)
         threading.Thread(target=self.watch_core, daemon=True).start()
-        threading.Thread(target=self.watch_sway, daemon=True).start()
 
-    # ---- estado ----
-    def expand(self, secs=COMPACT_AFTER):
-        self.compact = False
-        self.hide_at = time.time() + secs
-        self.render()
+    def show(self, title):
+        self.title.set_text(f"Instalando {title}" if title else "Instalando")
+        self.until = time.time() + MAX_SECS
+        self.win.show_all()
+        self.spin.start()
+        click_through(self.win)
         return False
 
-    def render(self):
-        ctx = self.box.get_style_context()
-        if self.compact:
-            ctx.add_class("compact")
-            self.menu.set_label("☰")
-            self.exit.hide()
-        else:
-            ctx.remove_class("compact")
-            self.menu.set_label("☰  Nexus")
-            self.exit.show()
-        if self.game and self.games_ws:
-            self.win.show_all()
-            if self.compact:
-                self.exit.hide()
-        else:
-            self.win.hide()
+    def hide(self):
+        self.until = 0.0
+        self.spin.stop()
+        self.win.hide()
+        return False
 
     def tick(self):
-        if not self.compact and self.hide_at and time.time() > self.hide_at:
-            self.compact = True
-            self.render()
+        if self.until and time.time() > self.until:
+            self.hide()
         return True
 
-    def set_game(self, running):
-        if running != self.game:
-            self.game = running
-            if running:
-                self.expand()
-            else:
-                self.render()
-
-    def set_ws(self, games):
-        if games != self.games_ws:
-            self.games_ws = games
-            if games:
-                self.expand(3)
-            else:
-                self.render()
-
-    # ---- fontes ----
     def watch_core(self):
-        """Eventos do Core: jogo começou/terminou. Reconecta se o Core reiniciar."""
+        """Eventos do Core: steam.dialog {open, title}. Reconecta se o Core reiniciar."""
         while True:
             try:
                 s = socket.socket(socket.AF_UNIX)
                 s.connect(SOCK)
-                s.sendall(b'{"jsonrpc":"2.0","id":1,"method":"game.current","params":{}}\n')
+                s.sendall(b'{"jsonrpc":"2.0","id":1,"method":"hello","params":{}}\n')
                 for line in s.makefile("r"):
                     msg = json.loads(line)
-                    if msg.get("id") == 1:
-                        GLib.idle_add(self.set_game, bool(msg.get("result")))
-                    elif msg.get("method") in ("game.started", "game.launching"):
-                        GLib.idle_add(self.set_game, True)
-                    elif msg.get("method") in ("game.exited", "game.failed"):
-                        GLib.idle_add(self.set_game, False)
+                    if msg.get("method") == "steam.dialog":
+                        p = msg.get("params") or {}
+                        if p.get("open"):
+                            GLib.idle_add(self.show, p.get("title") or "")
+                        else:
+                            GLib.idle_add(self.hide)
             except (OSError, ValueError):
                 pass
-            GLib.idle_add(self.set_game, False)
-            time.sleep(2)
-
-    def watch_sway(self):
-        """Qual workspace está à frente: 2 = jogos (mostra), 1 = Nexus (esconde)."""
-        while True:
-            try:
-                p = subprocess.Popen(["swaymsg", "-m", "-t", "subscribe", '["workspace"]'], stdout=subprocess.PIPE, text=True)
-                cur = subprocess.run(["swaymsg", "-t", "get_workspaces"], capture_output=True, text=True).stdout
-                vis = [w["name"] for w in json.loads(cur or "[]") if w.get("visible")]
-                GLib.idle_add(self.set_ws, "2" in vis)
-                for line in p.stdout:
-                    e = json.loads(line)
-                    if e.get("change") == "focus" and e.get("current"):
-                        GLib.idle_add(self.set_ws, e["current"].get("name") == "2")
-            except (OSError, ValueError):
-                pass
+            GLib.idle_add(self.hide)
             time.sleep(2)
 
 
 if __name__ == "__main__":
-    Overlay()
+    Cover()
     Gtk.main()

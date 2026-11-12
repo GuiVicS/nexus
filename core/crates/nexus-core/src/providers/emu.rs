@@ -243,9 +243,18 @@ impl Provider for EmuProvider {
         let lib = tokio::task::spawn_blocking(move || fetch_core(&cores2, core)).await?.map_err(ProviderError::Msg)?;
         let mut argv = cmd;
         argv.extend(["-f".into(), "-L".into(), lib.display().to_string()]);
+        // Como no EmulationStation, o RetroArch é só o motor: config do Nexus por cima da do usuário. Vários
+        // arquivos no --appendconfig vão separados por "|".
+        let mut extra = vec![];
+        if let Some(cfg) = write_nexus_cfg() {
+            extra.push(cfg.display().to_string());
+        }
         let players = crate::controllers::players_file();
         if players.is_file() {
-            argv.push(format!("--appendconfig={}", players.display()));
+            extra.push(players.display().to_string());
+        }
+        if !extra.is_empty() {
+            argv.push(format!("--appendconfig={}", extra.join("|")));
         }
         argv.push(rom.display().to_string());
         Ok(LaunchPlan { argv, env: vec![], cwd: None, tracker: Tracker::Process })
@@ -267,6 +276,47 @@ impl Provider for EmuProvider {
         let base = format!("https://thumbnails.libretro.com/{}/Named_Boxarts/", enc(SYSTEMS[si].thumbs));
         ArtSource::Urls(vec![format!("{base}{}.png", enc(&thumb_name(stem))), format!("{base}{}.png", enc(&thumb_name(&title_of(stem))))])
     }
+}
+
+/// Opções que deixam o RetroArch "invisível": sem animação de carga nem avisos na tela, sem salvar a config
+/// do usuário ao sair, e sem atalhos que fecham o jogo por conta própria (Select+Start e F1 são do menu do Nexus;
+/// fechar é pelo menu do Nexus). O menu do RetroArch (estados salvos, trapaças) fica em L3+R3.
+pub const NEXUS_RETROARCH_CFG: &str = r#"# gerado pelo Nexus — não edite (é refeito a cada jogo)
+menu_show_load_content_animation = "false"
+video_font_enable = "false"
+notification_show_autoconfig = "false"
+notification_show_config_override_load = "false"
+notification_show_remap_load = "false"
+notification_show_set_initial_disk = "false"
+notification_show_fast_forward = "false"
+notification_show_refresh_rate = "false"
+notification_show_netplay_extra = "false"
+notification_show_patch_applied = "false"
+notification_show_cheats_applied = "false"
+notification_show_screenshot = "false"
+notification_show_save_state = "false"
+config_save_on_exit = "false"
+video_fullscreen = "true"
+pause_nonactive = "false"
+quit_press_twice = "false"
+input_exit_emulator = "nul"
+input_exit_emulator_btn = "nul"
+input_exit_emulator_axis = "nul"
+input_menu_toggle = "nul"
+input_menu_toggle_btn = "nul"
+input_menu_toggle_gamepad_combo = "2"
+input_quit_gamepad_combo = "0"
+"#;
+
+pub fn nexus_cfg_file() -> PathBuf {
+    PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".config/nexus/retroarch-nexus.cfg")
+}
+
+fn write_nexus_cfg() -> Option<PathBuf> {
+    let p = nexus_cfg_file();
+    std::fs::create_dir_all(p.parent()?).ok()?;
+    std::fs::write(&p, NEXUS_RETROARCH_CFG).ok()?;
+    Some(p)
 }
 
 /// Situação de cada console para a tela de Ajustes: quantos jogos e se o núcleo já foi baixado.

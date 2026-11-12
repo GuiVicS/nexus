@@ -25,7 +25,7 @@ pub struct Hub {
     fails: Mutex<HashMap<IpAddr, (u32, Instant)>>,
 }
 
-fn qr_svg(data: &str) -> String {
+pub fn qr_svg(data: &str) -> String {
     use qrcode::{render::svg, QrCode};
     QrCode::new(data.as_bytes())
         .map(|c| c.render::<svg::Color>().min_dimensions(260, 260).dark_color(svg::Color("#04201c")).light_color(svg::Color("#ffffff")).quiet_zone(true).build())

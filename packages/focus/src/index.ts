@@ -2,6 +2,7 @@
 // Opera sobre o DOM: elementos focáveis têm a classe `f`; atributos data-* descrevem o comportamento.
 //   data-r      raio do anel ("p" = pílula)   data-pad  folga do anel em px
 //   data-cyc    cicla valor com ◀ ▶            data-slider  ajusta valor com ◀ ▶
+//   data-group  ao entrar no grupo vindo de fora, o foco vai ao item .on dele
 
 export type Dir = 'u' | 'd' | 'l' | 'r';
 
@@ -179,7 +180,10 @@ export class Focus {
       if (this.o.onAdjust?.(cur, d === 'r' ? 1 : -1)) return;
     }
     const cands = focusables(L).map((el) => ({ el, rect: el.getBoundingClientRect() }));
-    const best = pickNeighbor(d, cur.getBoundingClientRect(), cands, cur);
+    let best = pickNeighbor(d, cur.getBoundingClientRect(), cands, cur);
+    // grupo (data-group, ex.: as abas em pílula da Loja): quem entra de fora cai no item ativo (.on), não no vizinho geométrico
+    const g = best?.dataset.group;
+    if (best && g && cur.dataset.group !== g) best = L.querySelector<HTMLElement>(`.f.on[data-group="${g}"]`) ?? best;
     if (best) this.set(best);
     else this.o.onBump?.();
   }

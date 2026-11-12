@@ -21,7 +21,12 @@ export interface Events {
   'remote.scroll': { v: number };
   'remote.key': { key: string; mods: string[] };
   'remote.text': { back: number; text: string };
-  'input.guide': Record<string, never>;
+  'input.guide': { frame?: number | null; toggle?: boolean; close?: boolean };
+  'steam.ui': { open: boolean };
+  'steam.dialog': { open: boolean; title?: string };
+  'steam.eula': { itemId: string; title: string };
+  'roms.progress': { done: number; total: number; name: string };
+  'roms.received': { name: string; size: number };
   'system.power': { action: string; simulated: boolean };
 }
 

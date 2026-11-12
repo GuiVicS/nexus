@@ -1,3 +1,16 @@
+/** Pendrives/HDs removíveis e pastas para buscar ROMs (aba Emuladores → Adicionar jogos). */
+export interface RomMedia {
+  media: { dev: string; label: string; mount: string | null; size: number; fs: string }[];
+  home: string;
+  romsDir: string;
+}
+export interface RomListing {
+  path: string;
+  parent: string | null;
+  system: string | null;
+  dirs: { name: string; path: string; system: string | null }[];
+  files: { name: string; path: string; size: number; systems: string[] }[];
+}
 import { RpcClient } from './client';
 import type { CustomApp, FsListing, SystemApp, Friend, GameSession, HardwareProfile, Hello, Item, LibraryPage, Notification, Parental, Prefs, Profile, RemotePairing, SessionInfo, SteamAccount } from './generated';
 
@@ -39,6 +52,11 @@ export function createApi(c: RpcClient) {
     updateApp: (p: { id: string; name?: string | null; kind?: 'game' | 'app'; icon?: string | null; cover?: string | null; hero?: string | null } & Auth) => call<CustomApp>('apps.update', p),
     removeApp: (id: string, a: Auth) => call<{ ok: true }>('apps.remove', { id, ...a }),
     fsList: (path?: string, a: { grant?: string } = {}) => call<FsListing>('fs.list', { path, ...a }),
+    romsMedia: () => call<RomMedia>('roms.media'),
+    romsMount: (dev: string) => call<{ path: string }>('roms.mount', { dev }),
+    romsBrowse: (path: string) => call<RomListing>('roms.browse', { path }),
+    romsImport: (items: { path: string; system: string }[]) => call<{ ok: boolean; copied: string[]; failed: { name: string; error: string }[] }>('roms.import', { items }, 60 * 60 * 1000),
+    romsUploadLink: () => call<{ url: string; qrSvg: string }>('roms.upload_link'),
     importAvatar: (path: string, a: { grant?: string } = {}) => call<{ avatar: string }>('profiles.avatar_import', { path, ...a }),
     steamAccount: () => call<SteamAccount>('steam.account'),
     steamSetKey: (key: string) => call<{ ok: true }>('steam.set_key', { key }),
@@ -72,6 +90,8 @@ export function createApi(c: RpcClient) {
     closeGame: (force = false) => call<{ closing: boolean }>('game.close', { force }),
     showNexus: () => call('game.show_nexus'),
     resumeGame: () => call('game.resume'),
+    guideClosed: () => call('guide.closed'),
+    eulaAnswer: (accept: boolean) => call('steam.eula_answer', { accept }),
     notifications: () => call<Notification[]>('notifications.list'),
     clearNotifications: () => call('notifications.clear'),
     pairing: () => call<RemotePairing>('remote.pairing'),

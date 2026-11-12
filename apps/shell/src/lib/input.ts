@@ -32,7 +32,7 @@ export function input(k: string) {
 
 const KEYS: Record<string, string> = {
   ArrowUp: 'u', ArrowDown: 'd', ArrowLeft: 'l', ArrowRight: 'r', Enter: 'A', ' ': 'A', Escape: 'B', Backspace: 'B',
-  s: 'Y', S: 'Y', m: 'OPT', M: 'OPT', o: 'OPT', q: 'LB', Q: 'LB', e: 'RB', E: 'RB', PageUp: 'LT', PageDown: 'RT', Tab: 'G', g: 'G', G: 'G', Home: 'G',
+  s: 'Y', S: 'Y', m: 'OPT', M: 'OPT', o: 'OPT', q: 'LB', Q: 'LB', e: 'RB', E: 'RB', PageUp: 'LT', PageDown: 'RT', Tab: 'G', F1: 'G', g: 'G', G: 'G', Home: 'G',
 };
 
 // ---------- cursor virtual (celular sem /dev/uinput) ----------

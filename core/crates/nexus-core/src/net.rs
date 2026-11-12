@@ -221,8 +221,70 @@ async fn remote_conn(core: Arc<Core>, mut socket: WebSocket) {
     }
 }
 
+// ---------- envio de jogos (ROMs) pelo celular/computador ----------
+
+const ROMS_PAGE: &str = include_str!("roms_upload.html");
+
+async fn roms_page(State(core): State<Arc<Core>>, ConnectInfo(addr): ConnectInfo<SocketAddr>, Query(q): Query<HashMap<String, String>>) -> Response {
+    if let Err(e) = core.hub.token_ok(addr.ip(), q.get("t").map(String::as_str).unwrap_or("")) {
+        return (StatusCode::FORBIDDEN, axum::response::Html(format!("<meta name=viewport content='width=device-width'><p style='font:18px sans-serif;padding:24px'>{e}</p>"))).into_response();
+    }
+    let page = ROMS_PAGE.replace("__SYSTEMS__", &crate::roms::systems_json().to_string());
+    ([(header::CACHE_CONTROL, "no-store")], axum::response::Html(page)).into_response()
+}
+
+/// POST /remote/upload?t=<token>&system=<pasta>&name=<arquivo> — corpo = o arquivo. Grava em ~/ROMs/<console>/.
+async fn roms_upload(State(core): State<Arc<Core>>, ConnectInfo(addr): ConnectInfo<SocketAddr>, Query(q): Query<HashMap<String, String>>, body: axum::body::Body) -> Response {
+    use futures_util::StreamExt;
+    use tokio::io::AsyncWriteExt;
+    let err = |code: StatusCode, e: &str| (code, axum::Json(json!({ "ok": false, "error": e }))).into_response();
+    if let Err(e) = core.hub.token_ok(addr.ip(), q.get("t").map(String::as_str).unwrap_or("")) {
+        return err(StatusCode::FORBIDDEN, e);
+    }
+    let (tmp, dest) = match crate::roms::upload_target(q.get("system").map(String::as_str).unwrap_or(""), q.get("name").map(String::as_str).unwrap_or("")) {
+        Ok(t) => t,
+        Err(e) => return err(StatusCode::BAD_REQUEST, &e),
+    };
+    let Ok(mut f) = tokio::fs::File::create(&tmp).await else { return err(StatusCode::INTERNAL_SERVER_ERROR, "não foi possível gravar") };
+    let mut total: u64 = 0;
+    let mut stream = body.into_data_stream();
+    while let Some(chunk) = stream.next().await {
+        let ok = match chunk {
+            Ok(b) => {
+                total += b.len() as u64;
+                total <= crate::roms::MAX_UPLOAD && f.write_all(&b).await.is_ok()
+            }
+            Err(_) => false,
+        };
+        if !ok {
+            drop(f);
+            let _ = tokio::fs::remove_file(&tmp).await;
+            return err(StatusCode::BAD_REQUEST, if total > crate::roms::MAX_UPLOAD { "Arquivo grande demais (máx. 8 GB)" } else { "O envio foi interrompido" });
+        }
+    }
+    if total == 0 || f.flush().await.is_err() {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return err(StatusCode::BAD_REQUEST, "Arquivo vazio");
+    }
+    drop(f);
+    if tokio::fs::rename(&tmp, &dest).await.is_err() {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return err(StatusCode::INTERNAL_SERVER_ERROR, "não foi possível gravar");
+    }
+    let name = dest.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+    tracing::info!("ROM recebida pelo celular: {} ({total} bytes)", dest.display());
+    core.emit("roms.received", json!({ "name": name, "size": total }));
+    core.notify("download", "Jogo recebido", &name, None);
+    core.kick.notify_one();
+    axum::Json(json!({ "ok": true, "name": name, "size": total })).into_response()
+}
+
 pub fn remote_router(core: Arc<Core>) -> Router {
-    let mut r = Router::new().route("/remote/hello", get(remote_hello)).route("/remote/ws", get(remote_ws));
+    let mut r = Router::new()
+        .route("/remote/hello", get(remote_hello))
+        .route("/remote/ws", get(remote_ws))
+        .route("/roms", get(roms_page))
+        .route("/remote/upload", axum::routing::post(roms_upload).layer(axum::extract::DefaultBodyLimit::disable()));
     if let Some(dir) = core.cfg.remote_dir.clone() {
         r = r.fallback_service(ServeDir::new(&dir).not_found_service(ServeFile::new(dir.join("index.html"))));
     }

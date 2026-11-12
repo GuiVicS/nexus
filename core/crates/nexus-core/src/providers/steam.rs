@@ -200,6 +200,9 @@ pub struct Details {
     pub developer: String,
     pub year: Option<u16>,
     pub linux: bool,
+    /// capturas de tela (1920px) da página da loja
+    #[serde(default)]
+    pub shots: Vec<String>,
 }
 
 pub const STORE_CATS: &[&str] = &["destaques", "linux", "gratis", "ofertas", "lancamentos"];
@@ -295,6 +298,7 @@ pub fn parse_details(json: &str, appid: u32) -> Option<Details> {
         developer: d["developers"].as_array().and_then(|x| x.first()).and_then(|x| x.as_str()).unwrap_or("").to_string(),
         year,
         linux: d["platforms"]["linux"].as_bool().unwrap_or(false),
+        shots: d["screenshots"].as_array().into_iter().flatten().filter_map(|x| x["path_full"].as_str().map(String::from)).filter(|u| u.starts_with("https://")).take(4).collect(),
     })
 }
 
@@ -787,7 +791,7 @@ impl SteamProvider {
     }
 
     async fn details(&self, appid: u32) -> Option<Details> {
-        let key = format!("sd:{appid}");
+        let key = format!("sd2:{appid}"); // sd2: com capturas de tela
         if let Some(d) = self.db.kv_get(&key).and_then(|s| serde_json::from_str::<Details>(&s).ok()) {
             return Some(d);
         }
@@ -906,6 +910,11 @@ impl Provider for SteamProvider {
         ArtSource::Urls(v)
     }
 
+    async fn shots(&self, id: &str) -> Vec<String> {
+        let Some(n) = split_id(id).and_then(|(_, a)| a.parse::<u32>().ok()) else { return vec![] };
+        self.details(n).await.map(|d| d.shots).unwrap_or_default()
+    }
+
     async fn art_late(&self, id: &str, kind: ArtKind) -> Vec<String> {
         let Some(n) = split_id(id).and_then(|(_, a)| a.parse::<u32>().ok()) else { return vec![] };
         if known_assets(n).is_some() {
@@ -924,6 +933,16 @@ mod tests {
 
     fn acf(flags: u64, dl: u64, tot: u64) -> Acf {
         Acf { appid: 1, name: "X".into(), state_flags: flags, size_on_disk: 0, bytes_to_download: tot, bytes_downloaded: dl, last_updated: 0 }
+    }
+
+    #[test]
+    fn details_bring_screenshots() {
+        let j = r#"{"570":{"success":true,"data":{"name":"Dota 2","screenshots":[{"path_full":"https://cdn/x/1.jpg"},{"path_full":"http://inseguro/2.jpg"},{"path_full":"https://cdn/x/3.jpg"}]}}}"#;
+        let d = parse_details(j, 570).unwrap();
+        assert_eq!(d.shots, ["https://cdn/x/1.jpg", "https://cdn/x/3.jpg"]);
+        // detalhes antigos guardados em cache (sem o campo) continuam lendo
+        let old: Details = serde_json::from_str(r#"{"name":"a","age":0,"free":true,"desc":"","genres":[],"developer":"","year":null,"linux":false}"#).unwrap();
+        assert!(old.shots.is_empty());
     }
 
     #[test]

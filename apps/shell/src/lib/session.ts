@@ -26,7 +26,8 @@ export async function enterShell(info: SessionInfo) {
   applyPrefs();
   await loadData();
   closeAllOv();
-  setS({ tab: 'home', scr: 'shell', dockId: null, bgId: null, libFilter: 'todos', shopCat: 'jogos' });
+  setS({ tab: 'home', scr: 'shell', dockId: null, bgId: null, libFilter: 'todos', shopCat: 'inicio', emuSys: null });
+  void api.emuStatus().then((st) => setS('emuReady', !!st.retroarch)).catch(() => {});
   sfx('profile');
   queueMicrotask(() => requestAnimationFrame(() => document.dispatchEvent(new CustomEvent('nexus:focus-home'))));
   const g = new Date().getHours();
@@ -131,12 +132,33 @@ export function startEvents() {
     if (!isKid()) return;
     void import('./actions').then((m) => m.showTimeUp());
   });
+  // Instalação da Steam com contrato de licença: quem aceita é o usuário, na tela do Nexus (a Steam fica escondida).
+  client.on('steam.eula', (p: { title: string }) => {
+    void askConfirm({
+      title: 'Contrato de licença',
+      sub: `Para instalar ${p.title || 'este jogo'}, é preciso aceitar o contrato de licença (EULA) do jogo. Ao aceitar, você concorda com os termos dele na Steam.`,
+      yes: 'Aceitar e instalar',
+      no: 'Cancelar',
+    }).then((ok) => api.eulaAnswer(ok).catch(() => {}));
+  });
   client.on('remote.devices', (p) => {
     if (S.pairing) setS('pairing', 'devices', reconcile(p.devices, { key: 'id' }));
   });
-  client.on('input.guide', (p: { frame?: number | null }) => {
-    setS('frame', p?.frame ?? null);
+  // Menu rápido (Guia, Select+Start, F1, Super): o Core decide se abre por cima do jogo (com quadro), fecha
+  // (voltou ao jogo) ou só alterna a Central no Nexus.
+  client.on('input.guide', (p: { frame?: number | null; toggle?: boolean; close?: boolean }) => {
     void import('./actions').then((m) => {
+      if (p?.close) {
+        if (topOv()?.kind === 'guide') popOv(undefined, true);
+        setS('frame', null);
+        return;
+      }
+      if (p?.toggle) {
+        if (topOv()?.kind === 'guide') m.closeGuide();
+        else m.ACT.guide('');
+        return;
+      }
+      setS('frame', p?.frame ?? null);
       if (topOv()?.kind !== 'guide') m.ACT.guide('');
     });
   });

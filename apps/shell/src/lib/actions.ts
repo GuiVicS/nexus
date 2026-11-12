@@ -3,16 +3,19 @@ import { RpcError, E } from '@nexus/protocol';
 import type { Item } from '@nexus/protocol';
 import { audioInit, sfx } from '@nexus/ui';
 import { api } from './api';
-import { askConfirm, closeAllOv, fail, findItem, focusNow, fx, guarded, hasOv, isInstalled, isKid, me, ovs, popOv, prefs, pushOv, replaceTop, requireParental, S, setPref, setS, toast, topOv, upsertLib, setMode } from './state';
+import { askConfirm, closeAllOv, fail, findItem, focusNow, fx, guarded, hasOv, isInstalled, isKid, me, ovs, popOv, prefs, pushOv, replaceTop, requireParental, S, setPref, setS, toast, topOv, upsertLib, patchItem, setMode } from './state';
 import { enterProfile, leaveProfile, loadProfiles } from './session';
 import { effectivePrice, priceNum } from './format';
 import { removeParentalPin, setParentalPin } from './flows';
 
-export const TABS: [string, string][] = [['home', 'Início'], ['biblioteca', 'Biblioteca'], ['midia', 'Mídia'], ['loja', 'Loja']];
-export const kidTabs = (): [string, string][] => TABS.filter(([k]) => k !== 'loja');
+export const TABS: [string, string][] = [['home', 'Início'], ['biblioteca', 'Biblioteca'], ['emu', 'Emuladores'], ['midia', 'Mídia'], ['loja', 'Loja']];
+/** Aba Emuladores só aparece com jogos de console (ROMs) ou com o RetroArch instalado. */
+const hasEmu = () => S.emuReady || S.lib.some((i) => i.tags.includes('emu'));
+const baseTabs = (): [string, string][] => TABS.filter(([k]) => k !== 'emu' || hasEmu());
+export const kidTabs = (): [string, string][] => baseTabs().filter(([k]) => k !== 'loja');
 /** Sem Steam possível (Raspberry Pi/ARM sem Steam) não há loja: a aba some. */
 const noStore = () => !!S.hw && S.hw.architecture !== 'x86_64' && !S.steam?.installed;
-export const tabsNow = () => (isKid() ? kidTabs() : noStore() ? TABS.filter(([k]) => k !== 'loja') : TABS);
+export const tabsNow = () => (isKid() ? kidTabs() : noStore() ? baseTabs().filter(([k]) => k !== 'loja') : baseTabs());
 
 export const [hubTab, setHubTab] = createSignal<string>('');
 
@@ -35,7 +38,7 @@ export function tab(k: string, o: { focus?: boolean } = {}) {
 export function firstFocus(k: string): HTMLElement | null {
   const q = (s: string) => document.querySelector<HTMLElement>(s);
   if (k === 'home') return q(`#view .tl[data-k="${S.dockId}"]`) || q('#view .drow .tl') || q('.tab.on');
-  return q('#view .sc .tl') || q('#view .sc .cp') || q('#view .ri.on') || q('.tab.on');
+  return q('#view .sc .sbn') || q('#view .sc .tl') || q('#view .sc .sysc') || q('#view .sc .cp') || q('#view .ri.on') || q('.tab.on');
 }
 
 export function tabStep(d: 1 | -1) {
@@ -77,6 +80,11 @@ export function back() {
     return;
   }
   sfx('back');
+  if (S.tab === 'emu' && S.emuSys) {
+    const d = S.emuSys;
+    setS('emuSys', null);
+    return focusSoon(() => fx.f?.set(document.querySelector<HTMLElement>(`#view .sysc[data-k="sys-${d}"]`) ?? firstFocus('emu'), { silent: true, snap: true }));
+  }
   if (cur?.closest('.sc') && document.querySelector('#view .rail')) return fx.f?.set(document.querySelector<HTMLElement>('#view .rail .ri.on'), { silent: true });
   tab('home', { focus: true });
 }
@@ -100,6 +108,9 @@ export async function openHub(id: string, tk?: string) {
     } catch (e) {
       return fail(e);
     }
+  } else if (!it.description && it.provider === 'steam') {
+    // item da vitrine da loja: descrição, gêneros e estúdio chegam depois, sem atrasar a abertura
+    void api.item(id).then(patchItem).catch(() => {});
   }
   const top = topOv();
   setHubTab(tk ?? '');
@@ -326,6 +337,9 @@ export const ACT: Record<string, Fn> = {
   ae(a) {
     document.dispatchEvent(new CustomEvent('nexus:ae', { detail: a }));
   },
+  rs(a) {
+    document.dispatchEvent(new CustomEvent('nexus:rs', { detail: a }));
+  },
   fp(a) {
     document.dispatchEvent(new CustomEvent('nexus:fp', { detail: a }));
   },
@@ -443,7 +457,18 @@ export const ACT: Record<string, Fn> = {
   resume() {
     void resumeGame();
   },
+  emusys(dir) {
+    sfx('select');
+    setS('emuSys', dir);
+    focusSoon(() => fx.f?.set(firstFocus('emu'), { silent: true, snap: true }));
+  },
+  romsadd() {
+    void pushOv('roms', {});
+  },
   exitgame() {
+    // "Ir ao Início": o jogo continua rodando em segundo plano (como num console); "Retomar" no topo do Início
+    setS('frame', null);
+    void api.guideClosed().catch(() => {});
     goHome();
   },
   home() {

@@ -97,6 +97,10 @@ pub trait Provider: Send + Sync {
     async fn art_late(&self, _id: &str, _kind: ArtKind) -> Vec<String> {
         vec![]
     }
+    /// Capturas de tela do jogo (página da loja), em ordem. Padrão: nenhuma.
+    async fn shots(&self, _id: &str) -> Vec<String> {
+        vec![]
+    }
 }
 
 /// "steam:570" -> ("steam", "570")
