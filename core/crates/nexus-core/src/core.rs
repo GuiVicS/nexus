@@ -31,6 +31,9 @@ pub struct Core {
     pub game: Mutex<Option<crate::game::ActiveGame>>,
     pub notifs: Mutex<Vec<Notification>>,
     pub next_notif: AtomicU64,
+    /// último estado da barra de status (`status.rs`) e aviso para reler já
+    pub status: Mutex<Value>,
+    pub status_kick: tokio::sync::Notify,
     pub compositor: Box<dyn Compositor>,
     pub hub: Hub,
     /// instalações pedidas cujo progresso ainda não apareceu no provedor (id -> quando)
@@ -86,6 +89,8 @@ impl Core {
             game: Mutex::new(None),
             notifs: Mutex::new(vec![]),
             next_notif: AtomicU64::new(1),
+            status: Mutex::new(Value::Null),
+            status_kick: tokio::sync::Notify::new(),
             hub,
             pending: Mutex::new(Default::default()),
             kick: tokio::sync::Notify::new(),

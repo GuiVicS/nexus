@@ -415,3 +415,20 @@ Pedido: rclone instalado com o app, login na instalação ou depois, pasta próp
 - **Testes:** `tests/drive.rs` com o rclone de verdade e um remoto `alias` local (login simulado → pasta criada → FUSE → ROM na biblioteca → download prévio → sair); `NEXUS_TEST_RCLONE=<rclone>` liga o teste. Cenário de UI `drive` (só controle) e `primeiro_uso` com a etapa nova. 15/15 cenários, Core 88 + e2e ok.
 - **Memória:** `rclone mount` com `GOGC=50` e buffer de 8 MB fica em ~67 MB (era ~88 MB com o padrão), medido lendo 50 MB. Só roda com o Drive conectado.
 - **Falta (parte 2):** aba Mídia com mpv; login por QR no celular (precisa de projeto no Google Cloud do usuário). Não testado com conta Google real (eu não faço login por você).
+
+### A1 — barra de status (2026-11-12) ✅
+
+- **Core `status.rs`:** uma tarefa consulta rede (`sysnet`), Bluetooth (`bluetooth`, com bateria dos controles), volume/mudo
+  (`wpctl get-volume`, leve) e disco, a cada 15 s (`NEXUS_STATUS_SECS`), e só emite `status.changed` quando algo muda.
+  RPC `status.get` (estado atual) e `status.refresh` (relê já). A Shell não faz mais consultas periódicas para isso.
+- **Alertas (só com problema):** sem internet / sem conexão, controle com bateria ≤ 20 %, disco com menos de 10 % livre.
+  Fone com bateria baixa não alerta (só controle).
+- **Shell:** `components/Status.tsx` + `lib/status.ts`. No canto da barra superior: Wi-Fi/cabo (sinal no `title`),
+  Bluetooth, cada controle conectado com a bateria, volume/mudo e o primeiro alerta (+N quando há mais). Nada recebe foco
+  (não atrapalha a navegação). Some na tela "em execução" do jogo.
+- **Disco simulado:** `NEXUS_FAKE_DISK=<livre>:<total>` (bytes); a suíte de UI fixa 60 % livre para os alertas não aparecerem
+  por causa do disco da VM (que está com ~9 % livres).
+- **Testes:** unidade (alertas, rede ausente, disco) e cenário `statusbar` (rede + controle com bateria 76 % → 15 % + queda da
+  rede, tudo por evento, sem foco na barra). Captura `a1-status` 1080p/720p.
+- **Falta:** esconder também durante vídeo (a aba Mídia/mpv é de outro agente: basta a Shell esconder `#sstat` quando o
+  player estiver aberto); perfil já aparece pelo avatar da barra.

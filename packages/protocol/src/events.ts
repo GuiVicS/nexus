@@ -1,5 +1,5 @@
 import type { GameSession, Item, Notification, Profile, RemoteDevice, SessionInfo } from './generated';
-import type { AppUpdate } from './api';
+import type { AppUpdate, StatusSnapshot } from './api';
 
 /** Eventos enviados pelo Core (notificações JSON-RPC) */
 export interface Events {
@@ -30,6 +30,7 @@ export interface Events {
   'roms.received': { name: string; size: number };
   'apps.updates': AppUpdate[];
   'apps.job': { id: string; op: 'update' | 'restore'; state: 'running' | 'done' | 'failed'; error?: string | null };
+  'status.changed': StatusSnapshot;
   'system.power': { action: string; simulated: boolean };
 }
 

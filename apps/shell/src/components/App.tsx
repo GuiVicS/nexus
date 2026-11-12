@@ -16,6 +16,7 @@ import { Hub } from './Hub';
 import { Confirm, Fault, Guide, Launch, Notifs, Search, Sheet, TimeUp, clock } from './Overlays';
 import { PinPad, TextEntry } from './Entry';
 import { Settings } from './Settings';
+import { StatusBar } from './Status';
 import { AppEditor, AppPicker, FilePicker } from './Apps';
 import { PadEditor, PadMapper } from './Pads';
 import { Boot, Onboarding, ProfileEditor, ProfilePicker, Standby } from './Profiles';
@@ -134,6 +135,7 @@ function Bar() {
         </For>
       </nav>
       <div id="sys">
+        <StatusBar />
         <Show when={isKid() && S.session?.remainingMin !== null && S.session?.remainingMin !== undefined}>
           <div class="np timepill"><Icon n="clock" /><span>{S.session!.remainingMin} min</span></div>
         </Show>

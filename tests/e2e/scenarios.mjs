@@ -1000,3 +1000,40 @@ scenarios.drive = async () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 };
+
+// A1: barra de status — rede, Bluetooth, controle com bateria e volume vêm do Core (um evento `status.changed`);
+// alertas só quando há problema (disco < 10 %, bateria <= 20 %, sem rede).
+scenarios.statusbar = async () => {
+  const core = await startCore({ demo: true, env: { NEXUS_FAKE_DISK: '5000000000:100000000000' } });
+  fs.mkdirSync(`${core.dir}/fake-bt`, { recursive: true });
+  fs.writeFileSync(`${core.dir}/fake-bt/paired`, '11:22:33:44:55:01\n');
+  fs.writeFileSync(`${core.dir}/fake-bt/conn`, '11:22:33:44:55:01\n');
+  fs.writeFileSync(`${core.dir}/fake-net`, 'Casa Nexus\n');
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await ui.until(`()=>!!document.querySelector('#sstat [data-k=st-net][title*="82%"]')`, 'Wi-Fi com o sinal (82%) na barra');
+    check(await ui.has('#sstat [data-k=st-bt]'), 'Bluetooth ligado aparece');
+    check(/76%/.test(await ui.text('#sstat [data-k=st-pad]')), 'controle conectado com a bateria (76%)');
+    check(await ui.has('#sstat [data-k=st-vol][title="Volume 50%"]'), 'volume do sistema (50%)');
+    check(/Pouco espaço \(5% livre\)/.test(await ui.text('#sstat .salert')), 'alerta de disco com menos de 10 %');
+    check((await ui.count('#sstat .f')) === 0, 'a barra de status não pega foco');
+    await ui.screens('a1-status');
+    // bateria do controle em 15 %: o alerta aparece sem recarregar nada (evento do Core)
+    fs.writeFileSync(`${core.dir}/fake-bt/battery`, '15\n');
+    await ui.until(`()=>/Xbox Wireless Controller com pouca bateria \\(15%\\)/.test(document.querySelector('#sstat .salert')?.textContent||'')`, 'alerta de bateria baixa', 9000);
+    check(/\+1/.test(await ui.text('#sstat .salert')), 'mostra quantos alertas há além do primeiro');
+    check(await ui.has('#sstat [data-k=st-pad].bad'), 'bateria baixa em destaque');
+    // cai a rede
+    fs.writeFileSync(`${core.dir}/fake-net`, '');
+    await ui.until(`()=>/Sem conexão com a rede/.test(document.querySelector('#sstat .salert')?.textContent||'')`, 'alerta de rede', 9000);
+    check(await ui.has('#sstat [data-k=st-net].bad'), 'rede em destaque quando cai');
+    const st = await core.rpc('status.get');
+    check(st.alerts.length === 3 && st.audio.available, 'status.get devolve o mesmo estado');
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};

@@ -792,6 +792,21 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             Ok(json!({ "ok": true }))
         }
 
+        // ---------- barra de status ----------
+        "status.get" => {
+            need_session(core)?;
+            let cur = core.status.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            if !cur.is_null() {
+                return Ok(cur);
+            }
+            let dir = core.cfg.data_dir.clone();
+            Ok(blocking(move || crate::status::snapshot(&dir)).await?)
+        }
+        "status.refresh" => {
+            core.status_kick.notify_one();
+            Ok(json!({ "ok": true }))
+        }
+
         // ---------- áudio (PipeWire) ----------
         // volume e saída são do dia a dia: qualquer perfil (inclusive infantil) mexe sem PIN
         "audio.status" => {

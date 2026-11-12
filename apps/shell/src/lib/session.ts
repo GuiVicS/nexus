@@ -5,6 +5,7 @@ import { api, client } from './api';
 import { applyPrefs, askPin, closeAllOv, fail, findItem, fx, isKid, me, ovs, popOv, removeLib, S, setS, setMode, toast, upsertLib, topOv, askConfirm, guarded, hasOv, pushOv, closeOv } from './state';
 import { sfx } from '@nexus/ui';
 import { fmtPlaytime } from './format';
+import { loadStatus, startStatus } from './status';
 
 export async function loadProfiles() {
   const [p, par] = await Promise.all([api.profiles(), api.parental()]);
@@ -41,6 +42,8 @@ export async function enterShell(info: SessionInfo) {
   setS({ tab: 'home', scr: 'shell', dockId: null, bgId: null, libFilter: 'todos', shopCat: 'inicio', emuSys: null });
   void api.emuStatus().then((st) => setS('emuReady', !!st.retroarch)).catch(() => {});
   void loadAppUpdates();
+  startStatus();
+  void loadStatus();
   sfx('profile');
   queueMicrotask(() => requestAnimationFrame(() => document.dispatchEvent(new CustomEvent('nexus:focus-home'))));
   const g = new Date().getHours();
