@@ -2,7 +2,7 @@ import { reconcile } from 'solid-js/store';
 import { E, RpcError } from '@nexus/protocol';
 import type { AppUpdate, Item, SessionInfo } from '@nexus/protocol';
 import { api, client } from './api';
-import { applyPrefs, askPin, closeAllOv, fail, findItem, fx, isKid, me, ovs, popOv, removeLib, S, setS, setMode, toast, upsertLib, topOv, askConfirm, guarded } from './state';
+import { applyPrefs, askPin, closeAllOv, fail, findItem, fx, isKid, me, ovs, popOv, removeLib, S, setS, setMode, toast, upsertLib, topOv, askConfirm, guarded, hasOv, pushOv, closeOv } from './state';
 import { sfx } from '@nexus/ui';
 import { fmtPlaytime } from './format';
 
@@ -90,10 +90,30 @@ export async function leaveProfile(): Promise<boolean> {
   return true;
 }
 
+/** Core fora do ar por mais que isso: troca o aviso "Reconectando…" pela tela de falha com ações. */
+export const FAULT_AFTER_MS = 12000;
+let faultT: ReturnType<typeof setTimeout> | undefined;
+function watchFault() {
+  if (faultT !== undefined) return; // o transporte avisa "caiu" a cada tentativa: conta do primeiro aviso
+  faultT = setTimeout(() => {
+    faultT = undefined;
+    if (!S.conn && !hasOv('fault')) {
+      setS('faultMsg', '');
+      void pushOv('fault');
+    }
+  }, FAULT_AFTER_MS);
+}
+
 export function startEvents() {
+  watchFault(); // também cobre o Core que nunca subiu
   client.onStatus((up) => {
     setS('conn', up);
-    if (up) void resync();
+    if (up) {
+      clearTimeout(faultT);
+      faultT = undefined;
+      for (const o of [...ovs()]) if (o.kind === 'fault') closeOv(o.id);
+      void resync();
+    } else watchFault();
   });
   client.on('library.changed', async (p: { ids: string[]; removed: string[] }) => {
     if (!S.session) return;

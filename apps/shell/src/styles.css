@@ -92,6 +92,12 @@
 .timeup .moon{font-size:150px;color:var(--primary);animation:float 3s ease-in-out infinite}
 @keyframes float{50%{transform:translateY(-14px)}}
 .timeup h1{font-size:84px;font-weight:400}
+.fault{position:absolute;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;text-align:center;padding:0 160px}
+.fault .fic{font-size:120px;color:var(--primary)}
+.fault h1{font-size:72px;font-weight:400}
+.fault p{font-size:34px;color:var(--muted);max-width:1300px}
+.fault .fst{color:var(--fg);font-size:30px;min-height:40px}
+.fault .fhelp{font-size:28px;color:var(--muted);margin-top:24px}
 .timeup p{font-size:32px;color:var(--muted)}
 /* ----- Cursor virtual (celular sem uinput) ----- */
 #vcur{position:absolute;z-index:1000;width:36px;height:36px;margin:-18px 0 0 -18px;border-radius:50%;border:4px solid var(--primary);background:color-mix(in srgb,var(--primary) 28%,transparent);pointer-events:none;box-shadow:0 0 0 2px rgba(0,0,0,.4)}

@@ -228,3 +228,27 @@ Legenda: ✅ existe · 🟡 parcial · ❌ falta. Serviços disponíveis na VM: 
 | B19 Privacidade | ❌ | (o Nexus não tem telemetria) | Tela explicando o que vai pela rede, limpar histórico/busca |
 
 Ordem de implementação: A6, A7, B1–B4 → A1–A4, B10, B9 → B6, B7, B11, B15, B16 → resto.
+
+### A6 — boot e transições (2026-11-12) ✅
+
+- **Boot:** tema Plymouth `system/plymouth/nexus` (marca + três pontos; pede a senha do disco se houver). O instalador
+  aplica no modo console (Debian/Ubuntu, quando o Plymouth existe) e regenera o initramfs. Imagens geradas por
+  `tools/make-brand.py`. **Não testado num boot real** (a VM de desenvolvimento não reinicia nesta sessão).
+- **Iniciando:** o fundo do sway é a marca (`/usr/share/nexus/splash.png`), visto enquanto a Shell sobe ou
+  reinicia, em vez de tela vazia. Verificado na sessão aninhada.
+- **Core fora do ar:** "Reconectando…" e, depois de 12 s, a tela **"O Nexus encontrou um problema"** com *Tentar de
+  novo* (reinicia o Core), *Reiniciar o Nexus* (sessão) e *Reiniciar o aparelho* (com confirmação). B não fecha;
+  some sozinha quando o Core volta. Quem executa é o processo do Electron, só com 3 ações fixas (`nexus:recover`),
+  sem root.
+- **Shell quebrando em série** (renderer caiu 3 vezes em 1 min ou a página não carrega): página reserva
+  `electron/fallback.html`, sem dependências, navegável por controle (D-pad + A), teclado e mouse.
+- **Bug corrigido no caminho:** `nexus-session.target` usava `Requires=` no Core; cada queda do Core reiniciava a
+  sessão inteira (a Shell junto, 7 vezes em 15 s numa queda em série). Agora `Wants=` + `Restart=` de cada serviço.
+- **Testes:** cenário de UI `falha_do_core` (Core morto → tela em 12 s; foco, direita, B não fecha, A executa; some
+  quando o Core volta). Na sessão real: Core em queda contínua → tela aparece; ponte recusa ação desconhecida e
+  reinicia o Core; renderer derrubado 3× → página reserva → "Tentar de novo" volta à interface.
+- **Capturas:** `NEXUS_SHOTS=<pasta> node tests/e2e/run.mjs falha` gera `a6-falha-1080p.png` e `-720p.png`
+  (legível nas duas).
+- **Memória da Shell:** 153 MB no Início × 154 MB com a tela de falha aberta (PSS, `tools/measure.sh`). CPU com a
+  tela aberta 18 % de um núcleo na VM (software), contra 11 % no Início: são as tentativas de reconexão; só
+  acontece enquanto o Core está fora.

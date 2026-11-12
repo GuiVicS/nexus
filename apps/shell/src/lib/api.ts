@@ -7,11 +7,24 @@ declare global {
       onMessage(cb: (text: string) => void): void;
       onStatus(cb: (up: boolean) => void): void;
       status(): Promise<boolean>;
+      /** Recuperação quando o Core não responde (só ações fixas, executadas pelo processo do Electron). */
+      recover?(action: 'restart-core' | 'restart-session' | 'reboot'): Promise<boolean>;
     };
   }
 }
 
 export const IS_ELECTRON = typeof window !== 'undefined' && !!window.nexusBridge;
+
+/** Pede ao Electron para reiniciar o Core, a sessão ou o aparelho (o Core pode estar fora do ar). */
+export async function recover(action: 'restart-core' | 'restart-session' | 'reboot'): Promise<boolean> {
+  const r = window.nexusBridge?.recover;
+  if (!r) return false;
+  try {
+    return await r(action);
+  } catch {
+    return false;
+  }
+}
 
 function bridgeTransport(): Transport {
   const b = window.nexusBridge!;

@@ -2,7 +2,7 @@ import { createSignal } from 'solid-js';
 import { RpcError, E } from '@nexus/protocol';
 import type { Item } from '@nexus/protocol';
 import { audioInit, sfx } from '@nexus/ui';
-import { api } from './api';
+import { api, IS_ELECTRON, recover } from './api';
 import { askConfirm, closeAllOv, fail, findItem, focusNow, fx, guarded, hasOv, isInstalled, isKid, me, ovs, popOv, prefs, pushOv, replaceTop, requireParental, S, setPref, setS, toast, topOv, upsertLib, patchItem, setMode } from './state';
 import { enterProfile, leaveProfile, loadProfiles } from './session';
 import { effectivePrice, priceNum } from './format';
@@ -62,7 +62,7 @@ export function back() {
   const cur = focusNow();
   if (top) {
     if (top.kind === 'launch') return goHome();
-    if (top.kind === 'timeup') return sfx('bump');
+    if (top.kind === 'timeup' || top.kind === 'fault') return sfx('bump');
     if (top.kind === 'settings' && cur?.closest('.setpane')) {
       sfx('back');
       return fx.f?.set(document.querySelector<HTMLElement>('#ovs .setrail .ri.on'), { silent: true });
@@ -613,6 +613,21 @@ export const ACT: Record<string, Fn> = {
   },
   restart() {
     void powerAction('restart');
+  },
+  /** Tela "o Nexus encontrou um problema" (Core fora do ar): ações fixas executadas pelo Electron. */
+  async fault(a: string) {
+    if (!IS_ELECTRON) return setS('faultMsg', 'Indisponível no navegador: reinicie o nexus-core no terminal.');
+    if (a === 'retry') {
+      setS('faultMsg', 'Reiniciando o serviço principal…');
+      if (!(await recover('restart-core'))) setS('faultMsg', 'Não deu certo. Tente “Reiniciar o Nexus”.');
+    } else if (a === 'session') {
+      setS('faultMsg', 'Reiniciando o Nexus…');
+      if (!(await recover('restart-session'))) setS('faultMsg', 'Não deu certo. Tente reiniciar o aparelho.');
+    } else if (a === 'reboot') {
+      if (!(await askConfirm({ title: 'Reiniciar o aparelho?', sub: 'Jogos abertos serão fechados.', yes: 'Reiniciar', no: 'Cancelar', danger: true }))) return;
+      setS('faultMsg', 'Reiniciando o aparelho…');
+      if (!(await recover('reboot'))) setS('faultMsg', 'Não foi possível reiniciar. Segure o botão de energia.');
+    }
   },
   off() {
     void powerAction('off');

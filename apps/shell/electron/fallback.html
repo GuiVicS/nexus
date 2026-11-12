@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>Nexus</title>
+<style>
+  html,body{margin:0;height:100%;background:#0b1012;color:#f3faf9;font:400 2.2vw/1.4 system-ui,sans-serif;overflow:hidden;cursor:default;user-select:none}
+  main{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2.2vh;text-align:center;padding:0 8vw;box-sizing:border-box}
+  svg{width:9vw;height:9vw}
+  h1{font-size:4vw;font-weight:400;margin:0}
+  p{color:#a3bab7;margin:0;max-width:70vw}
+  #st{color:#f3faf9;min-height:1.4em}
+  .acts{display:flex;gap:1.6vw;margin-top:2vh;flex-wrap:wrap;justify-content:center}
+  button{font:inherit;font-size:1.7vw;color:#f3faf9;background:rgba(255,255,255,.08);border:.25vw solid transparent;border-radius:999px;padding:1.4vh 2.4vw;outline:none}
+  button.pri{background:#2bd4bd;color:#04201c}
+  button:focus{border-color:#f3faf9;box-shadow:0 0 0 .5vw rgba(43,212,189,.45)}
+  small{color:#a3bab7;font-size:1.3vw;margin-top:3vh}
+</style>
+</head>
+<body>
+<main>
+  <svg viewBox="0 0 100 100" fill="none" stroke="#2bd4bd" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 80 L20 32 Q20 16 32 26 L68 72 Q80 84 80 68 L80 20"/></svg>
+  <h1>A interface do Nexus parou</h1>
+  <p>Ela fechou várias vezes seguidas. Seus jogos e dados estão seguros.</p>
+  <p id="st" role="status"></p>
+  <div class="acts">
+    <button class="pri" data-a="reload" autofocus>Tentar de novo</button>
+    <button data-a="session">Reiniciar o Nexus</button>
+    <button data-a="reboot">Reiniciar o aparelho</button>
+  </div>
+  <small>Se nada resolver: no teclado, Ctrl+Alt+F3 abre o modo texto para suporte.</small>
+</main>
+<script>
+  // Página reserva: sem dependências, funciona com controle (D-pad + A), teclado e mouse.
+  const b = window.nexusBridge || {};
+  const st = document.getElementById('st');
+  const btns = [...document.querySelectorAll('button')];
+  let armed = false;
+  async function act(a) {
+    if (a === 'reload') { st.textContent = 'Recarregando…'; return b.reloadUi && b.reloadUi(); }
+    if (a === 'session') { st.textContent = 'Reiniciando o Nexus…'; const ok = b.recover && await b.recover('restart-session'); if (!ok) st.textContent = 'Não deu certo. Tente reiniciar o aparelho.'; return; }
+    if (a === 'reboot') {
+      if (!armed) { armed = true; st.textContent = 'Aperte de novo para confirmar: jogos abertos serão fechados.'; return; }
+      st.textContent = 'Reiniciando o aparelho…';
+      const ok = b.recover && await b.recover('reboot');
+      if (!ok) st.textContent = 'Não foi possível reiniciar. Segure o botão de energia.';
+    }
+  }
+  function move(d) {
+    const i = btns.indexOf(document.activeElement);
+    const n = btns[Math.max(0, Math.min(btns.length - 1, (i < 0 ? 0 : i) + d))];
+    n.focus();
+    if (n.dataset.a !== 'reboot') armed = false;
+  }
+  btns.forEach((x) => x.addEventListener('click', () => act(x.dataset.a)));
+  addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { move(1); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { move(-1); e.preventDefault(); }
+  });
+  btns[0].focus();
+  const prev = {};
+  function poll() {
+    const p = [...(navigator.getGamepads ? navigator.getGamepads() : [])].find(Boolean);
+    if (p) {
+      const ax = p.axes || [];
+      const s = { r: !!p.buttons[15]?.pressed || ax[0] > 0.55, l: !!p.buttons[14]?.pressed || ax[0] < -0.55, a: !!p.buttons[0]?.pressed };
+      if (s.r && !prev.r) move(1);
+      if (s.l && !prev.l) move(-1);
+      if (s.a && !prev.a && document.activeElement?.dataset.a) act(document.activeElement.dataset.a);
+      Object.assign(prev, s);
+    }
+    setTimeout(poll, 50);
+  }
+  poll();
+</script>
+</body>
+</html>

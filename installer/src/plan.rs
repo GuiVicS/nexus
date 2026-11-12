@@ -76,6 +76,18 @@ echo "  A arquitetura de 32 bits também é necessária: dpkg --print-foreign-ar
 echo "Corrija e rode o instalador de novo, ou instale sem a Steam: sudo ./install.sh --sem-steam" >&2
 exit 1"#;
 
+/// Debian usa `plymouth-set-default-theme`; Ubuntu, a alternativa `default.plymouth`. Sem Plymouth: nada a fazer.
+/// Desfazer: `plymouth-set-default-theme -R <tema anterior>` (Debian) ou `update-alternatives --config default.plymouth`.
+pub const PLYMOUTH_THEME: &str = r#"T=/usr/share/plymouth/themes/nexus/nexus.plymouth
+[ -f "$T" ] && command -v plymouth >/dev/null 2>&1 || { echo "sem Plymouth: pulando"; exit 0; }
+if update-alternatives --query default.plymouth >/dev/null 2>&1; then
+  update-alternatives --install /usr/share/plymouth/themes/default.plymouth default.plymouth "$T" 150
+  update-alternatives --set default.plymouth "$T"
+elif command -v plymouth-set-default-theme >/dev/null 2>&1; then
+  plymouth-set-default-theme nexus
+fi
+command -v update-initramfs >/dev/null 2>&1 && update-initramfs -u || true"#;
+
 fn sh(title: &str, script: &str) -> Step {
     Step { title: title.into(), action: Action::Cmd(vec!["sh".into(), "-c".into(), script.into()]) }
 }
@@ -151,6 +163,10 @@ pub fn build(sys: &System, o: &Options) -> Vec<Step> {
         s.push(step("Instalar o greetd (login direto no Nexus, sem desktop)", sys.family, &["greetd"]));
         s.push(cmd("Usar o greetd na inicialização", &["systemctl", "enable", "greetd.service"]));
         dm = Some("greetd".into());
+    }
+    // Modo console (entra direto no Nexus): a tela de boot também é a do Nexus, se o sistema usa Plymouth
+    if o.autologin_user.is_some() && sys.family == Family::Debian {
+        s.push(sh("Tela de boot do Nexus (Plymouth, se houver)", PLYMOUTH_THEME));
     }
     if let (Some(user), Some(dm)) = (&o.autologin_user, dm.as_deref().and_then(autologin::dm_from_name)) {
         s.push(Step { title: format!("Entrar direto no Nexus ao ligar ({user})"), action: Action::Autologin { dm, user: user.clone() } });
@@ -232,6 +248,7 @@ mod tests {
         let pos = |needle: &str| t.iter().position(|x| x.contains(needle)).unwrap_or_else(|| panic!("falta: {needle} em {t:?}"));
         assert!(pos("systemd-zram-generator") < pos("nexus-slim apply"));
         assert!(pos("greetd") < pos("autologin"), "sem gerenciador de login: greetd e depois o autologin dele");
+        assert!(pos("Plymouth") < pos("autologin"), "modo console troca a tela de boot");
         assert!(t.last().unwrap().contains("Greetd"), "{t:?}");
         // com desktop (gdm): não instala greetd
         let g = build(&sys(Family::Debian, Some("gdm3")), &Options { steam: false, emulation: false, autologin_user: Some("lia".into()), slim: false });

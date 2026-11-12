@@ -11,14 +11,14 @@ import { Home, Library, Media, Store, setStripItem } from './Views';
 import { Emulators } from './Emu';
 import { Roms } from './Roms';
 import { Hub } from './Hub';
-import { Confirm, Guide, Launch, Notifs, Search, Sheet, TimeUp, clock } from './Overlays';
+import { Confirm, Fault, Guide, Launch, Notifs, Search, Sheet, TimeUp, clock } from './Overlays';
 import { PinPad, TextEntry } from './Entry';
 import { Settings } from './Settings';
 import { AppEditor, AppPicker, FilePicker } from './Apps';
 import { PadEditor, PadMapper } from './Pads';
 import { Boot, Onboarding, ProfileEditor, ProfilePicker, Standby } from './Profiles';
 
-const FULL: Ov['kind'][] = ['hub', 'search', 'settings', 'launch', 'profile', 'timeup', 'appicker', 'appedit', 'filepick', 'padmap', 'padedit', 'roms'];
+const FULL: Ov['kind'][] = ['fault', 'hub', 'search', 'settings', 'launch', 'profile', 'timeup', 'appicker', 'appedit', 'filepick', 'padmap', 'padedit', 'roms'];
 
 function OvBody(p: { o: Ov }) {
   const o = p.o;
@@ -40,6 +40,7 @@ function OvBody(p: { o: Ov }) {
       <Match when={o.kind === 'padedit'}><PadEditor pad={o.props.pad} oid={o.id} /></Match>
       <Match when={o.kind === 'padmap'}><PadMapper pad={o.props.pad} oid={o.id} /></Match>
       <Match when={o.kind === 'roms'}><Roms oid={o.id} /></Match>
+      <Match when={o.kind === 'fault'}><Fault /></Match>
       <Match when={o.kind === 'filepick'}><FilePicker title={o.props.title} oid={o.id} /></Match>
       <Match when={o.kind === 'confirm'}><Confirm title={o.props.title} sub={o.props.sub} yes={o.props.yes} no={o.props.no} danger={o.props.danger} oid={o.id} /></Match>
     </Switch>
@@ -289,7 +290,7 @@ export function App() {
         </For>
       </div>
       <Show when={vcur().show}><div id="vcur" style={{ left: `${vcur().x}px`, top: `${vcur().y}px` }} /></Show>
-      <Show when={!S.conn && S.scr !== 'boot'}>
+      <Show when={!S.conn && S.scr !== 'boot' && !hasOv('fault')}>
         <div class="offline"><span class="spin" />Reconectando ao Nexus Core…</div>
       </Show>
     </div>

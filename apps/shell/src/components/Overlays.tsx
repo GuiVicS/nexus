@@ -312,6 +312,27 @@ export function Launch(p: { id: string }) {
   );
 }
 
+// ---------- Falha: o Core não responde ----------
+export function Fault() {
+  const [secs, setSecs] = createSignal(0);
+  const t = setInterval(() => setSecs((x) => x + 1), 1000);
+  onCleanup(() => clearInterval(t));
+  return (
+    <div class="fault">
+      <div class="fic"><Icon n="info" /></div>
+      <h1>O Nexus encontrou um problema</h1>
+      <p>A parte principal do Nexus parou de responder. Seus jogos e dados estão seguros.</p>
+      <p class="fst" role="status">{S.faultMsg || `Tentando reconectar sozinho… (${secs() + 12} s)`}</p>
+      <div class="lacts">
+        <div class="btn pri f" data-autofocus data-r="p" data-pad="8" data-a="fault:retry" data-verb="Tentar"><Icon n="refresh" /> Tentar de novo</div>
+        <div class="btn f" data-r="p" data-pad="8" data-a="fault:session" data-verb="Reiniciar"><Icon n="home" /> Reiniciar o Nexus</div>
+        <div class="btn f" data-r="p" data-pad="8" data-a="fault:reboot" data-verb="Reiniciar"><Icon n="power" /> Reiniciar o aparelho</div>
+      </div>
+      <small class="fhelp">Se nada resolver: no teclado, Ctrl+Alt+F3 abre o modo texto para suporte.</small>
+    </div>
+  );
+}
+
 // ---------- Fim do tempo (perfil infantil) ----------
 export function TimeUp() {
   const [unlocked, setUnlocked] = createSignal(hasGrant());

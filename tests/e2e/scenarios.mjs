@@ -471,3 +471,37 @@ exit 0
     await core.stop();
   }
 };
+
+// A6: o Core cai → depois de 12 s a Shell mostra a tela de falha (só controle: setas + A; B não fecha) e some
+// sozinha quando o Core volta.
+scenarios.falha_do_core = async () => {
+  const core = await startCore({ demo: true });
+  const ui = await openUi(core);
+  let again = null;
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    core.crash();
+    await ui.until(`()=>document.querySelector('.offline')`, 'aviso "Reconectando" logo que o Core cai', 3000);
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=fault] h1')`, 'tela de falha depois de 12 s', 16000);
+    check(!(await ui.ev(`!!document.querySelector('.offline')`)), 'o aviso pequeno sai quando a tela de falha entra');
+    check((await ui.focusInfo())?.a === 'fault:retry', 'foco em "Tentar de novo"');
+    await ui.screens('a6-falha');
+    await ui.key('ArrowRight');
+    check((await ui.focusInfo())?.a === 'fault:session', 'direita vai para "Reiniciar o Nexus"');
+    await ui.key('Escape');
+    check(await ui.ev(`!!document.querySelector('#ovs [data-kind=fault]')`), 'B não fecha a tela de falha');
+    await ui.key('ArrowLeft');
+    await ui.key('Enter');
+    await ui.until(`()=>/navegador|Reiniciando/.test(document.querySelector('#ovs .fault .fst')?.textContent||'')`, 'A executa a ação e mostra o resultado');
+    // o Core volta (mesma porta): a tela some sozinha
+    again = await startCore({ demo: true, dir: core.dir, devPort: core.dev });
+    await ui.until(`()=>!document.querySelector('#ovs [data-kind=fault]')`, 'tela de falha some quando o Core volta', 12000);
+    check(ui.errors().length === 0, `sem erros de JavaScript${ui.errors().length ? ': ' + ui.errors().join(' | ') : ''}`);
+  } finally {
+    ui.close();
+    if (again) await again.stop();
+    else await core.stop();
+  }
+};

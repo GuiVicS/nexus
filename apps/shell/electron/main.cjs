@@ -6,6 +6,7 @@ const net = require('node:net');
 const http = require('node:http');
 const path = require('node:path');
 const fs = require('node:fs');
+const { execFile } = require('node:child_process');
 
 app.setName('nexus-shell');
 
@@ -61,6 +62,48 @@ ipcMain.on('nexus:send', (e, text) => {
 });
 ipcMain.handle('nexus:status', (e) => (e.sender === win?.webContents ? up : false));
 
+// Recuperação (A6): com o Core fora do ar a Shell não tem a quem pedir; o processo principal executa só estas
+// ações fixas, como o próprio usuário (sem root): systemd --user e o reboot que o logind libera à sessão ativa.
+const RECOVER = {
+  'restart-core': ['systemctl', ['--user', 'reset-failed', 'nexus-core.service'], ['systemctl', ['--user', 'restart', 'nexus-core.service']]],
+  'restart-session': ['systemctl', ['--user', 'restart', '--no-block', 'nexus-session.target']],
+  reboot: ['systemctl', ['reboot']],
+};
+function run(cmd, args) {
+  return new Promise((resolve) => execFile(cmd, args, { timeout: 20000 }, (err) => resolve(!err)));
+}
+ipcMain.handle('nexus:recover', async (e, action) => {
+  if (e.sender !== win?.webContents) return false;
+  const spec = Object.prototype.hasOwnProperty.call(RECOVER, action) ? RECOVER[action] : null;
+  if (!spec) return false;
+  let ok = await run(spec[0], spec[1]);
+  if (spec[2]) ok = await run(spec[2][0], spec[2][1]);
+  return ok;
+});
+
+// A interface quebrou várias vezes seguidas (renderer caindo ou página que não carrega): em vez de piscar
+// para sempre, mostra a página reserva (fallback.html, sem dependências) com as mesmas ações de recuperação.
+const crashes = [];
+function crashed() {
+  const now = Date.now();
+  crashes.push(now);
+  while (crashes.length && now - crashes[0] > 60000) crashes.shift();
+  return crashes.length >= 3;
+}
+function loadMain() {
+  if (DEV_URL) void win.loadURL(DEV_URL);
+  else void win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+}
+function loadFallback() {
+  void win.loadFile(path.join(__dirname, 'fallback.html'));
+}
+ipcMain.handle('nexus:reload-ui', (e) => {
+  if (e.sender !== win?.webContents) return false;
+  crashes.length = 0;
+  loadMain();
+  return true;
+});
+
 function artHandler(request) {
   // nexus-art://art/<id>/<kind> → GET /art/<id>/<kind> no socket HTTP do Core
   const u = new URL(request.url);
@@ -104,9 +147,15 @@ function createWindow() {
     const ok = DEV_URL ? url.startsWith(DEV_URL) : url.startsWith('file://');
     if (!ok) e.preventDefault();
   });
-  win.webContents.on('render-process-gone', () => setTimeout(() => !win?.isDestroyed() && win.reload(), 800));
-  if (DEV_URL) void win.loadURL(DEV_URL);
-  else void win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+  win.webContents.on('render-process-gone', () => setTimeout(() => {
+    if (!win || win.isDestroyed()) return;
+    if (crashed()) loadFallback();
+    else win.reload();
+  }, 800));
+  win.webContents.on('did-fail-load', (_e, code, _desc, url, isMain) => {
+    if (isMain && code !== -3 && !String(url).endsWith('fallback.html')) loadFallback();
+  });
+  loadMain();
   win.on('closed', () => (win = null));
 }
 

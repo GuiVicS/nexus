@@ -26,6 +26,7 @@ export async function launch({url,w=1920,h=1080,port=9333+Math.floor(Math.random
       for(let i=0;i<n;i++){const o={key:k,code:k.length===1?'Key'+k.toUpperCase():k,windowsVirtualKeyCode:map[k]||k.toUpperCase().charCodeAt(0)};
         await send('Input.dispatchKeyEvent',{type:'keyDown',...o});await send('Input.dispatchKeyEvent',{type:'keyUp',...o});await new Promise(r=>setTimeout(r,wait))}},
     async wait(ms){await new Promise(r=>setTimeout(r,ms))},
+    async metrics(w,h){await send('Emulation.setDeviceMetricsOverride',{width:w,height:h,deviceScaleFactor:1,mobile});await new Promise(r=>setTimeout(r,300))},
     async shot(path){const r=await send('Page.captureScreenshot',{format:'png'});(await import('node:fs')).writeFileSync(path,Buffer.from(r.result.data,'base64'))},
     async click(x,y){for(const t of ['mouseMoved','mousePressed','mouseReleased'])await send('Input.dispatchMouseEvent',{type:t,x,y,button:'left',clickCount:1});},
     close(){try{ws.close()}catch{}ch.kill('SIGKILL')}

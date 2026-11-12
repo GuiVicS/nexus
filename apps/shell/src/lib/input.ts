@@ -8,11 +8,13 @@ export function input(k: string) {
   audioInit();
   const f = fx.f;
   if (!f) return;
-  if (S.scr === 'standby') {
+  const fault = hasOv('fault');
+  if (S.scr === 'standby' && !fault) {
     if (k === 'A') ACT.boot('');
     return;
   }
-  if (S.scr === 'boot') return;
+  if (S.scr === 'boot' && !fault) return;
+  if (fault && !['u', 'd', 'l', 'r', 'A'].includes(k)) return;
   if (k.length === 1 && 'udlr'.includes(k)) return f.move(k as 'u');
   if (k === 'A') return activate(focusNow());
   if (k === 'B') return back();

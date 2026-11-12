@@ -32,6 +32,8 @@ install -Dm755 system/overlay/nexus-overlay "$OUT/usr/bin/nexus-overlay"
 install -Dm644 system/session/nexus.desktop "$OUT/usr/share/wayland-sessions/nexus.desktop"
 install -Dm644 system/session/nexus-shell.desktop "$OUT/usr/share/applications/nexus-shell.desktop"
 install -Dm644 system/sway/nexus-kiosk.conf "$OUT/usr/share/nexus/sway-kiosk.conf"
+install -Dm644 system/brand/splash.png "$OUT/usr/share/nexus/splash.png"
+for f in system/plymouth/nexus/*; do install -Dm644 "$f" "$OUT/usr/share/plymouth/themes/nexus/$(basename "$f")"; done
 for f in system/systemd/*; do install -Dm644 "$f" "$OUT/usr/lib/systemd/user/$(basename "$f")"; done
 install -Dm644 system/polkit/br.nexus.sysd.policy "$OUT/usr/share/polkit-1/actions/br.nexus.sysd.policy"
 # atualizar/restaurar apps sem senha (ajudante root + unidade do sistema + regra do polkit só para ela)

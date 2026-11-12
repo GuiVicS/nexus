@@ -8,13 +8,15 @@ import { api } from './api';
 
 export type Screen = 'boot' | 'standby' | 'onboarding' | 'profiles' | 'shell';
 export type Tab = 'home' | 'biblioteca' | 'emu' | 'midia' | 'loja';
-export type OvKind = 'sheet' | 'hub' | 'search' | 'settings' | 'guide' | 'notif' | 'launch' | 'pin' | 'text' | 'profile' | 'timeup' | 'confirm' | 'appicker' | 'appedit' | 'filepick' | 'padmap' | 'padedit' | 'roms';
+export type OvKind = 'sheet' | 'hub' | 'search' | 'settings' | 'guide' | 'notif' | 'launch' | 'pin' | 'text' | 'profile' | 'timeup' | 'confirm' | 'appicker' | 'appedit' | 'filepick' | 'padmap' | 'padedit' | 'roms' | 'fault';
 export type Mode = 'key' | 'pad' | 'ptr';
 
 export const DEFAULT_PREFS: Prefs = { theme: 'dark', sfx: true, vol: 60, reduce: false, hc: false, subs: false, invy: false, vib: true, pins: [], favs: [] };
 
 interface State {
   conn: boolean;
+  /** mensagem da tela de falha (Core fora do ar) */
+  faultMsg: string;
   hello: Hello | null;
   hw: HardwareProfile | null;
   scr: Screen;
@@ -57,6 +59,7 @@ interface State {
 
 export const [S, setS] = createStore<State>({
   conn: false,
+  faultMsg: '',
   hello: null,
   hw: null,
   scr: 'boot',

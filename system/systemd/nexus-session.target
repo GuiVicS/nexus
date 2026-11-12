@@ -1,6 +1,9 @@
 [Unit]
 Description=Sessão Nexus
-Requires=nexus-core.service nexus-shell.service
+# Wants (não Requires): com Requires, cada queda do Core reiniciava o target e, com ele, a Shell — numa queda em
+# série a Shell nunca ficava de pé para mostrar a tela de falha. Cada serviço tem o próprio Restart=; o PartOf
+# deles garante que parar a sessão para os dois.
+Wants=nexus-core.service nexus-shell.service
 # botões do Nexus por cima dos jogos: opcional (se faltar a biblioteca, a sessão sobe mesmo assim)
 Wants=nexus-overlay.service
 After=nexus-core.service

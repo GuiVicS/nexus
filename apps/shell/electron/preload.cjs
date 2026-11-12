@@ -7,4 +7,7 @@ contextBridge.exposeInMainWorld('nexusBridge', {
   onMessage: (cb) => ipcRenderer.on('nexus:message', (_e, m) => cb(m)),
   onStatus: (cb) => ipcRenderer.on('nexus:status', (_e, up) => cb(!!up)),
   status: () => ipcRenderer.invoke('nexus:status'),
+  // recuperação quando o Core não responde: só estas ações fixas (ver main.cjs)
+  recover: (action) => ipcRenderer.invoke('nexus:recover', String(action)),
+  reloadUi: () => ipcRenderer.invoke('nexus:reload-ui'),
 });

@@ -19,9 +19,9 @@ export async function freePort() {
   });
 }
 
-export async function startCore({ demo = false, env = {}, args = [], dir: given } = {}) {
+export async function startCore({ demo = false, env = {}, args = [], dir: given, devPort } = {}) {
   const dir = given ?? fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-e2e-'));
-  const dev = await freePort();
+  const dev = devPort ?? (await freePort());
   const remote = await freePort();
   const a = ['--dev', '--dev-http', `127.0.0.1:${dev}`, '--remote-bind', `127.0.0.1:${remote}`, '--runtime-dir', `${dir}/run`, '--data-dir', `${dir}/data`, '--shell-dir', `${ROOT}/apps/shell/dist`, '--remote-dir', `${ROOT}/apps/remote/dist`, '--demo-assets', `${ROOT}/assets/demo`, ...(demo ? ['--demo'] : []), ...args];
   const p = spawn(`${ROOT}/target/debug/nexus-core`, a, { env: { ...process.env, NEXUS_UINPUT: '0', NEXUS_WEB_APPS: '0', NEXUS_EMULATION: '0', NEXUS_GUIDE_WATCH: '0', NEXUS_CACHE_DIR: `${dir}/cache`, NEXUS_DEMO_DL_SECS: '2', NEXUS_REMOTE_HOST: '127.0.0.1', NEXUS_OFFLINE: '1', NEXUS_FS_ROOTS: `${dir}/home`, NEXUS_APPS_DIRS: `${dir}/noapps`, NEXUS_STEAM_ROOT: `${dir}/nosteam`, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -36,6 +36,10 @@ export async function startCore({ demo = false, env = {}, args = [], dir: given 
     url: `http://127.0.0.1:${dev}/`,
     remoteUrl: `http://127.0.0.1:${remote}/`,
     rpc: (method, params = {}) => rpc(sock, method, params),
+    /** derruba o processo sem apagar os dados (simula o Core caindo) */
+    crash() {
+      p.kill('SIGKILL');
+    },
     async stop() {
       p.kill('SIGTERM');
       await sleep(250);
@@ -70,6 +74,16 @@ export async function openUi(core, o = {}) {
     key: (...a) => c.key(...a),
     wait: sleep,
     shot: (n) => c.shot(`/tmp/nx-e2e-${n}.png`),
+    /** capturas para conferir legibilidade (telas de sistema): 1080p e 720p em $NEXUS_SHOTS (padrão /tmp/nx-shots) */
+    async screens(name) {
+      const dir = process.env.NEXUS_SHOTS || '/tmp/nx-shots';
+      fs.mkdirSync(dir, { recursive: true });
+      for (const [w, h] of [[1920, 1080], [1280, 720]]) {
+        await c.metrics(w, h);
+        await c.shot(`${dir}/${name}-${h}p.png`);
+      }
+      await c.metrics(o.w ?? 1920, o.h ?? 1080);
+    },
     async until(fn, what, timeout = 8000) {
       const end = Date.now() + timeout;
       let last;
