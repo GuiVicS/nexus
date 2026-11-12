@@ -17,5 +17,5 @@ export const SYS_ABBR: Record<string, string> = {
  * `public/systems/CREDITOS.md`). Sem logo, o card mostra a sigla. */
 export const SYS_LOGO = new Set<string>(["3do", "amiga", "atari2600", "atari5200", "atari7800", "c64", "colecovision", "doom", "dos", "dreamcast", "gamecube", "gamegear", "gb", "gba", "gbc", "intellivision", "jaguar", "lynx", "mastersystem", "megadrive", "msx", "n64", "nds", "neogeo", "nes", "ngp", "pcengine", "pokemini", "psp", "psx", "scummvm", "sega32x", "segacd", "snes", "vectrex", "virtualboy", "wii", "wonderswan"]);
 /** Logos com fundo próprio: ficam nas cores originais sobre um selo claro (o filtro branco viraria um retângulo). */
-export const SYS_LOGO_COLOR = new Set<string>(['gba', 'megadrive']);
+export const SYS_LOGO_COLOR = new Set<string>(['gba', 'megadrive', 'msx', 'pokemini', 'segacd', 'neogeo', 'colecovision', 'scummvm', 'nes']);
 export const sysLogo = (dir: string) => (SYS_LOGO.has(dir) ? `systems/${dir}.svg` : null);

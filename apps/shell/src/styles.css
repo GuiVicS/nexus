@@ -162,6 +162,7 @@ body.fx-reduced .tl .in{transition:none}
 /* logomarca do console: monocromática branca (as originais têm cores/preto que somem no fundo do card) */
 .sysc .slogo{position:absolute;left:26px;right:26px;top:26px;height:84px;width:calc(100% - 52px);object-fit:contain;object-position:left center;filter:brightness(0) invert(1);opacity:.92;pointer-events:none}
 .sysc .slogo.color{filter:none;opacity:1;width:auto;max-width:calc(100% - 52px);height:70px;background:#fff;border-radius:14px;padding:8px 14px}
+.sysc .slogo[src*="pcengine"]{height:58px}
 .sysc small{font-size:20px;opacity:.75}
 .sysc.add{background:var(--card);color:var(--fg);align-items:flex-start;border:2px dashed var(--line,rgba(255,255,255,.18));box-shadow:none}
 .sysc.add .i{font-size:44px;color:var(--primary);margin-bottom:auto}
