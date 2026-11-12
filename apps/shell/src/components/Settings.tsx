@@ -10,6 +10,7 @@ import { AudioPanel, BtPanel, DisplayPanel, LocalePanel, NetPanel } from './Syst
 import { DrivePanel } from './Drive';
 import { NotifPanel } from './Notificacoes';
 import { PowerPanel } from './Energia';
+import { StoragePanel } from './Armazenamento';
 import { sfx } from '@nexus/ui';
 
 interface Cat { id: string; label: string; icon: string; adult?: boolean }
@@ -339,7 +340,7 @@ export function Settings() {
         <Show when={S.setCat === 'bt' && !isKid()}><Pane title="Bluetooth"><BtPanel /></Pane></Show>
         <Show when={S.setCat === 'audio'}><Pane title="Áudio"><AudioPanel /></Pane></Show>
         <Show when={S.setCat === 'tela' && !isKid()}><Pane title="Tela e vídeo"><DisplayPanel /></Pane></Show>
-        <Show when={S.setCat === 'armaz' && !isKid()}><Pane title="Armazenamento · Google Drive"><DrivePanel /></Pane></Show>
+        <Show when={S.setCat === 'armaz' && !isKid()}><Pane title="Armazenamento"><StoragePanel /><h3 class="sh2">Google Drive</h3><DrivePanel /></Pane></Show>
         <Show when={S.setCat === 'energia' && !isKid()}><Pane title="Energia"><PowerPanel /></Pane></Show>
         <Show when={S.setCat === 'notif' && !isKid()}><Pane title="Notificações"><NotifPanel /></Pane></Show>
         <Show when={S.setCat === 'hora' && !isKid()}><Pane title="Idioma e hora"><LocalePanel /></Pane></Show>

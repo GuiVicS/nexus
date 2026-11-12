@@ -4,6 +4,6 @@
 echo "$*" >> "${NEXUS_FAKE_BUSCTL_LOG:-/tmp/nexus-fake-busctl.log}"
 case "$*" in
   *SetBrightness*) echo "$9" > "$NEXUS_BACKLIGHT_DIR/$8/brightness" ;;
-  *Format*) : ;;
+  *Format*) [ -n "$NEXUS_FAKE_USB" ] && { echo "$7" > "$NEXUS_FAKE_USB/fs"; rm -rf "$NEXUS_FAKE_USB/mnt"; } ;;
   *) echo "busctl falso: não sei responder a: $*" >&2; exit 2 ;;
 esac

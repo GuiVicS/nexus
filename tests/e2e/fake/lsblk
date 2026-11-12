@@ -1,0 +1,13 @@
+#!/bin/sh
+# lsblk falso para os cenários de UI. Estado em $NEXUS_FAKE_USB: "present" (existe = pendrive plugado), "mounted"
+# (caminho onde está montado) e "fs" (exfat por padrão). Sempre mostra também o disco do sistema (que nunca pode aparecer).
+D=${NEXUS_FAKE_USB:-/tmp/nexus-fake-usb}
+SYS='{"path":"/dev/sda","pkname":null,"label":null,"mountpoint":null,"rm":false,"hotplug":false,"tran":"sata","size":500000000000,"fstype":null,"type":"disk","children":[{"path":"/dev/sda1","pkname":"sda","label":"sistema","mountpoint":"/","rm":false,"hotplug":false,"tran":null,"size":400000000000,"fstype":"ext4","type":"part"}]}'
+if [ -f "$D/present" ]; then
+  M=$(cat "$D/mounted" 2>/dev/null); FS=$(cat "$D/fs" 2>/dev/null); [ -n "$FS" ] || FS=exfat
+  if [ -n "$M" ]; then MP="\"$M\""; else MP=null; fi
+  USB='{"path":"/dev/sdb","pkname":null,"label":null,"mountpoint":null,"rm":true,"hotplug":true,"tran":"usb","size":32000000000,"fstype":null,"type":"disk","children":[{"path":"/dev/sdb1","pkname":"sdb","label":"JOGOS","mountpoint":'"$MP"',"rm":true,"hotplug":true,"tran":null,"size":31000000000,"fstype":"'"$FS"'","type":"part"}]}'
+  echo "{\"blockdevices\":[$SYS,$USB]}"
+else
+  echo "{\"blockdevices\":[$SYS]}"
+fi

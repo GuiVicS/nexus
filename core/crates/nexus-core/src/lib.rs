@@ -26,6 +26,7 @@ pub mod providers;
 pub mod remote;
 pub mod roms;
 pub mod status;
+pub mod storage;
 pub mod sysnet;
 pub mod rpc;
 pub mod util;

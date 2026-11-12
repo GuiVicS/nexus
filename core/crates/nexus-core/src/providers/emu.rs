@@ -227,7 +227,14 @@ impl EmuProvider {
     }
 
     fn scan(&self) -> Vec<(String, usize, PathBuf)> {
-        scan_roots(&self.roots)
+        // pastas das ROMs em discos USB escolhidos depois de iniciar entram sem reiniciar
+        let mut roots = self.roots.clone();
+        for r in crate::storage::extra_roots() {
+            if !roots.contains(&r) {
+                roots.push(r);
+            }
+        }
+        scan_roots(&roots)
     }
 }
 
@@ -236,6 +243,11 @@ pub fn all_roots() -> Vec<PathBuf> {
     let mut v = vec![roms_dir()];
     if let Some(r) = crate::drive::roms_root() {
         v.push(r);
+    }
+    for r in crate::storage::extra_roots() {
+        if !v.contains(&r) {
+            v.push(r);
+        }
     }
     v
 }

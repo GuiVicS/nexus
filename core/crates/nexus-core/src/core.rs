@@ -103,6 +103,7 @@ impl Core {
         if core.demo.is_some() {
             core.seed_demo()?;
         }
+        crate::storage::load_extra(&core.db);
         core.restore_session();
         Ok(core)
     }

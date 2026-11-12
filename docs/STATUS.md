@@ -499,3 +499,25 @@ Pedido: rclone instalado com o app, login na instalação ou depois, pasta próp
   30 min, parado durante jogo e de volta depois), botão "Perguntar" e "Suspender" e `/etc` falso. Captura `b10-energia`.
 - **Não testado:** `swayidle`/logind/botão de energia reais (a VM não tem `swayidle` instalado nem `/dev/uinput`, e a sessão sway
   não pode ser reiniciada). Falta: `HandlePowerKey`/`HandleLidSwitch` em `logind.conf` (exigiria root; o inhibitor cobre o botão).
+
+### B9 — Armazenamento: disco e discos USB (2026-11-12) ✅
+
+- Ajustes → **Armazenamento** (mesma categoria do Google Drive, que continua logo abaixo, sem mudança): 
+  - **Uso do disco** por categoria (jogos da Steam, ROMs, capas/cache do Nexus, sistema e outros) com barras, calculado pelo
+    Core (`du`, "Calculando…" enquanto isso). O alerta de pouco espaço já vinha do A1/A4.
+  - **Limpar cache e temporários** (confirmação): apaga capas, ícones e logs; nunca o cache do Google Drive, jogos ou saves.
+  - **Discos USB** (lista atualiza sozinha a cada 6 s): só removíveis (o disco do sistema, loops e criptografados não entram).
+    Por disco: **Abrir** (udisksctl mount), **Usar como pasta de ROMs** (liga/desliga; cria `ROMs/<console>` no disco e os jogos
+    entram nos Emuladores sem reiniciar), **Ejetar com segurança** (desmonta todos os volumes e `power-off`; recusa com jogo
+    aberto e explica "disco ocupado") e **Formatar…**.
+  - **Formatar:** confirmação (foco em "Cancelar") → escolha exFAT/ext4 → segunda confirmação ("última chance") → **PIN dos
+    responsáveis** (o Core exige sempre que houver PIN) → udisks2 `Block.Format` (`busctl`). Rótulo fixo "NEXUS"; recusa com jogo aberto.
+- **Core `storage.rs`:** RPC `storage.usage/devices/mount/eject/roms/clean/format`. Dispositivo validado contra a lista de
+  removíveis (`/dev/<alnum>`), argv fixo, rótulo e tipo validados. Programas trocáveis: `NEXUS_LSBLK`, `NEXUS_UDISKSCTL`,
+  `NEXUS_BUSCTL`. Pastas de ROMs extras ficam no banco (`roms_extra`) e entram em `providers/emu.rs` (`scan` e `all_roots`).
+- **Testes:** unidade (parser do lsblk, validações, limpeza que preserva o cache do Drive) e cenário `armazenamento` com
+  `lsblk`/`udisksctl`/`busctl` falsos: uso, vazio, espetar, abrir, ROMs, limpar cache, ejetar ocupado/livre, formatar com
+  confirmação dupla; o cenário `drive` continua passando. Capas `b9-armazenamento` 1080p/720p.
+- **Não testado:** disco USB e udisks2 reais (VM sem USB; o `Format` exige `exfatprogs`/`e2fsprogs` e a regra padrão do polkit
+  para `modify-device` em disco removível da sessão ativa) e jogos de verdade vindos do pendrive (o `scan` com a pasta extra
+  não tem teste de biblioteca; o código só soma a raiz à lista que já era varrida).

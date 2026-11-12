@@ -1,0 +1,14 @@
+#!/bin/sh
+# udisksctl falso. Estado em $NEXUS_FAKE_USB (ver o lsblk falso). "busy" (existe) faz o unmount falhar como o udisks.
+D=${NEXUS_FAKE_USB:-/tmp/nexus-fake-usb}
+echo "$*" >> "$D/udisks.log"
+case "$1" in
+  mount)
+    mkdir -p "$D/mnt"; echo "$D/mnt" > "$D/mounted"; echo "Mounted /dev/sdb1 at $D/mnt." ;;
+  unmount)
+    [ -f "$D/busy" ] && { echo "Error unmounting /dev/sdb1: target is busy" >&2; exit 1; }
+    [ -s "$D/mounted" ] || { echo "Error unmounting /dev/sdb1: Device is not mounted" >&2; exit 1; }
+    : > "$D/mounted"; echo "Unmounted /dev/sdb1." ;;
+  power-off) rm -f "$D/present"; echo "Powered off /dev/sdb" ;;
+  *) echo "udisksctl falso: não sei responder a: $*" >&2; exit 2 ;;
+esac

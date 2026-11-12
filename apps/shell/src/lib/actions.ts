@@ -377,6 +377,9 @@ export const ACT: Record<string, Fn> = {
   pw(a) {
     document.dispatchEvent(new CustomEvent('nexus:pw', { detail: a }));
   },
+  stg(a) {
+    document.dispatchEvent(new CustomEvent('nexus:stg', { detail: a }));
+  },
   ntf(a) {
     document.dispatchEvent(new CustomEvent('nexus:ntf', { detail: a }));
   },

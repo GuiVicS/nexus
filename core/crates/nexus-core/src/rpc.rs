@@ -798,6 +798,76 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             Ok(json!({ "ok": true }))
         }
 
+        // ---------- armazenamento (disco, USB, cache) ----------
+        "storage.usage" | "storage.devices" | "storage.mount" | "storage.eject" | "storage.roms" | "storage.clean" | "storage.format" => {
+            // formatar pede o PIN dos responsáveis sempre que houver um; o resto é de adultos
+            sys_access(core, &v, method == "storage.format")?;
+            let fail = |e: String| RpcError::new(E_FAILED, &e);
+            match method {
+                "storage.usage" => {
+                    let (d, c, r) = (core.cfg.data_dir.clone(), core.cfg.cache_dir.clone(), crate::providers::emu::roms_dir());
+                    let steam = core.steam.as_ref().and_then(|s| s.root());
+                    Ok(blocking(move || crate::storage::usage(&d, &c, steam, &r)).await?)
+                }
+                "storage.devices" => Ok(json!({ "devices": blocking(crate::storage::devices).await? })),
+                "storage.mount" => {
+                    let dev = s(&v, "dev")?;
+                    let p = blocking(move || crate::storage::mount(&dev)).await?.map_err(fail)?;
+                    Ok(json!({ "path": p }))
+                }
+                "storage.eject" => {
+                    let dev = s(&v, "dev")?;
+                    if core.game_info().is_some() {
+                        return Err(RpcError::new(E_BUSY, "Feche o jogo antes de ejetar o disco"));
+                    }
+                    // some da lista de ROMs antes (o disco pode ser a pasta de jogos)
+                    let d2 = dev.clone();
+                    let m = blocking(move || crate::storage::devices().into_iter().find(|x| x["dev"].as_str() == Some(&d2)).and_then(|x| x["mount"].as_str().map(String::from))).await?;
+                    blocking({ let dev = dev.clone(); move || crate::storage::eject(&dev) }).await?.map_err(fail)?;
+                    if let Some(m) = m {
+                        let _ = crate::storage::set_roms(&core.db, &m, false);
+                    }
+                    core.refresh_library().await;
+                    Ok(json!({ "ok": true }))
+                }
+                "storage.roms" => {
+                    let dev = s(&v, "dev")?;
+                    let on = v.get("on").and_then(|b| b.as_bool()).unwrap_or(true);
+                    let db = core.db.clone();
+                    let root = blocking(move || -> Result<std::path::PathBuf, String> {
+                        let mount = crate::storage::mount(&dev)?;
+                        crate::storage::set_roms(&db, &mount, on)
+                    })
+                    .await?
+                    .map_err(fail)?;
+                    core.refresh_library().await;
+                    Ok(json!({ "path": root, "on": on }))
+                }
+                "storage.clean" => {
+                    let c = core.cfg.cache_dir.clone();
+                    let freed = blocking(move || crate::storage::clean_cache(&c)).await?;
+                    Ok(json!({ "freed": freed }))
+                }
+                _ => {
+                    if core.game_info().is_some() {
+                        return Err(RpcError::new(E_BUSY, "Feche o jogo antes de formatar o disco"));
+                    }
+                    let (dev, fs, label) = (s(&v, "dev")?, s(&v, "fs")?, s(&v, "label")?);
+                    let db = core.db.clone();
+                    blocking(move || -> Result<(), String> {
+                        if let Some(m) = crate::storage::devices().into_iter().find(|x| x["dev"].as_str() == Some(&dev)).and_then(|x| x["mount"].as_str().map(String::from)) {
+                            let _ = crate::storage::set_roms(&db, &m, false);
+                        }
+                        crate::storage::format(&dev, &fs, &label)
+                    })
+                    .await?
+                    .map_err(fail)?;
+                    core.refresh_library().await;
+                    Ok(json!({ "ok": true }))
+                }
+            }
+        }
+
         // ---------- energia ----------
         "power.status" => {
             need_session(core)?;

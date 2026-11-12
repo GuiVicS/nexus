@@ -64,6 +64,8 @@ export interface PowerStatus {
   screenMin: number; suspendMin: number; key: 'ask' | 'suspend' | 'off' | 'nothing'; idleAvailable: boolean;
   autologin: { enabled: boolean; dm: string }; screenOpts: number[]; suspendOpts: number[];
 }
+export interface StorageUsage { total: number; free: number; used: number; cats: { id: string; label: string; bytes: number }[] }
+export interface UsbDisk { dev: string; disk: string; label: string; mount: string | null; size: number; fs: string; free?: number; total?: number; isRoms: boolean }
 export interface DisplayMode { width: number; height: number; refresh: number }
 export interface DisplayOutput { name: string; label: string; width: number | null; height: number | null; refresh: number | null; modes: DisplayMode[]; scale: number; transform: string; vrr: boolean | null; hdr: boolean | null }
 export interface DisplayStatus { available: boolean; outputs: DisplayOutput[]; margin: number; pending?: number | null; confirmSecs?: number }
@@ -116,6 +118,13 @@ export function createApi(c: RpcClient) {
     notificationTest: (important: boolean, a: Auth = {}) => call<{ ok: true }>('notifications.test', { important, ...a }),
     powerStatus: () => call<PowerStatus>('power.status'),
     powerSet: (p: { screenMin?: number; suspendMin?: number; key?: string } & Auth) => call<PowerStatus>('power.set', p),
+    storageUsage: () => call<StorageUsage>('storage.usage', {}, 60000),
+    storageDevices: () => call<{ devices: UsbDisk[] }>('storage.devices', {}, 15000),
+    storageMount: (dev: string) => call<{ path: string }>('storage.mount', { dev }, 40000),
+    storageEject: (dev: string) => call<{ ok: true }>('storage.eject', { dev }, 70000),
+    storageRoms: (dev: string, on: boolean) => call<{ path: string; on: boolean }>('storage.roms', { dev, on }, 40000),
+    storageClean: () => call<{ freed: number }>('storage.clean', {}, 60000),
+    storageFormat: (p: { dev: string; fs: 'exfat' | 'ext4'; label: string } & Auth) => call<{ ok: true }>('storage.format', p, 15 * 60000),
     status: () => call<StatusSnapshot>('status.get'),
     statusRefresh: () => call<{ ok: true }>('status.refresh'),
     brightnessStatus: () => call<{ available: boolean; percent: number }>('brightness.status'),

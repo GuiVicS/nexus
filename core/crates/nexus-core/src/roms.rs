@@ -61,7 +61,7 @@ fn user_media_roots() -> Vec<PathBuf> {
 
 /// Dispositivos removíveis (pendrive, HD USB, cartão SD) com sistema de arquivos: montados ou não.
 pub fn media() -> Value {
-    let out = Command::new("lsblk").args(["-J", "-b", "-o", "PATH,LABEL,MOUNTPOINT,RM,HOTPLUG,TRAN,SIZE,FSTYPE,TYPE"]).output();
+    let out = Command::new(std::env::var("NEXUS_LSBLK").unwrap_or_else(|_| "lsblk".into())).args(["-J", "-b", "-o", "PATH,LABEL,MOUNTPOINT,RM,HOTPLUG,TRAN,SIZE,FSTYPE,TYPE"]).output();
     let mut list = vec![];
     if let Ok(o) = out {
         if let Ok(v) = serde_json::from_slice::<Value>(&o.stdout) {

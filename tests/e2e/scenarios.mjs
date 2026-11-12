@@ -1300,3 +1300,102 @@ scenarios.energia = async () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 };
+
+// B9: Armazenamento — uso do disco por categoria, limpar cache, disco USB (abrir, pasta de ROMs, ejetar com segurança,
+// formatar com confirmação dupla) com lsblk/udisksctl/busctl falsos; só com o controle.
+scenarios.armazenamento = async () => {
+  const core = await startCore({ demo: true });
+  const U = `${core.dir}/fake-usb`;
+  fs.mkdirSync(U, { recursive: true });
+  fs.mkdirSync(`${core.dir}/cache/art`, { recursive: true });
+  fs.writeFileSync(`${core.dir}/cache/art/capa.png`, Buffer.alloc(200000));
+  const rd = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '');
+  const toast = (re) => `()=>[...document.querySelectorAll('.toast')].some(t=>${re}.test(t.textContent))`;
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await openSettingsCat(ui, 'armaz', 'Armazenamento');
+    await ui.until(`()=>/livres de/.test(document.querySelector('[data-k=st-total]')?.textContent||'')`, 'uso do disco calculado');
+    check(/Capas e cache/.test(await ui.text('[data-k=st-cat-cache]')) && /\d/.test(await ui.text('[data-k=st-cat-cache]')), 'categoria Capas e cache com tamanho');
+    check(await ui.has('[data-k=st-cat-steam]') && await ui.has('[data-k=st-cat-roms]') && await ui.has('[data-k=st-cat-other]'), 'Steam, ROMs e Sistema listados');
+    check(await ui.has('[data-k=st-nousb]'), 'sem disco USB: mensagem de vazio');
+    check(await ui.has('[data-k=dr-login]') || await ui.has('[data-k=dr-none]') || await ui.has('[data-k=dr-ok]'), 'painel do Google Drive continua na mesma categoria');
+    // espeta o pendrive: aparece sozinho (o disco do sistema nunca aparece)
+    fs.writeFileSync(`${U}/present`, '1');
+    await ui.key('ArrowRight');
+    await goTo(ui, 'st-rescan', 'procurar discos');
+    await ui.key('Enter');
+    await ui.until(`()=>/JOGOS/.test(document.querySelector('[data-k=st-usb-0]')?.textContent||'')`, 'pendrive JOGOS listado');
+    check((await ui.count('[data-k^=st-usb-][data-k$=-eject]')) === 1, 'só um disco (o do sistema não entra)');
+    check(/ainda não aberto/.test(await ui.text('[data-k=st-usb-0]')), 'ainda não aberto');
+    await ui.screens('b9-armazenamento');
+    // abrir
+    await goTo(ui, 'st-usb-0-mount', 'abrir o disco');
+    await ui.key('Enter');
+    await ui.until(`()=>/· aberto/.test(document.querySelector('[data-k=st-usb-0]')?.textContent||'')`, 'disco aberto');
+    check(fs.existsSync(`${U}/mnt`), 'udisks montou');
+    // usar como pasta de ROMs
+    await goTo(ui, 'st-usb-0-roms', 'usar como pasta de ROMs');
+    await ui.key('Enter');
+    await ui.until(toast('/Pasta de ROMs ligada/'), 'pasta de ROMs ligada');
+    check(fs.existsSync(`${U}/mnt/ROMs/nes`) && fs.existsSync(`${U}/mnt/ROMs/snes`), 'Core criou ROMs/<console> no disco');
+    await ui.until(`()=>/pasta de ROMs/.test(document.querySelector('[data-k=st-usb-0]')?.textContent||'')`, 'disco marcado como pasta de ROMs');
+    // limpar cache
+    await goTo(ui, 'st-clean', 'limpar cache');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação de limpar');
+    await ui.key('Enter');
+    await ui.until(toast('/Cache limpo/'), 'cache limpo');
+    check(!fs.existsSync(`${core.dir}/cache/art/capa.png`), 'capas apagadas do cache');
+    // ejetar: ocupado explica; livre ejeta
+    fs.writeFileSync(`${U}/busy`, '1');
+    await goTo(ui, 'st-usb-0-eject', 'ejetar');
+    await ui.key('Enter');
+    await ui.until(toast('/ainda está usando/'), 'disco ocupado: mensagem clara');
+    check(fs.existsSync(`${U}/present`), 'ocupado não foi desligado');
+    fs.rmSync(`${U}/busy`);
+    await ui.until(`()=>!document.querySelector('.toast')`, 'avisos sumiram', 6000);
+    await ui.key('Enter');
+    await ui.until(toast('/Pode tirar o disco/'), 'ejetado com segurança');
+    check(/power-off/.test(rd(`${U}/udisks.log`)) && !fs.existsSync(`${U}/present`), 'Core desmontou e desligou o disco (power-off)');
+    check(!(await core.rpc('storage.devices')).devices.some((d) => d.isRoms), 'pasta de ROMs do disco ejetado saiu da lista');
+    await ui.until(`()=>!!document.querySelector('[data-k=st-nousb]')`, 'lista de discos vazia de novo', 9000);
+    // formatar: confirmação dupla
+    fs.writeFileSync(`${U}/present`, '1');
+    fs.writeFileSync(`${U}/mounted`, `${U}/mnt\n`);
+    fs.mkdirSync(`${U}/mnt`, { recursive: true });
+    fs.writeFileSync(`${U}/mnt/arquivo.txt`, 'meus dados');
+    await goTo(ui, 'st-rescan', 'procurar discos');
+    await ui.key('Enter');
+    await ui.until(`()=>!!document.querySelector('[data-k=st-usb-0-format]')`, 'disco de volta');
+    await goTo(ui, 'st-usb-0-format', 'formatar');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'primeira confirmação');
+    check(/Formatar “JOGOS”/.test(await ui.text('#ovs [data-kind=confirm]')), 'texto da 1ª confirmação');
+    check((await ui.focusInfo())?.a?.startsWith('no'), 'foco começa em Cancelar (seguro)');
+    await ui.key('Escape');
+    await ui.until(`()=>!document.querySelector('#ovs [data-kind=confirm]')`, 'Voltar cancela');
+    check(fs.existsSync(`${U}/mnt/arquivo.txt`), 'cancelar não apagou nada');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'abre de novo');
+    await ui.focusOn((f) => f.a.startsWith('yes'), 6);
+    await ui.key('Enter'); // continuar
+    await ui.until(`()=>/Tipo do disco/.test(document.querySelector('#ovs [data-kind=confirm]')?.textContent||'')`, 'escolha do tipo');
+    await ui.key('Enter'); // exFAT (foco em "exFAT")
+    await ui.until(`()=>/Apagar tudo em/.test(document.querySelector('#ovs [data-kind=confirm]')?.textContent||'')`, '2ª confirmação (última chance)');
+    await ui.focusOn((f) => f.a.startsWith('yes'), 6);
+    await ui.key('Enter');
+    // com PIN dos responsáveis definido o Core pede; sem PIN segue
+    await sleep(500);
+    if (await ui.has('#ovs [data-kind=pin]')) await ui.typePin('1234');
+    await waitNode(() => /Format sa\{sv\} exfat 1 label s NEXUS/.test(rd(`${core.dir}/busctl.log`)), 'udisks2 recebeu Format exfat NEXUS', 8000);
+    check(!fs.existsSync(`${U}/mnt/arquivo.txt`), 'disco formatado (dados apagados)');
+    await ui.until(toast('/Disco formatado/'), 'aviso de disco formatado');
+    check(ui.errors().length === 0, `sem erros de JavaScript${ui.errors().length ? ': ' + ui.errors().join(' | ') : ''}`);
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};
