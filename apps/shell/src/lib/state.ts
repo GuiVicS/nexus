@@ -36,6 +36,8 @@ interface State {
   shopCat: string;
   /** aba Emuladores: console aberto (pasta em ~/ROMs) ou null = lista de consoles */
   emuSys: string | null;
+  /** aba Mídia: série aberta (lista de episódios) ou null */
+  mediaShow: string | null;
   /** RetroArch instalado (mostra a aba Emuladores mesmo sem jogos, para adicionar) */
   emuReady: boolean;
   /** atualizações dos apps instalados (id do item → atualização) */
@@ -78,6 +80,7 @@ export const [S, setS] = createStore<State>({
   libFilter: 'todos',
   shopCat: 'inicio',
   emuSys: null,
+  mediaShow: null,
   emuReady: false,
   appUpd: {},
   appRestorable: [],

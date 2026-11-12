@@ -4,7 +4,7 @@ import { api } from '../lib/api';
 import { fail, isInstalled, isKid, prefs, S, setS, fx } from '../lib/state';
 import { effectivePrice, fmtAgo, fmtBytes, fmtEta, fmtPlaytime, fmtSpeed, metaOf, money, norm, ratingLabel } from '../lib/format';
 import { verbOf } from '../lib/actions';
-import { Bar, Empty, Glyph, heroStyle, Icon, PriceTag, Tile } from './ui';
+import { Bar, Empty, Glyph, heroStyle, Icon, isMedia, PriceTag, Tile } from './ui';
 
 export const [stripItem, setStripItem] = createSignal<Item | null>(null);
 
@@ -14,7 +14,7 @@ export function dockItems(): Item[] {
   const pinned = prefs().pins.map((id) => lib.find((i) => i.id === id)).filter((i): i is Item => !!i && (isInstalled(i) || i.state === 'installing'));
   if (pinned.length) return pinned;
   return [...lib]
-    .filter((i) => isInstalled(i) || i.state === 'installing')
+    .filter((i) => (isInstalled(i) || i.state === 'installing') && !isMedia(i))
     .sort((a, b) => (b.lastPlayed ?? 0) - (a.lastPlayed ?? 0) || norm(a.title).localeCompare(norm(b.title)))
     .slice(0, 12);
 }
@@ -228,7 +228,7 @@ const catOf = (i: Item) => {
 };
 
 export function Media() {
-  const apps = createMemo(() => S.lib.filter((i) => i.kind === 'app' && (isInstalled(i) || i.state === 'installing')));
+  const apps = createMemo(() => S.lib.filter((i) => i.kind === 'app' && !isMedia(i) && (isInstalled(i) || i.state === 'installing')));
   const groups = createMemo(() => {
     const m = new Map<string, Item[]>();
     for (const a of [...apps()].sort((x, y) => norm(x.title).localeCompare(norm(y.title)))) {
@@ -237,17 +237,66 @@ export function Media() {
     }
     return CAT_ORDER.filter((c) => m.has(c)).map((c) => [c, m.get(c)!] as const);
   });
+  // filmes, séries e músicas (pasta Nexus do Google Drive + pastas da TV), tocados pelo mpv
+  const media = createMemo(() => S.lib.filter(isMedia));
+  const movies = createMemo(() => media().filter((i) => i.tags.includes('filme')));
+  const music = createMemo(() => media().filter((i) => i.tags.includes('musica')));
+  const eps = createMemo(() => media().filter((i) => i.tags.includes('serie')));
+  const showOf = (i: Item) => i.tags.find((t) => t.startsWith('show:'))?.slice(5) ?? 'Outros';
+  const seasonOf = (i: Item) => i.tags.find((t) => t.startsWith('season:'))?.slice(7) ?? '';
+  const shows = createMemo(() => {
+    const m = new Map<string, Item[]>();
+    for (const e of eps()) m.set(showOf(e), [...(m.get(showOf(e)) ?? []), e]);
+    return [...m.entries()];
+  });
+  const openEps = createMemo(() => (S.mediaShow ? eps().filter((e) => showOf(e) === S.mediaShow) : []));
+  const seasons = createMemo(() => {
+    const m = new Map<string, Item[]>();
+    for (const e of openEps()) m.set(seasonOf(e), [...(m.get(seasonOf(e)) ?? []), e]);
+    return [...m.entries()];
+  });
+  const sub = () => {
+    const parts = [movies().length && `${movies().length} ${movies().length === 1 ? 'filme' : 'filmes'}`, shows().length && `${shows().length} ${shows().length === 1 ? 'série' : 'séries'}`, music().length && `${music().length} ${music().length === 1 ? 'música' : 'músicas'}`].filter(Boolean);
+    return parts.length ? parts.join(' · ') : 'Streaming, música e apps instalados';
+  };
   return (
+    <Show when={S.mediaShow} fallback={
     <>
-      <Strip wide fallbackTitle="Mídia" fallbackSub="Streaming, música e apps instalados" />
+      <Strip wide fallbackTitle="Mídia" fallbackSub={sub()} />
       <div class="sc w" id="sc">
         <div class="gridt">
+          <Show when={movies().length}>
+            <h3 class="sh">Filmes</h3>
+            <For each={movies()}>{(m) => <Tile it={m} a={`app:${m.id}`} />}</For>
+          </Show>
+          <Show when={shows().length}>
+            <h3 class="sh">Séries</h3>
+            <For each={shows()}>
+              {([name, list]) => (
+                <div class="tl f" data-k={`show-${name}`} data-r="22" data-a={`mediashow:${name}`} data-verb="Abrir" aria-label={name}>
+                  <div class="in" style={{ background: 'linear-gradient(135deg,hsl(230 55% 34%),hsl(280 55% 18%))' }}>
+                    <div class="emuf"><span class="ab">▤</span><small>{list.length} {list.length === 1 ? 'episódio' : 'episódios'}</small><b>{name}</b></div>
+                    <Show when={list.some((e) => e.tags.includes('cloud'))}><span class="ic"><Icon n="cloud" /></span></Show>
+                  </div>
+                </div>
+              )}
+            </For>
+          </Show>
+          <Show when={music().length}>
+            <h3 class="sh">Músicas</h3>
+            <For each={music()}>{(m) => <Tile it={m} a={`app:${m.id}`} />}</For>
+          </Show>
+          <Show when={!media().length && groups().length && !isKid()}>
+            <p class="empty" id="media-hint" style={{ 'grid-column': '1/-1' }}>{MEDIA_HINT}</p>
+          </Show>
           <For each={groups()} fallback={
+            <Show when={!media().length}>
             <div class="empty-wrap">
-              <Empty icon="tv" title="Nenhum app adicionado" text="Programas do Linux (navegador, Kodi, Minecraft…) aparecem aqui depois que você os adiciona em Ajustes → Apps e jogos.">
+              <Empty icon="tv" title="Seus filmes, séries e músicas aparecem aqui" text={MEDIA_HINT}>
                 <Show when={!isKid()}><div class="btn f" data-autofocus data-r="p" data-pad="8" data-a="settings:apps" data-verb="Abrir"><Icon n="plus" /> Adicionar app</div></Show>
               </Empty>
             </div>
+            </Show>
           }>
             {([c, list]) => (
               <>
@@ -264,8 +313,29 @@ export function Media() {
         </div>
       </div>
     </>
+    }>
+      {(name) => (
+        <>
+          <Strip wide fallbackTitle={name()} fallbackSub={`${openEps().length} ${openEps().length === 1 ? 'episódio' : 'episódios'}`} />
+          <div class="sc w" id="sc">
+            <div class="gridt">
+              <For each={seasons()}>
+                {([season, list]) => (
+                  <>
+                    <Show when={season}><h3 class="sh">{season}</h3></Show>
+                    <For each={list}>{(e) => <Tile it={e} a={`app:${e.id}`} />}</For>
+                  </>
+                )}
+              </For>
+            </div>
+          </div>
+        </>
+      )}
+    </Show>
   );
 }
+
+const MEDIA_HINT = 'Coloque os arquivos na pasta Nexus do Google Drive (Filmes, Séries e Músicas; conecte em Ajustes → Armazenamento) ou nas pastas Vídeos e Música da TV. Séries: uma pasta por série, com subpastas por temporada.';
 
 // ---------- Loja ----------
 const SHOP_CATS: [string, string][] = [

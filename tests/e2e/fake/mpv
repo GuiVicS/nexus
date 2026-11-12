@@ -1,0 +1,4 @@
+#!/bin/sh
+# "mpv" dos testes: grava os argumentos (um por linha) em $NEXUS_FAKE_MPV_LOG e fica aberto
+[ -n "$NEXUS_FAKE_MPV_LOG" ] && printf '%s\n' "$@" > "$NEXUS_FAKE_MPV_LOG"
+exec sleep 120

@@ -65,6 +65,7 @@ impl Core {
         if cfg.web_apps {
             providers.push(Arc::new(crate::providers::web::WebProvider::new(cfg.data_dir.clone(), cfg.cache_dir.clone())));
         }
+        providers.push(Arc::new(crate::providers::media::MediaProvider::new(cfg.data_dir.clone(), cfg.runtime_dir.clone())));
         let demo = cfg.demo.then(|| Arc::new(DemoProvider::new(cfg.demo_assets.clone(), db.clone())));
         if let Some(d) = &demo {
             providers.push(d.clone());

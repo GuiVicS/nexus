@@ -40,7 +40,7 @@ export function fmtAgo(unix?: number | null) {
 export const ratingLabel = (r?: number | null) => (r === null || r === undefined ? '' : r === 0 ? 'Livre' : `${r} anos`);
 
 export function metaOf(it: Item) {
-  if (it.kind === 'app') return it.category || it.subtitle || 'App';
+  if (it.kind === 'app') return it.tags.includes('media') ? it.subtitle || it.category || 'Mídia' : it.category || it.subtitle || 'App';
   return `${it.subtitle}${it.year ? ' · ' + it.year : ''}`;
 }
 

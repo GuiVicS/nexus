@@ -86,6 +86,11 @@ export function back() {
     setS('emuSys', null);
     return focusSoon(() => fx.f?.set(document.querySelector<HTMLElement>(`#view .sysc[data-k="sys-${d}"]`) ?? firstFocus('emu'), { silent: true, snap: true }));
   }
+  if (S.tab === 'midia' && S.mediaShow) {
+    const n = S.mediaShow;
+    setS('mediaShow', null);
+    return focusSoon(() => fx.f?.set(document.querySelector<HTMLElement>(`#view [data-k="show-${CSS.escape(n)}"]`) ?? firstFocus('midia'), { silent: true, snap: true }));
+  }
   if (cur?.closest('.sc') && document.querySelector('#view .rail')) return fx.f?.set(document.querySelector<HTMLElement>('#view .rail .ri.on'), { silent: true });
   tab('home', { focus: true });
 }
@@ -494,6 +499,11 @@ export const ACT: Record<string, Fn> = {
     sfx('select');
     setS('emuSys', dir);
     focusSoon(() => fx.f?.set(firstFocus('emu'), { silent: true, snap: true }));
+  },
+  mediashow(name) {
+    sfx('select');
+    setS('mediaShow', name);
+    focusSoon(() => fx.f?.set(firstFocus('midia'), { silent: true, snap: true }));
   },
   romsadd() {
     void pushOv('roms', {});

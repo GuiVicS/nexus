@@ -6,6 +6,7 @@ use std::path::PathBuf;
 pub mod demo;
 pub mod drive;
 pub mod emu;
+pub mod media;
 pub mod native;
 pub mod steam;
 pub mod web;
