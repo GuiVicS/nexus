@@ -64,3 +64,22 @@ chave GPG/Pages do apt; publicar release; o modo "encerrar a Shell" (decisão pe
 7. Ao terminar: entrada no fim de `docs/STATUS.md` (o que foi feito, testes, capturas, o que ficou faltando e por quê),
    **commit na sua branch** (mensagem em pt-BR + linha `Co-Authored-By: Claude …`), e responda ao orquestrador com:
    branch, commits, testes rodados (com resultado), o que não foi feito.
+
+## Como terminou (2026-11-12) e lições para a próxima orquestração
+
+Resultado: os seis agentes entregaram; tudo entrou na `main` e saiu na **release v0.5.0** (35 cenários de UI e todos os testes do Core passando).
+O merge foi feito na ordem A (Fase 2) → B (Fase 3) → C (Mídia) → E (Fase 4) → F (textos) → D (logos), conforme cada um terminava.
+
+Lições:
+- **Cópia de trabalho (worktree) nasce da `origin/main`.** Faça o push antes de lançar os agentes, senão eles partem de uma base velha
+  (o agente D chegou a ver a `main` "sem compilar" por isso).
+- **Limite de uso da conta:** os agentes param no meio com erro 429. O trabalho fica salvo; quando o limite volta, mande uma mensagem
+  ao mesmo agente (SendMessage) para ele continuar. Não crie outro.
+- **Conflitos previsíveis:** `scenarios.mjs` e `lib.mjs` (todos acrescentam no fim), `styles.css`, `STATUS.md`, `lib.rs`, `Settings.tsx`,
+  `build-deb.sh` (`Depends`). Na maioria, manter os dois lados resolve. No `scenarios.mjs`, monte a versão da `main` + a cauda nova da
+  branch, nunca a união cega dos blocos (a união quebrou a sintaxe), e procure nomes de cenário repetidos.
+- **Agente pequeno (Haiku) em tarefa de rede lenta** (Commons com 429) fica esperando muito tempo. Mande fechar com o que já tem.
+- **Confira o visual você mesmo:** o agente de logos só olhou a primeira página da grade, e sete logos viravam mancha branca.
+- **Rode a suíte completa depois de cada merge:** os cenários dos agentes passaram isolados, mas a mudança de versão quebrou um teste
+  (`atualizacoes`) que nenhum agente viu.
+- Depois do merge, remova a worktree. Se estiver travada pelo processo do agente: `git worktree unlock` e depois `git worktree remove --force`.

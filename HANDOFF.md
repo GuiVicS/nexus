@@ -1,7 +1,7 @@
 # HANDOFF — Nexus
 
 > Documento para continuar o desenvolvimento em **outra sessão ou outro agente** sem perder contexto.
-> Atualize a seção "Estado atual" e "Próximos passos" **ao fim de cada sessão**. Última atualização: 2026-11-12 (versão 0.4.1 publicada; **0.5.0 em preparação**: fases 2, 3 e 4 das telas de sistema e aba Mídia, ver §4b e a seção final de `docs/STATUS.md`).
+> Atualize a seção "Estado atual" e "Próximos passos" **ao fim de cada sessão**. Última atualização: 2026-11-12, fim da sessão (**0.5.0 publicada**: Google Drive, aba Mídia, logos dos consoles, fases 2, 3 e 4 das telas de sistema; ver §4b e o fim de `docs/STATUS.md`). **A VM de desenvolvimento usada até aqui vai ser apagada pelo usuário:** para continuar, recrie o ambiente pela §5a. Tudo o que importa está no repositório.
 
 **Repositório (público desde a 0.4.1):** https://github.com/GuiVicS/nexus · releases: https://github.com/GuiVicS/nexus/releases
 · este arquivo em texto puro: https://raw.githubusercontent.com/GuiVicS/nexus/main/HANDOFF.md
@@ -20,7 +20,11 @@ Estado por área, com legenda de confiança: [`docs/STATUS.md`](docs/STATUS.md).
 - Fala **português (pt-BR)**; respostas curtas e diretas, sem enrolação. Toda a interface do produto é em pt-BR.
 - Deu autonomia total ("faça bem feito", modo automático), mas **quer saber o que não foi testado**. Seja honesto sobre o que
   só foi validado aqui (sem GPU, sem Steam real) e o que depende do aparelho dele.
-- Testa numa **VM VirtualBox com Ubuntu** (a VM usa repositório `resolute` = Ubuntu mais novo que o 24.04 alvo; aceleração 3D da VM pode estar desligada).
+- **Próximo teste do usuário (depois da 0.5.0):** instalar o **Debian 13 limpo numa VM** (netinst sem desktop, rede em bridge) e no **Raspberry Pi**
+  (Pi OS Lite 64 bits), seguindo `docs/TESTE-REAL.md`. Depois quer uma **imagem pronta do Pi** e uma **distro própria para PC com base no Debian 13**
+  (análise e decisões em `docs/DISTRO.md`; ainda não implementado).
+- Gosta de **orquestração por subagentes** para andar rápido (plano em `docs/prompts/finalizacao.md`, com as lições no fim).
+- Testava numa **VM VirtualBox com Ubuntu** (a VM usa repositório `resolute` = Ubuntu mais novo que o 24.04 alvo; aceleração 3D da VM pode estar desligada).
   Depois continuará direto no aparelho que receberá o sistema.
 - **Não faça commit, push, deploy ou publicação sem pedir** (ele já autorizou explicitamente o que está em "Distribuição").
 - Preferiu **recomendações tecnicamente honestas** a seguir hábitos; decisões de arquitetura estão justificadas em `docs/`.
@@ -41,15 +45,15 @@ Sessão: nexus.desktop → nexus-session → sway kiosk (ws1 = Shell, ws2 = jogo
 - **Supervisor de jogos**: `game.rs` — lança em sessão própria (`setsid`), acompanha por processos (`/proc`; Steam via `reaper … SteamLaunch AppId=N`), fecha com SIGTERM→SIGKILL, registra tempo de jogo e limite diário infantil.
 - **Segurança**: socket 0600; HTTP local só com `Host` loopback (anti DNS-rebinding); Remote com token de 96 bits + bloqueio por IP; PIN com Argon2 e bloqueio por tentativas; imagens personalizadas validadas por conteúdo e restritas a pastas permitidas (`customart.rs`); Shell sem Node (`contextIsolation`, sandbox, CSP).
 
-## 4. Estado atual (0.4.1)
+## 4. Estado atual (0.5.0)
 
-> **Atualização para 0.5.0 (em preparação, 2026-11-12):** as fases 2, 3 e 4 da §4b e a aba Mídia (Google Drive parte 2)
+> **0.5.0 (publicada, release `v0.5.0`, 2026-11-12):** as fases 2, 3 e 4 da §4b e a aba Mídia (Google Drive parte 2)
 > estão implementadas. O que cada item cobre e o que **não** foi testado em hardware real está em `docs/STATUS.md`
 > (seção "Telas de sistema" e o resumo final). O que ainda falta de fato: login do Google Drive por QR no celular,
 > controle remoto da TV via CEC, terminal embutido na Recuperação, outros idiomas da interface, e validação de tudo
 > no aparelho real (Raspberry Pi, TV com HDMI-CEC, pendrive, Wi-Fi, Bluetooth, boot).
 
-**0.4.0 "carenagem de console" (release `v0.4.0`, 2026-11-12, plano em `~/.claude/plans/jiggly-forging-ullman.md`):** a Steam e o RetroArch são só motor, nunca aparecem.
+**0.4.0 "carenagem de console" (release `v0.4.0`, 2026-11-12, plano em `docs/prompts/plano-0.4-carenagem.md`):** a Steam e o RetroArch são só motor, nunca aparecem.
 - **Steam escondida:** janelas da classe `steam` vão para o *scratchpad* do sway (`nexus-kiosk.conf`); `no_focus` impede janela nova de trocar a tela;
   o Core só mostra o jogo quando a **janela do jogo** existe há ~1,2 s (`compositor::game_window_present`, fallback 12 s) e, ao sair, reafirma o Nexus por 1,6 s.
   Login/compra: `core.show_steam_ui()` (Ajustes → Steam). Aviso "A Steam está preparando o jogo…" na Shell em vez de mostrar a Steam.
@@ -274,6 +278,8 @@ Sempre que possível, conferir também na sessão real da VM.
 - **B19 Privacidade:** o que vai pela rede, telemetria (padrão desligada, o Nexus não tem) e limpar histórico/busca.
 
 ### Encerramento (depois da fase 4, ou antes, se o usuário pedir)
+> **Itens 1 e 2 perderam o sentido:** o usuário vai apagar a VM de desenvolvimento e testar numa instalação limpa (Debian 13 + Pi).
+
 1. Remover os ajustes temporários de desenvolvimento da VM:
    - `~/.config/systemd/user/nexus-shell.service.d/zz-repo-electron.conf`;
    - a cópia `~/.config/systemd/user/nexus-session.target`.
@@ -281,6 +287,9 @@ Sempre que possível, conferir também na sessão real da VM.
 3. Resumo final do "prompt de melhoria" (itens 1–9, no STATUS): ganhos medidos, riscos e próximos passos.
 
 ### Decisões e aprovações pendentes do usuário
+- Ligar o SSH e restaurar o padrão de fábrica devem **exigir** que exista um PIN dos responsáveis? Hoje, sem PIN definido, qualquer adulto faz os dois.
+- Imagem pronta do Pi (`tools/build-pi-image.sh`, proposta em `docs/DISTRO.md`) e decisões da distro (mesmo arquivo).
+- Login do Google Drive por QR no celular (precisa de projeto no Google Cloud do usuário; ver §10 item 0).
 - `sudo` na VM para medir o nexus-slim/zram.
 - Chave GPG, segredo no GitHub e Pages para o repositório apt.
 - Gamescope (`docs/decisions/0004`).
@@ -306,6 +315,22 @@ Dados em `~/.local/share/nexus-sim`, log da Steam simulada em `~/.local/share/ne
 Variáveis úteis do Core (`config.rs`): `NEXUS_DEMO=1`, `NEXUS_DEV_HTTP`, `NEXUS_STEAM_ROOT`, `NEXUS_STEAM_BIN`, `NEXUS_STEAM_API_KEY`, `NEXUS_APPS_DIRS`, `NEXUS_FS_ROOTS`, `NEXUS_UINPUT=0`, `NEXUS_COMPOSITOR=sway|none`, `NEXUS_REMOTE_BIND`.
 Ganchos de teste: `NEXUS_OFFLINE=1` (sem rede) + `NEXUS_STEAM_FIXTURE=arquivo.json` (vitrine fictícia `{categoria:[entradas]}`).
 
+## 5a. Recriar o ambiente de desenvolvimento do zero (a VM antiga foi apagada)
+
+A VM antiga era um Ubuntu (repositório `resolute`) sem `sudo` para o agente. Ferramentas ficavam no usuário. Para refazer:
+- **Rust:** `rustup` em `~/.cargo`, com os alvos `x86_64-unknown-linux-gnu` e `aarch64-unknown-linux-gnu`.
+  Para o pacote do Pi também: `sudo apt install gcc-aarch64-linux-gnu`.
+- **Node 24** (em `~/.local/opt/node24`, com link em `~/.local/bin`), pnpm via corepack e `gh` em `~/.local/bin` (`gh auth login`;
+  para mexer em `.github/workflows` precisa do escopo `workflow`: `gh auth refresh -s workflow`).
+- **Chromium para os testes de UI:** qualquer Chrome/Chromium; na VM antiga, `~/.local/bin/chromium` era um link para `/usr/bin/google-chrome`.
+- **rclone para o teste do Google Drive, sem sudo:** `apt-get download rclone && dpkg-deb -x rclone_*.deb ~/.local/opt/rclone/root`.
+  Precisa de FUSE (`fuse3`) na máquina.
+- **Sessão aninhada para ver a TV dentro do desktop (opcional):**
+  `NEXUS_SWAY_CONF=$PWD/system/sway/nexus-kiosk.conf WLR_BACKENDS=wayland WAYLAND_DISPLAY=wayland-0 system/session/nexus-session`.
+  Os ajustes de desenvolvimento da VM antiga (`~/.config/systemd/user/nexus-shell.service.d/zz-repo-electron.conf` e a cópia de
+  `nexus-session.target`) **não** estão no repositório e não são necessários num aparelho de verdade.
+- Depois: `pnpm install`, `make build` e os testes da §6.
+
 ## 6. Testes (rode tudo antes de dar algo como pronto)
 
 ```sh
@@ -314,7 +339,20 @@ node --experimental-strip-types packages/focus/test.mjs
 pnpm -r typecheck
 node tests/e2e/run.mjs [filtro]              # 7 cenários de interface (Chromium headless contra o Core real)
 ```
-Cenários: `adulto_demo`, `crianca`, `perfis`, `primeiro_uso`, `celular`, `apps_personalizados`, `steam_loja`.
+Cenários: `adulto_demo`, `crianca`, `perfis`, `primeiro_uso`, `celular`, `apps_personalizados`, `steam_loja` e outros (**35** na 0.5.0; `run.mjs` sem filtro roda todos, cerca de 20 a 25 min).
+
+**Na 0.5.0 (estado final, tudo passando):** Core com 119 testes de unidade, 17 de ponta a ponta e o do Drive; UI com 35 cenários.
+Jeito rápido e reprodutível (o que foi usado na reta final):
+```sh
+export CARGO_INCREMENTAL=0
+flock /tmp/nexus-build.lock sh -c 'cargo build -q -p nexus-core && cp target/debug/nexus-core .nexus-core-bin'   # .nexus-core-bin fica fora do git
+pnpm -C apps/shell build && pnpm -C apps/remote build           # o cenário "celular" usa o build do Remote
+NEXUS_CORE_BIN=$PWD/.nexus-core-bin NEXUS_EMULATION=0 node tests/e2e/run.mjs [cenário]
+NEXUS_TEST_RCLONE=~/.local/opt/rclone/root/usr/bin/rclone TMPDIR=/tmp cargo test -p nexus-core --test drive   # Drive com rclone de verdade
+```
+- Capturas para conferir telas: `ui.screens('nome')` com `NEXUS_SHOTS=<pasta>` (gera 1080p e 720p). Olhe as imagens: os testes não pegam problema visual.
+- **Programas falsos** em `tests/e2e/fake/`: cada programa externo do Core tem uma variável `NEXUS_<PROG>` (nmcli, systemctl, busctl, lsblk,
+  udisksctl, cec-client, java, mpv, rclone, curl…); `tests/e2e/lib.mjs` (`startCore`) já liga todos.
 Os cenários de UI são **sensíveis a carga** (máquina de 2 núcleos): um deles falhou 1 vez em 3 rodadas completas e passa 6/6 isolado; se falhar, repita antes de supor bug real. Prefira `until(...)`/esperas ao invés de `sleep` fixo.
 
 ## 7. Build, empacotar e distribuir
@@ -366,7 +404,39 @@ Saídas de emergência: Ctrl+Alt+F3 (terminal; na VirtualBox Right-Ctrl+F3), `su
 - `nexus-session` (0.3.2) encerra o grupo do app que sobrou de uma sessão anterior (`game.json` → `kill -- -sid`) antes de subir o Core.
 - Teste de interface: o campo de PIN/texto precisa de uma pausa depois de abrir; setas ◀▶ em seletores alteram valores (navegue na vertical em formulários).
 
+### Armadilhas novas da reta final da 0.5.0
+- **`/tmp` cheio:** os perfis do Chrome dos testes (`/tmp/cdp-*`) ficavam para trás (169 perfis, 4,6 GB, com `/tmp` em tmpfs).
+  Corrigido em `tests/e2e/cdp.mjs`: perfil temporário, processo em grupo próprio e limpeza ao sair. Se voltar, apague `/tmp/cdp-*` sem testes rodando.
+- **Socket Unix com caminho longo** (limite de cerca de 108 caracteres): testes com `TMPDIR` comprido falham ao conectar. Use `/tmp` ou outro caminho curto.
+- **Disco:** `target/debug` passa de 6 GB. `rm -rf target/debug/incremental` e `CARGO_INCREMENTAL=0` liberam espaço.
+  Os pacotes antigos em `dist/` já publicados no GitHub podem ser apagados.
+- **Versão falsa nos testes não pode ser a versão real.** O cenário `atualizacoes` simulava a "versão nova" 0.5.0 e quebrou quando o Nexus
+  virou 0.5.0. Agora usa 9.9.0 (`tests/e2e/fake/curl`, `fake/systemctl`, `scenarios.mjs`).
+- **Logos dos consoles** (`apps/shell/public/systems/*.svg`, lista `SYS_LOGO` em `lib/emu.ts`):
+  - O card pinta a logo de branco (`filter: brightness(0) invert(1)`). Logo com fundo ou cor própria vira mancha branca e vai para
+    `SYS_LOGO_COLOR` (pílula branca, cores originais): gba, megadrive, msx, pokemini, segacd, neogeo, colecovision, scummvm, nes.
+  - Confira **todas** renderizando uma página com as 38 logos lado a lado, porque a grade de Emuladores só mostra a primeira página.
+  - O Wikimedia Commons limita downloads (HTTP 429): espere minutos entre eles.
+  - Falta o Saturn: o SVG do Commons tem 44 MB, com imagens embutidas.
+  - Licenças em `CREDITOS.md`.
+- **Merge de várias branches** (orquestração): `tests/e2e/scenarios.mjs` dá conflito porque todo mundo acrescenta no fim.
+  Monte a versão da `main` + a cauda nova da branch (`git show <branch>:arquivo | tail -n +<linha da base+1>`) e
+  confira nomes de cenário repetidos (`grep -o '^scenarios\.[a-z_0-9]* =' | sort | uniq -d`).
+  Já aconteceu: `energia` (Fase 2) e `energia` (Fase 4), e a da Fase 4 virou `energia_tv`.
+- **greetd no Debian:** o `greetd.service` tem `Alias=display-manager.service`. Com `systemctl enable greetd` o instalador o detecta,
+  e numa base sem tela de login **o próprio instalador já instala e ativa o greetd** (`installer/src/plan.rs`).
+- **`update.sh` aceita só** `--autologin USUARIO`, `--sem-steam`, `--sem-emuladores`, `--sem-otimizar`, `--force` e `--versao`
+  (emuladores já vêm por padrão; `--emulation` é opção do `install.sh` antigo e dá "opção desconhecida" no `update.sh`).
+- **GitHub Releases:** cada arquivo tem limite de 2 GiB (importa para uma ISO futura).
+
 ## 10. Próximos passos sugeridos (prioridade)
+
+**Depois da 0.5.0 (estado em 2026-11-12):**
+- a. O usuário testa a 0.5.0 em VM Debian 13 limpa e no Raspberry Pi (`docs/TESTE-REAL.md`). **Peça o resultado item a item** e corrija o que falhar.
+- b. Imagem pronta do Pi: `tools/build-pi-image.sh` (proposta em `docs/DISTRO.md`, falta o OK do usuário).
+- c. Distro para PC com base no Debian 13: escrever o plano completo a partir de `docs/DISTRO.md` quando o usuário pedir.
+- d. O que ficou de fora da 0.5.0: logo do Saturn; controle remoto da TV via CEC; texto grande nos cards da Biblioteca;
+  a Central rápida abrir a tela de energia (`ACT.energia()`); login do Drive por QR; terminal embutido na Recuperação; outros idiomas.
 
 0. ~~**Google Drive, parte 2**~~ (**feito**: aba Mídia; falta só o login por QR no celular, ver abaixo). Pedido original: aba "Mídia" (filmes, séries e músicas de `Nexus/Filmes|Séries|Músicas` pelo `mpv` em tela cheia, com o menu rápido por cima; `mpv` entra em `Depends`). Depois, login por QR no celular: o usuário cria um projeto no Google Cloud e passa o ID do cliente + página no GitHub Pages que repassa o código (PKCE) para a TV. Decisões já tomadas: login na TV agora (cliente do rclone), rclone do apt (1.60), Drive antes das fases.
 1. ~~**Telas de sistema**~~ **feitas** (fases 2, 3 e 4 da §4b, em 0.5.0). Pendências abertas estão em `docs/STATUS.md` (resumo final) e na nota de "Atualização para 0.5.0" da §4.

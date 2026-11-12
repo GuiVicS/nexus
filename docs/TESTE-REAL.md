@@ -11,12 +11,9 @@ O pacote do Pi **nunca rodou num Raspberry de verdade** (só no QEMU): é o pont
 
 1. **Gravar o cartão** com o Raspberry Pi Imager: *Raspberry Pi OS (other) → Raspberry Pi OS Lite (64-bit)*.
    Na engrenagem de personalização: usuário e senha, Wi-Fi, fuso horário e **ativar o SSH**.
-2. **Tela de login leve.** O Lite não tem tela de login, e o Nexus precisa de uma para entrar sozinho ao ligar.
-   Instale o greetd antes do Nexus:
+2. **Atualizar o sistema** (o instalador do Nexus põe sozinho o greetd, a tela de login leve que falta no Lite):
    ```sh
    sudo apt update && sudo apt full-upgrade -y
-   sudo apt install -y greetd
-   sudo systemctl enable greetd
    ```
 3. **Instalar o Nexus** (emuladores inclusos; a Steam é pulada, porque não existe para ARM):
    ```sh
