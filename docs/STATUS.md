@@ -136,3 +136,16 @@ ligar o Pages — ações fora desta máquina): `tools/apt-repo.sh`, `.github/wo
 `update.sh` configura o repositório sozinho quando ele estiver no ar. Teste com `apt-get update` real: assinatura
 aceita, candidato 0.4.1, download ok; índice adulterado e chave errada recusados. Falta o aceite final ("instalar e
 atualizar só com apt numa máquina limpa"), que depende do repositório publicado e de uma VM limpa.
+
+### Item 6 — Steam no Debian e no Ubuntu (2026-11-12)
+
+- **Bug corrigido:** o instalador só ligava `contrib non-free` em `/etc/apt/sources.list`. No Debian 13 o padrão é o
+  formato deb822 (`/etc/apt/sources.list.d/debian.sources`), então a Steam não aparecia. Agora os dois formatos são
+  tratados (só linhas do Debian, sem duplicar, comentários e repositórios de terceiros intactos) — teste
+  `debian_components_in_both_apt_formats`.
+- **Checagem antes de instalar:** depois do `apt-get update`, `apt-cache policy steam-installer` precisa ter
+  candidato; senão o instalador para com uma explicação em pt-BR (contrib/non-free no Debian, multiverse no Ubuntu,
+  i386, ou `--sem-steam`) em vez de um erro cru do apt. Ordem garantida por `steam_steps_order_on_debian`.
+- Ubuntu: já ligava `multiverse` + i386 (sem mudança). A licença da Steam continua interativa (não é pré-aceita).
+- **Não testado aqui:** instalação real em VM Debian 12/13 e Ubuntu limpos (esta máquina é Ubuntu com a Steam já
+  instalada). Fica como teste de aceite manual.

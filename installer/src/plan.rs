@@ -55,6 +55,27 @@ pub fn install_cmd(f: Family, pkgs: &[&str]) -> Vec<String> {
     v.into_iter().map(String::from).collect()
 }
 
+/// Debian: a Steam fica em "contrib" (e depende de "non-free"). Acrescenta os componentes que faltam nos dois
+/// formatos do apt: o antigo (`/etc/apt/sources.list`, Debian 12) e o deb822 (`debian.sources`, Debian 13+).
+/// `$ROOT` só existe nos testes.
+pub const DEBIAN_COMPONENTS: &str = r#"set -e
+for f in "$ROOT/etc/apt/sources.list" "$ROOT"/etc/apt/sources.list.d/*.list; do
+  [ -f "$f" ] && sed -i -E '/^deb(-src)? [^#]*debian[^#]* main/{/ contrib( |$)/!s/$/ contrib/;/ non-free( |$)/!s/$/ non-free/}' "$f"
+done
+for f in "$ROOT"/etc/apt/sources.list.d/*.sources; do
+  [ -f "$f" ] && grep -q '^URIs:.*debian' "$f" && sed -i -E '/^Components:.*main/{/ contrib( |$)/!s/$/ contrib/;/ non-free( |$)/!s/$/ non-free/}' "$f"
+done
+true"#;
+
+/// Depois do `apt-get update`: sem candidato para o steam-installer, para com uma explicação em vez de um erro do apt.
+pub const STEAM_AVAILABLE: &str = r#"if LC_ALL=C apt-cache policy steam-installer 2>/dev/null | grep -q 'Candidate: [0-9]'; then exit 0; fi
+echo "A Steam não apareceu nos repositórios do sistema." >&2
+echo "  Debian: o repositório precisa dos componentes contrib e non-free (veja /etc/apt/sources.list.d/)." >&2
+echo "  Ubuntu: precisa do multiverse (sudo add-apt-repository multiverse)." >&2
+echo "  A arquitetura de 32 bits também é necessária: dpkg --print-foreign-architectures deve mostrar i386." >&2
+echo "Corrija e rode o instalador de novo, ou instale sem a Steam: sudo ./install.sh --sem-steam" >&2
+exit 1"#;
+
 fn sh(title: &str, script: &str) -> Step {
     Step { title: title.into(), action: Action::Cmd(vec!["sh".into(), "-c".into(), script.into()]) }
 }
@@ -80,9 +101,10 @@ pub fn build(sys: &System, o: &Options) -> Vec<Step> {
                     s.push(step("Instalar o gerenciador de repositórios", sys.family, &["software-properties-common"]));
                     s.push(cmd("Habilitar o repositório multiverse (onde fica a Steam)", &["add-apt-repository", "-y", "multiverse"]));
                 } else {
-                    s.push(sh("Habilitar contrib e non-free (onde fica a Steam)", "sed -i -E 's/^(deb .* main)( contrib)?( non-free)?( non-free-firmware)?$/\\1 contrib non-free non-free-firmware/' /etc/apt/sources.list 2>/dev/null || true"));
+                    s.push(sh("Habilitar contrib e non-free (onde fica a Steam)", DEBIAN_COMPONENTS));
                 }
                 s.push(cmd("Atualizar a lista de pacotes", &["apt-get", "update"]));
+                s.push(sh("Conferir se a Steam está disponível", STEAM_AVAILABLE));
                 s.push(step("Instalar a Steam", sys.family, &["steam-installer"]));
             }
             Family::Fedora => {
@@ -160,6 +182,46 @@ mod tests {
 
     fn sys(f: Family, dm: Option<&str>) -> System {
         System { id: "x".into(), id_like: vec![], version_id: "1".into(), pretty: "X".into(), arch: "x86_64".into(), family: f, supported: Support::Supported, gpu_vendor: "amd".into(), memory_mb: 8000, disk_free_mb: 50000, has_steam: false, has_flatpak: true, has_browser: true, display_manager: dm.map(String::from) }
+    }
+
+    #[test]
+    fn debian_components_in_both_apt_formats() {
+        let d = tempfile::tempdir().unwrap();
+        let apt = d.path().join("etc/apt");
+        std::fs::create_dir_all(apt.join("sources.list.d")).unwrap();
+        // Debian 12: formato antigo, com e sem non-free-firmware; linha de outro repositório não muda
+        std::fs::write(
+            apt.join("sources.list"),
+            "deb http://deb.debian.org/debian bookworm main non-free-firmware\ndeb-src http://deb.debian.org/debian bookworm main\ndeb http://security.debian.org/debian-security bookworm-security main contrib non-free\n# deb http://deb.debian.org/debian bookworm main\ndeb https://dl.google.com/linux/chrome/deb/ stable main\n",
+        )
+        .unwrap();
+        // Debian 13: deb822
+        std::fs::write(apt.join("sources.list.d/debian.sources"), "Types: deb\nURIs: http://deb.debian.org/debian\nSuites: trixie trixie-updates\nComponents: main non-free-firmware\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n").unwrap();
+        std::fs::write(apt.join("sources.list.d/outro.sources"), "Types: deb\nURIs: https://repo.example.com\nComponents: main\n").unwrap();
+        for _ in 0..2 {
+            // duas vezes: não duplica
+            let st = Command::new("sh").arg("-c").arg(DEBIAN_COMPONENTS).env("ROOT", d.path()).status().unwrap();
+            assert!(st.success());
+        }
+        let l = std::fs::read_to_string(apt.join("sources.list")).unwrap();
+        let lines: Vec<&str> = l.lines().collect();
+        assert_eq!(lines[0], "deb http://deb.debian.org/debian bookworm main non-free-firmware contrib non-free");
+        assert_eq!(lines[1], "deb-src http://deb.debian.org/debian bookworm main contrib non-free");
+        assert_eq!(lines[2], "deb http://security.debian.org/debian-security bookworm-security main contrib non-free", "já tinha tudo");
+        assert!(lines[3].starts_with('#'), "comentário intacto");
+        assert_eq!(lines[4], "deb https://dl.google.com/linux/chrome/deb/ stable main", "repositório de terceiros intacto");
+        let s = std::fs::read_to_string(apt.join("sources.list.d/debian.sources")).unwrap();
+        assert!(s.contains("Components: main non-free-firmware contrib non-free\n"), "{s}");
+        assert_eq!(std::fs::read_to_string(apt.join("sources.list.d/outro.sources")).unwrap(), "Types: deb\nURIs: https://repo.example.com\nComponents: main\n");
+    }
+
+    #[test]
+    fn steam_steps_order_on_debian() {
+        let mut d = sys(Family::Debian, None);
+        d.id = "debian".into();
+        let t: Vec<String> = build(&d, &Options { steam: true, emulation: false, autologin_user: None, slim: false }).iter().map(|s| s.title.clone()).collect();
+        let pos = |needle: &str| t.iter().position(|x| x.contains(needle)).unwrap_or_else(|| panic!("falta: {needle} em {t:?}"));
+        assert!(pos("32 bits") < pos("contrib") && pos("contrib") < pos("Conferir se a Steam") && pos("Conferir se a Steam") < pos("Instalar a Steam"));
     }
 
     #[test]
