@@ -234,8 +234,8 @@ export function editProfile(id: string | null, opts: { first?: boolean } = {}) {
   return pushOv('profile', { id, ...opts });
 }
 
-export async function powerAction(a: 'off' | 'restart' | 'suspend') {
-  const ok = a === 'suspend'
+export async function powerAction(a: 'off' | 'restart' | 'suspend', ask = true) {
+  const ok = !ask ? true : a === 'suspend'
     ? await askConfirm({ title: 'Suspender o console?', sub: S.game ? `${S.game.title} continua de onde parou quando você voltar.` : 'Ele acorda ao apertar o botão do controle ou do aparelho.', yes: 'Suspender' })
     : await askConfirm({ title: a === 'off' ? 'Desligar o console?' : 'Reiniciar o console?', sub: S.game ? `${S.game.title} será fechado.` : 'Salve o que estiver fazendo.', yes: a === 'off' ? 'Desligar' : 'Reiniciar', danger: true });
   if (!ok) return;
@@ -373,6 +373,9 @@ export const ACT: Record<string, Fn> = {
   },
   bt(a) {
     document.dispatchEvent(new CustomEvent('nexus:bt', { detail: a }));
+  },
+  pw(a) {
+    document.dispatchEvent(new CustomEvent('nexus:pw', { detail: a }));
   },
   ntf(a) {
     document.dispatchEvent(new CustomEvent('nexus:ntf', { detail: a }));

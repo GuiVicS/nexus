@@ -2,7 +2,7 @@ import { reconcile } from 'solid-js/store';
 import { E, RpcError } from '@nexus/protocol';
 import type { AppUpdate, Item, SessionInfo } from '@nexus/protocol';
 import { api, client } from './api';
-import { applyPrefs, askPin, closeAllOv, fail, findItem, fx, isKid, me, ovs, popOv, removeLib, S, setS, setMode, toast, upsertLib, topOv, askConfirm, guarded, hasOv, pushOv, closeOv } from './state';
+import { applyPrefs, askPin, closeAllOv, fail, findItem, fx, isKid, me, ovs, popOv, removeLib, S, setS, setMode, toast, upsertLib, topOv, askConfirm, guarded, hasOv, pushOv, closeOv, askChoice } from './state';
 import { sfx } from '@nexus/ui';
 import { fmtPlaytime } from './format';
 import { loadStatus, startStatus } from './status';
@@ -213,6 +213,15 @@ export function startEvents() {
         setS('frame', null);
         await m.closeGame(true);
       } else if (topOv()?.kind === 'guide') m.closeGuide();
+    });
+  });
+  // Botão físico de energia (preferência "Perguntar"): escolhe entre suspender e desligar; Voltar não faz nada.
+  client.on('power.button', () => {
+    if (S.scr === 'standby' || hasOv('confirm')) return;
+    void import('./actions').then(async (m) => {
+      const c = await askChoice({ title: 'Botão de energia', sub: S.game ? `${S.game.title} continua aberto se você suspender.` : 'O que fazer agora?', yes: 'Suspender', no: 'Desligar' });
+      if (c === true) await m.powerAction('suspend', false);
+      else if (c === false) await m.powerAction('off', false);
     });
   });
   client.on('remote.devices', (p) => {

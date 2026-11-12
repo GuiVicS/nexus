@@ -1242,3 +1242,61 @@ scenarios.notificacoes = async () => {
     await core.stop();
   }
 };
+
+// B10: Energia — temporizadores de tela/suspensão (swayidle falso, desligado durante jogos), botão físico de energia
+// (Perguntar / Suspender) e estado do autologin (lido de uma pasta /etc falsa).
+scenarios.energia = async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-pw-'));
+  fs.mkdirSync(`${dir}/etc/gdm3`, { recursive: true });
+  fs.writeFileSync(`${dir}/etc/gdm3/custom.conf`, '[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=lia\n');
+  const LOG = `${dir}/idle.log`;
+  const core = await startCore({ demo: true, env: { NEXUS_SWAYIDLE: `${ROOT}/tests/e2e/fake/swayidle`, NEXUS_FAKE_IDLE_LOG: LOG, NEXUS_ETC_DIR: `${dir}/etc` } });
+  const rd = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '');
+  const alive = () => { const p = rd(`${LOG}.pid`).trim(); return !!p && fs.existsSync(`/proc/${p}`); };
+  const ev = await listenEvents(core);
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await waitNode(() => /-w timeout 900 /.test(rd(LOG)) && alive(), 'swayidle iniciado com 15 min para apagar a tela (padrão)', 8000);
+    await openSettingsCat(ui, 'energia', 'Energia');
+    await ui.key('ArrowRight');
+    await ui.until(`()=>/ativado.*\\(gdm\\)/.test(document.querySelector('[data-k=pw-auto]')?.textContent||'')`, 'autologin ativado lido do /etc');
+    await goTo(ui, 'pw-screen', 'apagar a tela');
+    check(/15 min/.test(await ui.text('[data-k=pw-screen]')), 'apagar a tela: 15 min');
+    await ui.key('ArrowLeft');
+    check(/10 min/.test(await ui.text('[data-k=pw-screen]')), '← muda para 10 min');
+    await waitNode(() => /-w timeout 600 /.test(rd(LOG)), 'Core reiniciou o swayidle com 10 min', 8000);
+    await goTo(ui, 'pw-suspend', 'suspender após');
+    check(/Nunca/.test(await ui.text('[data-k=pw-suspend]')), 'suspender: nunca por padrão');
+    await ui.key('ArrowRight');
+    await ui.key('ArrowRight');
+    check(/30 min/.test(await ui.text('[data-k=pw-suspend]')), '→ → muda para 30 min');
+    await waitNode(() => /timeout 1800 systemctl suspend/.test(rd(LOG)), 'swayidle com suspensão em 30 min', 8000);
+    await ui.screens('b10-energia');
+    // botão físico: "Perguntar" abre a escolha; Voltar não faz nada
+    await core.rpc('power.button_press');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'escolha do botão de energia');
+    check(/Botão de energia/.test(await ui.text('#ovs [data-kind=confirm]')), 'título da escolha');
+    await ui.key('Escape');
+    await ui.until(`()=>!document.querySelector('#ovs [data-kind=confirm]')`, 'Voltar fecha sem agir');
+    check(!ev.got.some((m) => m.method === 'system.power'), 'nada foi suspenso nem desligado');
+    // botão = Suspender: age direto
+    await goTo(ui, 'pw-key', 'botão de energia');
+    await ui.key('ArrowRight');
+    check(/Suspender/.test(await ui.text('[data-k=pw-key]')), 'botão passa a suspender');
+    await core.rpc('power.button_press');
+    await waitNode(() => ev.got.some((m) => m.method === 'system.power' && m.params.action === 'suspend'), 'botão suspende direto', 4000);
+    // jogo aberto: o temporizador some (controle não conta como atividade) e volta ao fechar
+    await core.rpc('item.launch', { id: 'demo:g1' });
+    await waitNode(() => !alive(), 'swayidle parado durante o jogo', 8000);
+    await core.rpc('game.close', { force: true });
+    await waitNode(() => alive(), 'swayidle volta depois do jogo', 12000);
+    ev.close();
+  } finally {
+    ui.close();
+    await core.stop();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+};

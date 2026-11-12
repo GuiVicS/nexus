@@ -60,6 +60,10 @@ export interface StatusSnapshot {
   disk: { freeBytes: number; totalBytes: number; freePct: number };
   alerts: StatusAlert[];
 }
+export interface PowerStatus {
+  screenMin: number; suspendMin: number; key: 'ask' | 'suspend' | 'off' | 'nothing'; idleAvailable: boolean;
+  autologin: { enabled: boolean; dm: string }; screenOpts: number[]; suspendOpts: number[];
+}
 export interface DisplayMode { width: number; height: number; refresh: number }
 export interface DisplayOutput { name: string; label: string; width: number | null; height: number | null; refresh: number | null; modes: DisplayMode[]; scale: number; transform: string; vrr: boolean | null; hdr: boolean | null }
 export interface DisplayStatus { available: boolean; outputs: DisplayOutput[]; margin: number; pending?: number | null; confirmSecs?: number }
@@ -110,6 +114,8 @@ export function createApi(c: RpcClient) {
     notificationSettings: () => call<{ silenceInGame: boolean }>('notifications.settings'),
     notificationSet: (p: { silenceInGame?: boolean } & Auth) => call<{ silenceInGame: boolean }>('notifications.set', p),
     notificationTest: (important: boolean, a: Auth = {}) => call<{ ok: true }>('notifications.test', { important, ...a }),
+    powerStatus: () => call<PowerStatus>('power.status'),
+    powerSet: (p: { screenMin?: number; suspendMin?: number; key?: string } & Auth) => call<PowerStatus>('power.set', p),
     status: () => call<StatusSnapshot>('status.get'),
     statusRefresh: () => call<{ ok: true }>('status.refresh'),
     brightnessStatus: () => call<{ available: boolean; percent: number }>('brightness.status'),

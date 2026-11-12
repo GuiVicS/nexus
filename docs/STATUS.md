@@ -479,3 +479,23 @@ Pedido: rclone instalado com o app, login na instalação ou depois, pasta próp
 - **Testes:** unidade (transições de alerta) e cenário `notificacoes` (disco/bateria/desconexão sem repetir, 6 avisos → máx. 3 na
   tela, silêncio por cima do jogo conferido pelo evento `game.toast`). Captura `a4-notificacoes`.
 - **Não testado:** o desenho do aviso por cima do jogo (GTK, ver A3).
+
+### B10 — Energia (2026-11-12) ✅
+
+- Ajustes → **Energia** (adultos): suspender / reiniciar / desligar (com confirmação); **apagar a tela após** (nunca, 5, 10, 15 —
+  padrão —, 30 min) e **suspender após** (nunca — padrão —, 15, 30, 60, 120 min); **botão de energia** (Perguntar — padrão —,
+  Suspender, Desligar, Nada); estado de **"abrir direto no Nexus"** (autologin lido de gdm/sddm/lightdm/greetd; só leitura,
+  desligar é do B15).
+- **Core `power.rs`:**
+  - Inatividade: o Core mantém um `swayidle` (`output * power off/on` e `systemctl suspend`) conforme as preferências e o
+    **desliga enquanto há jogo aberto** (o controle analógico não conta como atividade para o sway; senão a tela apagaria no meio
+    da partida). Reavalia a cada 2 s; só em sessão sway.
+  - Botão físico: o Core lê o botão (evdev, `KEY_POWER` do "Power Button") e segura um *inhibitor* `handle-power-key` do logind
+    **só depois de abrir o dispositivo** (se não conseguir ler o botão, o logind continua no comando). "Perguntar" abre na Shell a
+    escolha Suspender/Desligar; Voltar não faz nada.
+  - RPC `power.status`, `power.set` (valida os valores), `power.button_press` (só em `--dev`, para testes).
+- Dependências do `.deb`: `swayidle` e `udisks2` (este para o B9).
+- **Testes:** unidade (argumentos do swayidle, autologin) e cenário `energia` com `swayidle` falso (15 → 10 min, suspensão em
+  30 min, parado durante jogo e de volta depois), botão "Perguntar" e "Suspender" e `/etc` falso. Captura `b10-energia`.
+- **Não testado:** `swayidle`/logind/botão de energia reais (a VM não tem `swayidle` instalado nem `/dev/uinput`, e a sessão sway
+  não pode ser reiniciada). Falta: `HandlePowerKey`/`HandleLidSwitch` em `logind.conf` (exigiria root; o inhibitor cobre o botão).

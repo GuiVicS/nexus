@@ -798,6 +798,45 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             Ok(json!({ "ok": true }))
         }
 
+        // ---------- energia ----------
+        "power.status" => {
+            need_session(core)?;
+            let db = core.db.clone();
+            Ok(blocking(move || crate::power::status(&db)).await?)
+        }
+        "power.set" => {
+            sys_access(core, &v, false)?;
+            let pick = |k: &str, opts: &[u32]| -> Result<Option<u32>, RpcError> {
+                match v.get(k).and_then(|x| x.as_u64()) {
+                    None => Ok(None),
+                    Some(n) if opts.contains(&(n as u32)) => Ok(Some(n as u32)),
+                    Some(_) => Err(RpcError::invalid(&format!("valor inválido em '{k}'"))),
+                }
+            };
+            if let Some(n) = pick("screenMin", &crate::power::SCREEN_OPTS)? {
+                core.db.kv_set("power_screen_min", &n.to_string())?;
+            }
+            if let Some(n) = pick("suspendMin", &crate::power::SUSPEND_OPTS)? {
+                core.db.kv_set("power_suspend_min", &n.to_string())?;
+            }
+            if let Some(k) = os(&v, "key") {
+                if !crate::power::KEYS.contains(&k.as_str()) {
+                    return Err(RpcError::invalid("ação do botão inválida"));
+                }
+                core.db.kv_set("power_key", &k)?;
+            }
+            let db = core.db.clone();
+            Ok(blocking(move || crate::power::status(&db)).await?)
+        }
+        "power.button_press" => {
+            // só em desenvolvimento/testes: simula o botão físico
+            if !core.cfg.dev {
+                return Err(RpcError::new(E_FORBIDDEN, "Indisponível"));
+            }
+            crate::power::button_pressed(core);
+            Ok(json!({ "ok": true }))
+        }
+
         // ---------- preferências de notificação ----------
         "notifications.settings" => {
             need_session(core)?;
