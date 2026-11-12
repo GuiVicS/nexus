@@ -14,7 +14,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --force) FORCE=1 ;;
     --autologin) ARGS="$ARGS --autologin $2"; shift ;;
-    --sem-steam|--sem-emuladores) ARGS="$ARGS $1" ;;
+    --sem-steam|--sem-emuladores|--sem-otimizar) ARGS="$ARGS $1" ;;
     *) echo "opção desconhecida: $1" >&2; exit 1 ;;
   esac
   shift

@@ -69,3 +69,19 @@ Pendente do item 1: `apt-daily` fora do horário de jogo (precisa de root: vai n
 para aparelhos de ≤ 2 GB (exige mover estado para o Core — proposta, não feito).
 
 Metas (a confirmar no Pi): com jogo aberto, Nexus ≤ 1 % de CPU e ≤ 100 MB de RAM residente (com zram); fechar ≤ 0,5 s.
+
+### Item 2 — sistema base enxuto (2026-11-12)
+
+`system/sysd/nexus-slim` (root, reversível, `--slim` por padrão no `install.sh`; `--sem-otimizar` tira) + greetd
+quando não há gerenciador de login (base Debian netinst) + `docs/BASE.md` (base oficial: Debian estável netinst sem
+desktop). Teste: `installer/tests/slim.rs` (aplica, idempotente, cups fica com impressora, `idle` com jogo aberto,
+revert só apaga o que criou) e plano `slim_and_greetd_on_a_bare_debian`.
+
+| RAM ociosa do sistema (VM Ubuntu 26.04 + GNOME + sessão Nexus aninhada) | Antes | Depois |
+|---|---|---|
+| `free` usada | 3955 MB | **pendente**: aplicar exige sudo (`sudo /home/vboxuser/nexus/system/sysd/nexus-slim apply`) |
+| Serviços dispensáveis rodando (memória do cgroup) | cups+cups-browsed 24 MB, ModemManager 13 MB, colord 20 MB, avahi 1 MB, indexador localsearch | — |
+| Swap | nenhuma | zram (metade da RAM, zstd) |
+
+A VM de desenvolvimento não é a base oficial (tem GNOME): o número que importa é o da base Debian sem desktop,
+**ainda não medido** (precisa de uma VM/aparelho limpo).

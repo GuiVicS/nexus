@@ -5,6 +5,9 @@
 #                                             para o streaming + Bluetooth e todas as bibliotecas
 #   sudo ./install.sh --sem-steam             sem a Steam
 #   sudo ./install.sh --sem-emuladores        sem o RetroArch
+#   sudo ./install.sh --sem-otimizar          não mexe nos serviços do sistema (por padrão: desliga impressão, modem,
+#                                             indexador…, liga zram e tira o apt do horário de jogo; desfazer:
+#                                             sudo /usr/lib/nexus/nexus-slim revert)
 #   sudo ./install.sh --autologin SEU_USUARIO entra direto no Nexus ao ligar
 #   sudo ./install.sh --plano                 só mostra o que seria feito
 set -eu
@@ -21,6 +24,7 @@ fi
 
 STEAM=--steam
 EMU=--emulation
+SLIM=--slim
 PLAN=0
 ARGS=""
 while [ $# -gt 0 ]; do
@@ -29,6 +33,7 @@ while [ $# -gt 0 ]; do
     --plano) PLAN=1 ;;
     --autologin) ARGS="$ARGS --autologin $2"; shift ;;
     --sem-emuladores) EMU="" ;;
+    --sem-otimizar) SLIM="" ;;
     --emulation) ;;  # já é o padrão (mantido por compatibilidade)
     *) echo "opção desconhecida: $1" >&2; exit 1 ;;
   esac
@@ -59,13 +64,13 @@ if [ "$PLAN" -eq 1 ]; then
     TMP=$(mktemp -d)
     trap 'rm -rf "$TMP"' EXIT
     dpkg-deb -x "$DEB" "$TMP"
-    "$TMP/usr/bin/nexus-installer" plan $STEAM $EMU $ARGS
+    "$TMP/usr/bin/nexus-installer" plan $STEAM $EMU $SLIM $ARGS
     exit $?
   fi
-  exec nexus-installer plan $STEAM $EMU $ARGS
+  exec nexus-installer plan $STEAM $EMU $SLIM $ARGS
 fi
 nexus-installer check
-nexus-installer install $STEAM $EMU $ARGS --yes
+nexus-installer install $STEAM $EMU $SLIM $ARGS --yes
 # núcleos dos emuladores travados pelo Nexus (pacote nexus-cores-* ao lado deste script, se veio junto)
 case "$ARCH" in amd64) CT=x86_64 ;; *) CT=arm64 ;; esac
 if [ -n "$EMU" ]; then

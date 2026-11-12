@@ -10,7 +10,7 @@ use std::process::ExitCode;
 
 fn usage() {
     println!(
-        "nexus-installer <comando>\n\n  detect                 mostra o que foi detectado (JSON com --json)\n  check                  valida os requisitos e sai com erro se faltar algo\n  plan [--steam] [--emulation]   mostra o que seria feito (não altera nada)\n  install [--steam] [--emulation] [--autologin USUARIO] --yes   executa o plano\n  revert-autologin       desfaz o autologin configurado pelo Nexus\n  doctor                 diagnostica a instalação"
+        "nexus-installer <comando>\n\n  detect                 mostra o que foi detectado (JSON com --json)\n  check                  valida os requisitos e sai com erro se faltar algo\n  plan [--steam] [--emulation]   mostra o que seria feito (não altera nada)\n  install [--steam] [--emulation] [--slim] [--autologin USUARIO] --yes   executa o plano\n  revert-autologin       desfaz o autologin configurado pelo Nexus\n  doctor                 diagnostica a instalação"
     );
 }
 
@@ -40,7 +40,7 @@ fn main() -> ExitCode {
             }
         }
         Some("plan") | Some("install") => {
-            let opts = plan::Options { steam: args.iter().any(|a| a == "--steam"), emulation: args.iter().any(|a| a == "--emulation"), autologin_user: args.iter().position(|a| a == "--autologin").and_then(|i| args.get(i + 1)).cloned() };
+            let opts = plan::Options { steam: args.iter().any(|a| a == "--steam"), emulation: args.iter().any(|a| a == "--emulation"), autologin_user: args.iter().position(|a| a == "--autologin").and_then(|i| args.get(i + 1)).cloned(), slim: args.iter().any(|a| a == "--slim") };
             let problems = sys.requirement_problems();
             if !problems.is_empty() {
                 for p in &problems {

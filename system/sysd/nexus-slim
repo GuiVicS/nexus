@@ -1,0 +1,134 @@
+#!/bin/sh
+# Deixa o sistema leve para jogos (root). Nada é removido: só desliga serviços que um console não usa, liga swap
+# comprimida na RAM (zram) e tira a manutenção do apt do horário de jogo. Tudo o que mudar fica anotado em
+# /var/lib/nexus/slim/ e volta com "revert".
+#   nexus-slim apply     aplica (idempotente)
+#   nexus-slim revert    desfaz exatamente o que o apply fez
+#   nexus-slim status    mostra o que está aplicado
+#   nexus-slim idle      sai com erro se há um jogo/app aberto no Nexus (ExecCondition dos timers do apt)
+# Testes: NEXUS_ROOT (prefixo dos arquivos), NEXUS_SYSTEMCTL e NEXUS_SYSCTL (comandos falsos).
+set -eu
+ROOT=${NEXUS_ROOT:-}
+SYSTEMCTL=${NEXUS_SYSTEMCTL:-systemctl}
+SYSCTL=${NEXUS_SYSCTL:-sysctl}
+STATE="$ROOT/var/lib/nexus/slim"
+OFF="$STATE/disabled"   # unidades desligadas (global:<unidade> = de usuário, mascarada para todos)
+NEW="$STATE/files"      # arquivos criados pelo Nexus
+
+# Serviços de sistema que um console de sala não usa (impressão, modem 3G/4G, localização, perfil de cor,
+# relatórios de falha, descoberta de rede local). Só desliga o que existe e está habilitado.
+SYSTEM_UNITS="cups.service cups.socket cups.path cups-browsed.service ModemManager.service geoclue.service colord.service avahi-daemon.service avahi-daemon.socket whoopsie.service kerneloops.service apport.service"
+# Indexadores de arquivos da sessão do usuário (varrem o disco em segundo plano).
+USER_UNITS="localsearch-3.service tracker-miner-fs-3.service tracker-extract-3.service"
+
+has_printers() { command -v lpstat >/dev/null 2>&1 && lpstat -v 2>/dev/null | grep -q . ; }
+has_modem() { ls "$ROOT"/dev/cdc-wdm* >/dev/null 2>&1 || ls "$ROOT"/sys/class/net 2>/dev/null | grep -q '^ww' ; }
+keep() { # a unidade precisa ficar ligada neste aparelho?
+  case "$1" in
+    cups*) has_printers ;;
+    ModemManager.service) has_modem ;;
+    *) return 1 ;;
+  esac
+}
+noted() { grep -qx "$1" "$2" 2>/dev/null; }
+put() { # put ARQUIVO (conteúdo na entrada): cria só se não existe e anota
+  f="$ROOT$1"
+  [ -e "$f" ] && { cat >/dev/null; return 0; }
+  mkdir -p "$(dirname "$f")"
+  cat > "$f"
+  noted "$1" "$NEW" || echo "$1" >> "$NEW"
+}
+
+apply() {
+  mkdir -p "$STATE"; touch "$OFF" "$NEW"
+  for u in $SYSTEM_UNITS; do
+    keep "$u" && continue
+    [ "$($SYSTEMCTL is-enabled "$u" 2>/dev/null || true)" = enabled ] || continue
+    $SYSTEMCTL disable --now "$u" >/dev/null 2>&1 && { noted "$u" "$OFF" || echo "$u" >> "$OFF"; echo "  desligado: $u"; }
+  done
+  for u in $USER_UNITS; do
+    st=$($SYSTEMCTL --global is-enabled "$u" 2>/dev/null || true)
+    [ -n "$st" ] && [ "$st" != masked ] && [ "$st" != not-found ] || continue
+    $SYSTEMCTL --global mask "$u" >/dev/null 2>&1 && { noted "global:$u" "$OFF" || echo "global:$u" >> "$OFF"; echo "  indexador desligado: $u"; }
+  done
+
+  # zram: swap comprimida na RAM. Com ela, a memória da Shell congelada durante o jogo é comprimida em vez de
+  # ocupar RAM (ver core/.../freeze.rs). Precisa do pacote systemd-zram-generator.
+  if [ -x "$ROOT/usr/lib/systemd/system-generators/zram-generator" ] || [ -n "${NEXUS_FORCE_ZRAM:-}" ]; then
+    put /etc/systemd/zram-generator.conf <<'EOF'
+# Nexus: swap comprimida na RAM (zram), metade da memória até 4 GB
+[zram0]
+zram-size = min(ram / 2, 4096)
+compression-algorithm = zstd
+swap-priority = 100
+EOF
+    # com zram, trocar para ela é barato (kernel: swappiness acima de 100 favorece a zram)
+    put /etc/sysctl.d/90-nexus.conf <<'EOF'
+# Nexus (zram): usa a swap comprimida antes de descartar cache; páginas de uma em uma
+vm.swappiness = 150
+vm.page-cluster = 0
+EOF
+    $SYSCTL -q -p "$ROOT/etc/sysctl.d/90-nexus.conf" >/dev/null 2>&1 || true
+    $SYSTEMCTL daemon-reload >/dev/null 2>&1 || true
+    $SYSTEMCTL start systemd-zram-setup@zram0.service >/dev/null 2>&1 || true
+    echo "  zram ligada"
+  fi
+
+  # apt: listas e atualizações automáticas de madrugada, e nunca com um jogo aberto
+  for t in apt-daily:04:00 apt-daily-upgrade:05:00; do
+    n=${t%%:*}; h=${t#*:}
+    put "/etc/systemd/system/$n.timer.d/90-nexus.conf" <<EOF
+# Nexus: manutenção do apt fora do horário de jogo
+[Timer]
+OnCalendar=
+OnCalendar=*-*-* $h
+RandomizedDelaySec=45min
+EOF
+    put "/etc/systemd/system/$n.service.d/90-nexus.conf" <<'EOF'
+# Nexus: não roda com um jogo/app aberto (tenta de novo no próximo horário)
+[Service]
+ExecCondition=/usr/lib/nexus/nexus-slim idle
+EOF
+  done
+  $SYSTEMCTL daemon-reload >/dev/null 2>&1 || true
+  echo "Sistema leve aplicado (desfazer: nexus-slim revert)"
+}
+
+revert() {
+  if [ -f "$OFF" ]; then
+    while read -r u; do
+      case "$u" in
+        global:*) $SYSTEMCTL --global unmask "${u#global:}" >/dev/null 2>&1 || true ;;
+        ?*) $SYSTEMCTL enable --now "$u" >/dev/null 2>&1 || true ;;
+      esac
+      echo "  religado: $u"
+    done < "$OFF"
+  fi
+  if [ -f "$NEW" ]; then
+    while read -r f; do
+      [ -n "$f" ] || continue
+      rm -f "$ROOT$f"
+      rmdir "$(dirname "$ROOT$f")" 2>/dev/null || true
+    done < "$NEW"
+  fi
+  rm -rf "$STATE"
+  $SYSTEMCTL daemon-reload >/dev/null 2>&1 || true
+  echo "Ajustes de sistema leve desfeitos"
+}
+
+idle() { # 0 = pode rodar manutenção; 1 = tem jogo aberto
+  for g in "$ROOT"/run/user/*/nexus/game.json; do
+    [ -f "$g" ] && return 1
+  done
+  return 0
+}
+
+case "${1:-}" in
+  apply) apply ;;
+  revert) revert ;;
+  idle) idle ;;
+  status)
+    echo "Desligados: $(tr '\n' ' ' < "$OFF" 2>/dev/null || echo nenhum)"
+    echo "Arquivos: $(tr '\n' ' ' < "$NEW" 2>/dev/null || echo nenhum)" ;;
+  *) echo "uso: nexus-slim apply|revert|status|idle" >&2; exit 2 ;;
+esac

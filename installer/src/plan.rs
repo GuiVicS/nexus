@@ -6,6 +6,8 @@ pub struct Options {
     pub steam: bool,
     pub emulation: bool,
     pub autologin_user: Option<String>,
+    /// sistema leve para jogos (nexus-slim): serviços dispensáveis desligados, zram, apt fora do horário de jogo
+    pub slim: bool,
 }
 
 pub enum Action {
@@ -114,7 +116,21 @@ pub fn build(sys: &System, o: &Options) -> Vec<Step> {
         // fica na versão da máquina de desenvolvimento (deps.lock) e mascarado: só muda com uma release do Nexus
         s.push(cmd("Travar o RetroArch na versão do Nexus", &["/usr/lib/nexus/nexus-deps-apply"]));
     }
-    if let (Some(user), Some(dm)) = (&o.autologin_user, sys.display_manager.as_deref().and_then(autologin::dm_from_name)) {
+    if o.slim {
+        if sys.family == Family::Debian {
+            s.push(step("Instalar a swap comprimida na RAM (zram)", sys.family, &["systemd-zram-generator"]));
+        }
+        s.push(cmd("Deixar o sistema leve para jogos (desfazer: nexus-slim revert)", &["/usr/lib/nexus/nexus-slim", "apply"]));
+    }
+    // Base sem ambiente de desktop (Debian netinst): sem gerenciador de login, instala o greetd (leve, sem
+    // interface própria) só para entrar direto na sessão Nexus.
+    let mut dm = sys.display_manager.clone();
+    if o.autologin_user.is_some() && dm.is_none() && sys.family == Family::Debian {
+        s.push(step("Instalar o greetd (login direto no Nexus, sem desktop)", sys.family, &["greetd"]));
+        s.push(cmd("Usar o greetd na inicialização", &["systemctl", "enable", "greetd.service"]));
+        dm = Some("greetd".into());
+    }
+    if let (Some(user), Some(dm)) = (&o.autologin_user, dm.as_deref().and_then(autologin::dm_from_name)) {
         s.push(Step { title: format!("Entrar direto no Nexus ao ligar ({user})"), action: Action::Autologin { dm, user: user.clone() } });
     }
     s
@@ -147,10 +163,24 @@ mod tests {
     }
 
     #[test]
+    fn slim_and_greetd_on_a_bare_debian() {
+        let mut d = sys(Family::Debian, None);
+        d.id = "debian".into();
+        let t: Vec<String> = build(&d, &Options { steam: false, emulation: false, autologin_user: Some("lia".into()), slim: true }).iter().map(|s| s.display()).collect();
+        let pos = |needle: &str| t.iter().position(|x| x.contains(needle)).unwrap_or_else(|| panic!("falta: {needle} em {t:?}"));
+        assert!(pos("systemd-zram-generator") < pos("nexus-slim apply"));
+        assert!(pos("greetd") < pos("autologin"), "sem gerenciador de login: greetd e depois o autologin dele");
+        assert!(t.last().unwrap().contains("Greetd"), "{t:?}");
+        // com desktop (gdm): não instala greetd
+        let g = build(&sys(Family::Debian, Some("gdm3")), &Options { steam: false, emulation: false, autologin_user: Some("lia".into()), slim: false });
+        assert!(!g.iter().any(|s| s.display().contains("greetd") || s.display().contains("nexus-slim")));
+    }
+
+    #[test]
     fn ubuntu_plan_with_steam_and_autologin() {
         let mut y = sys(Family::Debian, Some("sddm"));
         y.id = "ubuntu".into();
-        let p = build(&y, &Options { steam: true, emulation: false, autologin_user: Some("lia".into()) });
+        let p = build(&y, &Options { steam: true, emulation: false, autologin_user: Some("lia".into()), slim: false });
         let t: Vec<String> = p.iter().map(|s| s.display()).collect();
         let pos = |needle: &str| t.iter().position(|x| x.contains(needle)).unwrap_or_else(|| panic!("falta: {needle} em {t:?}"));
         assert!(pos("dpkg --add-architecture i386") < pos("apt-get install -y steam-installer"));
@@ -163,7 +193,7 @@ mod tests {
     fn installs_browser_only_when_missing() {
         let mut y = sys(Family::Debian, None);
         y.id = "debian".into();
-        let has = |b: &System| build(b, &Options { steam: false, emulation: false, autologin_user: None }).iter().any(|s| s.display().contains("chromium"));
+        let has = |b: &System| build(b, &Options { steam: false, emulation: false, autologin_user: None, slim: false }).iter().any(|s| s.display().contains("chromium"));
         assert!(!has(&y), "já tem navegador");
         y.has_browser = false;
         assert!(has(&y), "Raspberry Pi OS / Debian: chromium");
@@ -174,7 +204,7 @@ mod tests {
         let mut pi = sys(Family::Debian, Some("lightdm"));
         pi.id = "debian".into();
         pi.arch = "aarch64".into();
-        let p = build(&pi, &Options { steam: true, emulation: true, autologin_user: Some("pi".into()) });
+        let p = build(&pi, &Options { steam: true, emulation: true, autologin_user: Some("pi".into()), slim: false });
         let t: Vec<String> = p.iter().map(|s| s.display()).collect();
         assert!(!t.iter().any(|x| x.contains("i386") || x.contains("steam-installer")), "sem Steam nem 32 bits no ARM: {t:?}");
         assert!(t.iter().any(|x| x.contains("RetroArch")));
@@ -183,14 +213,14 @@ mod tests {
 
     #[test]
     fn arch_fedora_and_emulation_plans() {
-        let p = build(&sys(Family::Arch, None), &Options { steam: true, emulation: false, autologin_user: Some("lia".into()) });
+        let p = build(&sys(Family::Arch, None), &Options { steam: true, emulation: false, autologin_user: Some("lia".into()), slim: false });
         let t: Vec<String> = p.iter().map(|s| s.display()).collect();
         assert!(t.iter().any(|x| x.contains("multilib")));
         assert!(t.iter().any(|x| x == "pacman -S --needed --noconfirm steam"));
         assert!(!t.iter().any(|x| x.contains("autologin")), "sem gerenciador de login conhecido não mexe no login");
         let mut nf = sys(Family::Fedora, None);
         nf.has_flatpak = false;
-        let f = build(&nf, &Options { steam: true, emulation: true, autologin_user: None });
+        let f = build(&nf, &Options { steam: true, emulation: true, autologin_user: None, slim: false });
         let t: Vec<String> = f.iter().map(|s| s.display()).collect();
         assert!(t.iter().any(|x| x.contains("rpmfusion-nonfree-release")));
         let fl = t.iter().position(|x| x == "dnf install -y flatpak").unwrap();
