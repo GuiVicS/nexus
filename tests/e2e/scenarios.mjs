@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { check, openUi, rpc, sleep, startCore, ROOT } from './lib.mjs';
 
@@ -726,7 +727,7 @@ scenarios.bluetooth = async () => {
 
 // anda com ↑/↓ na direção do item data-k=k (sem sair do painel para a lista lateral)
 async function goTo(ui, k, label) {
-  for (let n = 0; n < 24; n++) {
+  for (let n = 0; n < 60; n++) {
     if ((await ui.focusInfo())?.k === k) return;
     const dir = await ui.ev(`(()=>{const t=document.querySelector('[data-k="${k}"]'),f=document.querySelector('.f.focus');if(!t||!f)return 'ArrowDown';return t.getBoundingClientRect().top<f.getBoundingClientRect().top?'ArrowUp':'ArrowDown'})()`);
     await ui.key(dir, { wait: 80 });
@@ -983,6 +984,260 @@ scenarios.controles = async () => {
     check(!(await ui.overlays()).includes('padtest'), 'teste fechado');
     await ui.screens('b6-controles');
     check(ui.errors().length === 0, `sem erros de JavaScript${ui.errors().length ? ': ' + ui.errors().join(' | ') : ''}`);
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};
+
+// ---------- Fase 3 do sistema: atualizações, SSH, sobre/diagnóstico, recuperação (programas do sistema 100 % falsos) ----------
+const sysState = (core) => {
+  const S = `${core.dir}/fake-sys`;
+  fs.mkdirSync(S, { recursive: true });
+  const rd = (f) => (fs.existsSync(`${S}/${f}`) ? fs.readFileSync(`${S}/${f}`, 'utf8').trim() : '');
+  return { S, rd, lines: (f) => rd(f).split('\n').filter(Boolean) };
+};
+const toastRe = (re) => `()=>[...document.querySelectorAll('.toast')].some(t=>${re}.test(t.textContent))`;
+const txt = (ui, k) => ui.text(`[data-k=${k}]`);
+
+// B11: Ajustes → Atualizações só com o controle (verificar, instalar o Nexus, histórico, reverter, sistema, nunca em jogo).
+scenarios.atualizacoes = async () => {
+  const core = await startCore({ demo: true });
+  const { S, rd, lines } = sysState(core);
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await openSettingsCat(ui, 'upd', 'Atualizações');
+    await ui.until(`()=>/Nexus 0\\.4\\.0-1/.test(document.querySelector('[data-k=up-nexus]')?.textContent||'')`, 'versão instalada (dpkg)');
+    check(/Ainda não procurei/.test(await txt(ui, 'up-nexus')), 'antes de procurar: nenhuma versão nova conhecida');
+    await ui.key('ArrowRight');
+    await goTo(ui, 'up-check', 'procurar atualizações');
+    await ui.key('Enter');
+    await ui.until(`()=>/Nova versão disponível: 0\\.5\\.0/.test(document.querySelector('[data-k=up-nexus]')?.textContent||'')`, 'versão nova encontrada');
+    check(/3 pacote\(s\)/.test(await txt(ui, 'up-sys')) && /firefox-esr/.test(await txt(ui, 'up-sys')), 'pacotes do sistema listados');
+    await ui.screens('b11-atualizacoes');
+    // instalar o Nexus: confirmação → trabalho em segundo plano → versão nova + histórico + reverter
+    await goTo(ui, 'up-install', 'instalar o Nexus');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação da atualização');
+    await ui.key('Enter');
+    await ui.typePin('1234'); // instalar pede o PIN dos responsáveis (depois vale por alguns minutos)
+    await ui.until(toastRe('/Atualizando o Nexus/'), 'atualização iniciada');
+    await ui.until(`()=>/Nexus 0\\.5\\.0-1/.test(document.querySelector('[data-k=up-nexus]')?.textContent||'')`, 'versão nova instalada', 15000);
+    check(lines('calls')[0] === 'update-nexus:latest', 'Core pediu ao ajudante a versão mais nova');
+    await ui.until(`()=>document.querySelector('[data-k=up-hist-0]')`, 'histórico');
+    check(/Nexus 0\.4\.0-1 → 0\.5\.0-1/.test(await txt(ui, 'up-hist-0')), 'histórico mostra de onde para onde');
+    check(/Voltar para o Nexus 0\.4\.0-1/.test(await txt(ui, 'up-revert')), 'reverter oferece a versão anterior');
+    check(await ui.has('[data-k=up-restart]'), 'pede reiniciar a sessão (a versão em execução é outra)');
+    // reverter
+    await goTo(ui, 'up-revert', 'voltar a versão');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação de voltar a versão');
+    await ui.key('Enter');
+    await ui.until(`()=>/Nexus 0\\.4\\.0-1/.test(document.querySelector('[data-k=up-nexus]')?.textContent||'')`, 'versão anterior de volta', 15000);
+    check(lines('calls').includes('update-nexus:0.4.0'), 'Core pediu a versão exata (0.4.0)');
+    // sistema
+    await goTo(ui, 'up-install-sys', 'atualizar o sistema');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação do sistema');
+    await ui.key('Enter');
+    await ui.until(`()=>/em dia/.test(document.querySelector('[data-k=up-sys]')?.textContent||'')`, 'sistema atualizado', 15000);
+    check(lines('calls').includes('upgrade-system'), 'Core pediu a atualização do sistema');
+    check(!(await ui.has('[data-k=up-install-sys]')), 'sem botão de atualizar o sistema depois');
+    // falha vira mensagem em português e entra no histórico
+    fs.writeFileSync(`${S}/update-fails`, '1');
+    fs.writeFileSync(`${S}/latest`, '0.6.0');
+    await goTo(ui, 'up-check', 'procurar de novo');
+    await ui.key('Enter');
+    await ui.until(`()=>/Nova versão disponível: 0\\.6\\.0/.test(document.querySelector('[data-k=up-nexus]')?.textContent||'')`, '0.6.0 encontrada');
+    await goTo(ui, 'up-install', 'instalar');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação');
+    await ui.key('Enter');
+    await ui.until(toastRe('/não deu certo/'), 'falha avisada', 15000);
+    await ui.until(`()=>/Sem espaço em disco/.test(document.querySelector('[data-k=up-done]')?.textContent||'')`, 'motivo da falha na tela');
+    check(rd('nexus-version') === '0.4.0-1', 'a versão instalada não mudou');
+    // nunca durante um jogo
+    await core.rpc('item.launch', { id: 'demo:g1' });
+    let msg = '';
+    await core.rpc('update.install', { kind: 'system', parentPin: '1234' }).catch((e) => { msg = e.message; });
+    check(/Feche o jogo/.test(msg), 'o Core recusa atualizar com jogo aberto');
+    await core.rpc('game.close');
+    check(ui.errors().length === 0, `sem erros de JavaScript${ui.errors().length ? ': ' + ui.errors().join(' | ') : ''}`);
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};
+
+// Acesso por SSH: passo a passo com os valores reais do aparelho, liga/desliga com PIN (programa falso) e servidor ausente.
+scenarios.ssh = async () => {
+  const core = await startCore({ demo: true });
+  const { S, rd, lines } = sysState(core);
+  const user = os.userInfo().username;
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await openSettingsCat(ui, 'ssh', 'Acesso por SSH');
+    await ui.until(`()=>document.querySelector('[data-k=ssh-toggle]')`, 'painel do SSH');
+    // servidor não instalado: diz isso e mostra o comando de instalação
+    check(/Não instalado/.test(await txt(ui, 'ssh-toggle')), 'servidor não instalado é dito');
+    check(/sudo apt install openssh-server/.test(await txt(ui, 'ssh-1')), 'passo 1 mostra o comando de instalação');
+    check(/192\.168\.0\.42/.test(await txt(ui, 'ssh-3')) && new RegExp(`Usuário: ${user}`).test(await txt(ui, 'ssh-3')) && /Porta: 22/.test(await txt(ui, 'ssh-3')), 'passo 3 mostra usuário, IP e porta reais');
+    check((await txt(ui, 'ssh-4')).includes(`ssh ${user}@192.168.0.42`), 'comando pronto ssh usuario@IP');
+    check(/ssh-keygen -t ed25519/.test(await txt(ui, 'ssh-6')) && /ssh-copy-id/.test(await txt(ui, 'ssh-6')), 'dica de chave (ssh-keygen + ssh-copy-id)');
+    check(/exit/.test(await txt(ui, 'ssh-7')) && /disable --now ssh/.test(await txt(ui, 'ssh-8')), 'como sair e como desligar');
+    await ui.screens('ssh-nao-instalado');
+    // instalado e desligado: porta personalizada aparece no comando; fingerprint real no primeiro acesso
+    fs.writeFileSync(`${S}/ssh-installed`, '1');
+    fs.writeFileSync(`${S}/sshd_config`, '# Port 22\nPort 2200\n');
+    await ui.until(`()=>/Desligado/.test(document.querySelector('[data-k=ssh-toggle]')?.textContent||'')`, 'instalado e desligado', 9000);
+    check((await txt(ui, 'ssh-4')).includes(`ssh -p 2200 ${user}@192.168.0.42`), 'porta personalizada no comando');
+    check(/SHA256:Zk3Qw/.test(await txt(ui, 'ssh-5')) && /ED25519/.test(await txt(ui, 'ssh-5')), 'primeiro acesso mostra a impressão digital da chave');
+    // ligar: confirmação → o Core pede ao ajudante
+    await ui.key('ArrowRight');
+    await goTo(ui, 'ssh-toggle', 'chave do SSH');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'aviso de segurança');
+    await ui.key('Enter');
+    await ui.typePin('1234');
+    await ui.until(toastRe('/SSH ligado/'), 'SSH ligado');
+    check(lines('calls').includes('ssh-on') && rd('ssh-state') === 'active', 'o Core chamou ssh-on e o programa falso ligou');
+    await ui.until(`()=>/Ligado/.test(document.querySelector('[data-k=ssh-toggle]')?.textContent||'')`, 'tela mostra ligado');
+    await ui.screens('ssh-ligado');
+    // desligar
+    await ui.key('Enter');
+    await ui.until(toastRe('/SSH desligado/'), 'SSH desligado');
+    check(lines('calls').includes('ssh-off') && rd('ssh-state') === 'inactive', 'o Core chamou ssh-off');
+    // criança não vê a categoria; o Core também recusa o liga/desliga sem PIN para criança
+    const kid = await core.rpc('profiles.list');
+    check(kid.some((p) => p.kind === 'kid'), 'há perfil infantil na demonstração');
+    check(ui.errors().length === 0, `sem erros de JavaScript${ui.errors().length ? ': ' + ui.errors().join(' | ') : ''}`);
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};
+
+// B16: Sobre e diagnóstico + relatório de suporte entregue pelo celular.
+scenarios.sobre = async () => {
+  const core = await startCore({ demo: true });
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await openSettingsCat(ui, 'sobre', 'Sobre e diagnóstico');
+    await ui.until(`()=>document.querySelector('[data-k=ab-cpu]')`, 'informações do aparelho');
+    check((await txt(ui, 'ab-cpu')).length > 12, 'processador identificado');
+    check(/GB em uso de/.test(await txt(ui, 'ab-mem')), 'memória usada e total');
+    check(/\d+%/.test(await txt(ui, 'ab-cpupct')), 'uso atual do processador');
+    check(/Ligado há/.test(await txt(ui, 'ab-up')), 'tempo ligado');
+    check(/Só o Raspberry Pi informa/.test(await txt(ui, 'ab-throttle')), 'throttling explica que só o Pi informa');
+    check(await ui.has('[data-k=ab-top-0]'), 'lista o que mais consome');
+    await ui.key('ArrowRight');
+    await ui.screens('b16-sobre');
+    await goTo(ui, 'ab-report', 'gerar relatório');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('[data-k=ab-report-card] svg')`, 'relatório gerado com QR', 15000);
+    const name = await ui.text('[data-k=ab-report-card] code');
+    check(/^nexus-relatorio-\d{8}-\d{6}\.txt/.test(name), `arquivo de relatório nomeado (${name})`);
+    await ui.screens('b16-relatorio');
+    // o celular baixa o arquivo com o código de pareamento; sem código, não
+    const pairing = await core.rpc('remote.pairing');
+    const url = pairing.url.replace(/^http:\/\/[^/]+/, core.remoteUrl.replace(/\/$/, '')).replace('/?t=', '/report?t=');
+    const ok = await fetch(url, { headers: { Origin: core.remoteUrl.replace(/\/$/, '') } });
+    const body = await ok.text();
+    check(ok.status === 200 && /RELATÓRIO DE SUPORTE DO NEXUS/.test(body) && /== Aparelho ==/.test(body), 'o celular baixa o relatório');
+    check(!body.includes(pairing.url.split('?t=')[1]), 'o relatório não contém o código de pareamento');
+    const bad = await fetch(url.replace(/t=.*/, 't=errado'), { headers: { Origin: core.remoteUrl.replace(/\/$/, '') } });
+    check(bad.status === 403, 'sem o código certo não baixa');
+    check(ui.errors().length === 0, `sem erros de JavaScript${ui.errors().length ? ': ' + ui.errors().join(' | ') : ''}`);
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};
+
+// B15: Recuperação atrás do PIN: reparar, desktop no próximo login, restaurar padrões, apagar dados de perfil, reset de fábrica.
+scenarios.recuperacao = async () => {
+  const core = await startCore({ demo: true });
+  const { S, rd, lines } = sysState(core);
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await openSettingsCat(ui, 'recup', 'Recuperação');
+    // atrás do PIN dos responsáveis
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=pin]')`, 'pede o PIN dos responsáveis');
+    await ui.typePin('1234');
+    await ui.until(`()=>document.querySelector('[data-k=rec-session]')`, 'recuperação aberta depois do PIN');
+    await ui.screens('b15-recuperacao');
+    await ui.key('ArrowRight');
+    // reparar a interface
+    await goTo(ui, 'rec-shell', 'reparar a interface');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação');
+    await ui.key('Enter');
+    await waitNode(() => lines('user-calls').some((l) => /restart --no-block nexus-shell\.service/.test(l)), 'Core reiniciou só a interface (systemctl --user)');
+    // reiniciar a sessão
+    await goTo(ui, 'rec-session', 'reiniciar a sessão');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação');
+    await ui.key('Enter');
+    await waitNode(() => lines('user-calls').some((l) => /restart --no-block nexus-session\.target/.test(l)), 'Core pediu o reinício da sessão');
+    // desktop no próximo login
+    await goTo(ui, 'rec-desktop', 'desktop no próximo login');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação');
+    await ui.key('Enter');
+    await waitNode(() => fs.existsSync(`${S}/force-desktop`), 'marca force-desktop criada');
+    await ui.until(`()=>/LIGADO/.test(document.querySelector('[data-k=rec-desktop]')?.textContent||'')`, 'tela mostra ligado');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação para desligar');
+    await ui.key('Enter');
+    await waitNode(() => !fs.existsSync(`${S}/force-desktop`), 'marca removida');
+    // restaurar padrões: tema claro volta ao escuro
+    await core.rpc('profiles.list');
+    // apagar dados de um perfil: o perfil continua
+    const before = (await core.rpc('profiles.list')).length;
+    await goTo(ui, 'rec-defaults', 'restaurar padrões');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação');
+    await ui.key('Enter');
+    await ui.until(toastRe('/Padrões restaurados/'), 'padrões restaurados');
+    check((await core.rpc('profiles.list')).length === before, 'restaurar padrões não apaga perfis');
+    const pid = (await core.rpc('profiles.list')).find((p) => p.name === 'Rafa').id;
+    await goTo(ui, `rec-erase-${pid}`, 'apagar dados do Rafa');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação');
+    await ui.key('Enter');
+    await ui.until(toastRe('/Dados apagados/'), 'dados apagados');
+    check((await core.rpc('profiles.list')).length === before, 'apagar dados mantém o perfil');
+    // reset de fábrica: duas confirmações; depois o Core está sem perfis (primeiro uso)
+    await goTo(ui, 'rec-factory', 'reset de fábrica');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'primeira confirmação');
+    await ui.key('Enter');
+    await ui.until(`()=>/Última chance/.test(document.querySelector('#ovs [data-kind=confirm]')?.textContent||'')`, 'segunda confirmação');
+    await ui.key('Escape');
+    await ui.wait(400);
+    check((await core.rpc('profiles.list')).length === before, 'cancelar na segunda confirmação não apaga nada');
+    await goTo(ui, 'rec-factory', 'reset de fábrica');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'primeira confirmação');
+    await ui.key('Enter');
+    await ui.until(`()=>/Última chance/.test(document.querySelector('#ovs [data-kind=confirm]')?.textContent||'')`, 'segunda confirmação');
+    await ui.key('Enter');
+    await waitNode(() => true, 'confirmado');
+    for (let i = 0; i < 40 && (await core.rpc('profiles.list')).length > 0; i++) await ui.wait(150);
+    check((await core.rpc('profiles.list')).length === 0, 'reset de fábrica: sem perfis, volta ao primeiro uso');
+    // criança não passa: o Core exige o PIN dos responsáveis e perfil adulto
   } finally {
     ui.close();
     await core.stop();

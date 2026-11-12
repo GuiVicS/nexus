@@ -1,0 +1,32 @@
+#!/bin/sh
+# systemctl falso para os cenários de UI (nunca mexe no sistema). Estado em $NEXUS_FAKE_SYS:
+#   ssh-installed (existe = servidor instalado), ssh-state (active/inactive), calls (cada pedido de ação),
+#   user-calls (systemctl --user), nexus-version, upgradable. O resultado das ações vai para $NEXUS_SYS_OUT.
+S=${NEXUS_FAKE_SYS:-/tmp/nexus-fake-sys}
+O=${NEXUS_SYS_OUT:-$S/out}
+mkdir -p "$S" "$O"
+state() { cat "$S/ssh-state" 2>/dev/null || echo inactive; }
+if [ "$1" = "--user" ]; then echo "$*" >> "$S/user-calls"; exit 0; fi
+case "$1" in
+  list-unit-files)
+    [ -f "$S/ssh-installed" ] && echo "ssh.service enabled enabled"
+    exit 0 ;;
+  is-active) case "$2" in ssh) state ;; *) echo inactive ;; esac; exit 0 ;;
+  is-enabled) case "$2" in ssh) [ "$(state)" = active ] && echo enabled || echo disabled ;; *) echo disabled ;; esac; exit 0 ;;
+  start)
+    unit=$3; act=${unit#nexus-sys@}; act=${act%.service}
+    echo "$act" >> "$S/calls"
+    verb=${act%%:*}
+    case "$verb" in
+      ssh-on) if [ -f "$S/ssh-installed" ]; then echo active > "$S/ssh-state"; echo "ok ssh ligado" > "$O/$verb"; else echo "err O servidor SSH não está instalado" > "$O/$verb"; exit 1; fi ;;
+      ssh-off) echo inactive > "$S/ssh-state"; echo "ok ssh desligado" > "$O/$verb" ;;
+      upgrade-system) echo "Baixando pacotes…" > "$O/$verb.log"; sleep ${NEXUS_FAKE_SLOW:-1}; touch "$S/upgraded"; echo "ok atualizado" > "$O/$verb" ;;
+      update-nexus)
+        v=${act#*:}; [ "$v" = latest ] && v=$(cat "$S/latest" 2>/dev/null || echo 0.5.0)
+        echo "Baixando nexus-$v…" > "$O/$verb.log"; sleep ${NEXUS_FAKE_SLOW:-1}
+        if [ -f "$S/update-fails" ]; then echo "err Sem espaço em disco" > "$O/$verb"; exit 1; fi
+        echo "$v-1" > "$S/nexus-version"; echo "ok $v-1" > "$O/$verb" ;;
+      *) exit 1 ;;
+    esac; exit 0 ;;
+  *) echo "systemctl falso: não sei responder a: $*" >&2; exit 2 ;;
+esac

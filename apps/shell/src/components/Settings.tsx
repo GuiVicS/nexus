@@ -7,6 +7,7 @@ import { fmtBytes, ratingLabel } from '../lib/format';
 import { Avatar, Icon, Switch } from './ui';
 import { PadsSection } from './Pads';
 import { ControlsExtras } from './Controls';
+import { AboutPanel, RecoveryPanel, SshPanel, UpdatesPanel } from './SysAdmin';
 import { AudioPanel, BtPanel, DisplayPanel, LocalePanel, NetPanel } from './System';
 import { sfx } from '@nexus/ui';
 
@@ -27,6 +28,10 @@ const CATS: Cat[] = [
   { id: 'steam', label: 'Steam', icon: 'download', adult: true },
   { id: 'hora', label: 'Idioma e hora', icon: 'clock', adult: true },
   { id: 'sis', label: 'Sistema', icon: 'gear', adult: true },
+  { id: 'upd', label: 'Atualizações', icon: 'download', adult: true },
+  { id: 'sobre', label: 'Sobre e diagnóstico', icon: 'info', adult: true },
+  { id: 'ssh', label: 'Acesso por SSH', icon: 'list', adult: true },
+  { id: 'recup', label: 'Recuperação', icon: 'lock', adult: true },
 ];
 
 const cats = () => CATS.filter((c) => !c.adult || !isKid());
@@ -351,6 +356,10 @@ export function Settings() {
         <Show when={S.setCat === 'parental' && !isKid()}><PaneParental /></Show>
         <Show when={S.setCat === 'steam' && !isKid()}><PaneSteam /></Show>
         <Show when={S.setCat === 'sis' && !isKid()}><PaneSis /></Show>
+        <Show when={S.setCat === 'upd' && !isKid()}><Pane title="Atualizações"><UpdatesPanel /></Pane></Show>
+        <Show when={S.setCat === 'sobre' && !isKid()}><Pane title="Sobre e diagnóstico"><AboutPanel /></Pane></Show>
+        <Show when={S.setCat === 'ssh' && !isKid()}><Pane title="Acesso por SSH"><SshPanel /></Pane></Show>
+        <Show when={S.setCat === 'recup' && !isKid()}><Pane title="Recuperação"><RecoveryPanel /></Pane></Show>
       </div>
     </>
   );

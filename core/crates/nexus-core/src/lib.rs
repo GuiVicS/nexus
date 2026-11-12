@@ -1,3 +1,4 @@
+pub mod about;
 pub mod accounts;
 pub mod appupdates;
 pub mod art;
@@ -21,7 +22,11 @@ pub mod net;
 pub mod procs;
 pub mod providers;
 pub mod remote;
+pub mod recovery;
 pub mod roms;
+pub mod sshd;
+pub mod sysops;
+pub mod updates;
 pub mod sysnet;
 pub mod rpc;
 pub mod util;

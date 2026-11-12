@@ -300,6 +300,18 @@ async fn roms_upload(State(core): State<Arc<Core>>, ConnectInfo(addr): ConnectIn
     axum::Json(json!({ "ok": true, "name": name, "size": total })).into_response()
 }
 
+/// GET /report?t=<token> — baixa o relatório de suporte mais recente (gerado em Ajustes → Sobre e diagnóstico).
+async fn report_download(State(core): State<Arc<Core>>, ConnectInfo(addr): ConnectInfo<SocketAddr>, Query(q): Query<HashMap<String, String>>) -> Response {
+    if let Err(e) = core.hub.token_ok(addr.ip(), q.get("t").map(String::as_str).unwrap_or("")) {
+        return (StatusCode::FORBIDDEN, e).into_response();
+    }
+    let Some((name, path, _)) = crate::about::latest_report(&core.cfg.data_dir) else { return (StatusCode::NOT_FOUND, "Nenhum relatório foi gerado ainda").into_response() };
+    match tokio::fs::read(&path).await {
+        Ok(b) => ([(header::CONTENT_TYPE, "text/plain; charset=utf-8".to_string()), (header::CONTENT_DISPOSITION, format!("attachment; filename=\"{name}\"")), (header::CACHE_CONTROL, "no-store".to_string())], b).into_response(),
+        Err(_) => (StatusCode::NOT_FOUND, "Relatório não encontrado").into_response(),
+    }
+}
+
 /// Porta de entrada do Remote: só rede local e só a própria página (Origin) — vale para todas as rotas.
 async fn remote_guard(ConnectInfo(addr): ConnectInfo<SocketAddr>, req: axum::extract::Request, next: axum::middleware::Next) -> Response {
     if !remote::local_peer(addr.ip()) && std::env::var("NEXUS_REMOTE_ANY_NET").as_deref() != Ok("1") {
@@ -320,6 +332,7 @@ pub fn remote_router(core: Arc<Core>) -> Router {
         .route("/remote/hello", get(remote_hello))
         .route("/remote/ws", get(remote_ws))
         .route("/roms", get(roms_page))
+        .route("/report", get(report_download))
         .route("/remote/upload", axum::routing::post(roms_upload).layer(axum::extract::DefaultBodyLimit::disable()));
     if let Some(dir) = core.cfg.remote_dir.clone() {
         r = r.fallback_service(ServeDir::new(&dir).not_found_service(ServeFile::new(dir.join("index.html"))));

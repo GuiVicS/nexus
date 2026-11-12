@@ -1,0 +1,6 @@
+#!/bin/sh
+# apt falso: "apt list --upgradable" mostra três pacotes até o arquivo $NEXUS_FAKE_SYS/upgraded existir.
+S=${NEXUS_FAKE_SYS:-/tmp/nexus-fake-sys}
+echo "Listing..."
+[ -f "$S/upgraded" ] && exit 0
+for p in libssl3 firefox-esr linux-image-6.8; do echo "$p/noble-updates 9.9 amd64 [upgradable from: 9.8]"; done

@@ -368,6 +368,9 @@ export const ACT: Record<string, Fn> = {
   emufetch(a) {
     document.dispatchEvent(new CustomEvent('nexus:emufetch', { detail: a }));
   },
+  sys(a) {
+    document.dispatchEvent(new CustomEvent('nexus:sys', { detail: a }));
+  },
   ctl(a) {
     document.dispatchEvent(new CustomEvent('nexus:ctl', { detail: a }));
   },

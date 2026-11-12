@@ -46,6 +46,11 @@ install -Dm755 system/sysd/nexus-deps-apply "$OUT/usr/lib/nexus/nexus-deps-apply
 install -Dm755 system/sysd/nexus-slim "$OUT/usr/lib/nexus/nexus-slim"
 install -Dm644 system/polkit/50-nexus-apps.rules "$OUT/usr/share/polkit-1/rules.d/50-nexus-apps.rules"
 install -Dm644 system/polkit/51-nexus-system.rules "$OUT/usr/share/polkit-1/rules.d/51-nexus-system.rules"
+# atualizar o Nexus/o sistema e ligar o SSH pela interface (ajudante root + unidade + regra do polkit só para ela)
+install -Dm755 system/sysd/nexus-sys-helper "$OUT/usr/lib/nexus/nexus-sys-helper"
+install -Dm644 system/sysd/nexus-sys@.service "$OUT/usr/lib/systemd/system/nexus-sys@.service"
+install -Dm755 tools/update.sh "$OUT/usr/lib/nexus/nexus-update"
+install -Dm644 system/polkit/52-nexus-sys.rules "$OUT/usr/share/polkit-1/rules.d/52-nexus-sys.rules"
 install -Dm644 system/udev/70-nexus-uinput.rules "$OUT/usr/lib/udev/rules.d/70-nexus-uinput.rules"
 install -Dm644 system/udev/nexus-uinput.conf "$OUT/usr/lib/modules-load.d/nexus-uinput.conf"
 install -Dm644 system/apparmor/opt.nexus.shell.nexus-shell "$OUT/etc/apparmor.d/opt.nexus.shell.nexus-shell"

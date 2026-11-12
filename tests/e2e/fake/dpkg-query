@@ -1,0 +1,4 @@
+#!/bin/sh
+# dpkg-query falso: versão do pacote nexus em $NEXUS_FAKE_SYS/nexus-version (padrão 0.4.0-1)
+S=${NEXUS_FAKE_SYS:-/tmp/nexus-fake-sys}
+cat "$S/nexus-version" 2>/dev/null || printf '0.4.0-1'

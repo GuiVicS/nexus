@@ -980,6 +980,112 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             core.hub.disconnect(&s(&v, "id")?);
             ok(core.hub.pairing())
         }
+        // ---------- atualizações, SSH, recuperação, sobre e diagnóstico (Fase 3) ----------
+        // ver: updates.rs, sshd.rs, recovery.rs, about.rs. Tudo que muda algo pede perfil adulto + PIN dos responsáveis.
+        "update.status" => {
+            need_session(core)?;
+            let (db, game) = (core.db.clone(), core.game_info().is_some());
+            Ok(blocking(move || crate::updates::status(&db, game)).await?)
+        }
+        "update.check" => {
+            sys_access(core, &v, false)?;
+            let (db, game) = (core.db.clone(), core.game_info().is_some());
+            Ok(blocking(move || {
+                crate::updates::check(&db);
+                crate::updates::status(&db, game)
+            })
+            .await?)
+        }
+        "update.install" | "update.revert" => {
+            sys_access(core, &v, true)?;
+            if core.game_info().is_some() {
+                return Err(RpcError::new(E_BUSY, "Feche o jogo antes de atualizar"));
+            }
+            let (kind, version) = if method == "update.revert" {
+                let db = core.db.clone();
+                let to = blocking(move || crate::updates::revert_version(&db)).await?.ok_or_else(|| RpcError::new(E_NOT_FOUND, "Não há versão anterior guardada"))?;
+                ("nexus".to_string(), Some(to.split(['-', '+', '~']).next().unwrap_or(&to).to_string()))
+            } else {
+                (s(&v, "kind")?, os(&v, "version"))
+            };
+            let c = core.clone();
+            crate::updates::start_install(core.db.clone(), &kind, version, move |ok, message| c.emit("update.done", json!({ "ok": ok, "message": message }))).map_err(|e| RpcError::new(E_BUSY, &e))?;
+            core.emit("update.started", json!({ "kind": kind }));
+            Ok(json!({ "started": true }))
+        }
+        "ssh.status" => {
+            need_session(core)?;
+            Ok(blocking(crate::sshd::status).await?)
+        }
+        "ssh.set" => {
+            sys_access(core, &v, true)?;
+            let on = v.get("on").and_then(|b| b.as_bool()).ok_or_else(|| RpcError::invalid("falta 'on'"))?;
+            blocking(move || crate::sshd::set(on)).await?.map_err(|e| RpcError::new(E_FAILED, &e))?;
+            core.emit("ssh.changed", json!({ "on": on }));
+            Ok(blocking(crate::sshd::status).await?)
+        }
+        "about.status" => {
+            need_session(core)?;
+            let dir = core.cfg.data_dir.clone();
+            Ok(blocking(move || crate::about::status(&dir)).await?)
+        }
+        "about.report" => {
+            sys_access(core, &v, false)?;
+            let dir = core.cfg.data_dir.clone();
+            let (name, _, size) = blocking(move || crate::about::make_report(&dir, &Value::Null)).await?.map_err(|e| RpcError::new(E_FAILED, &e))?;
+            // entrega pelo celular: mesma rede e mesmo código do controle, só para baixar este arquivo
+            let url = core.hub.pairing().url.replacen("/?t=", "/report?t=", 1);
+            Ok(json!({ "name": name, "size": size, "dir": core.cfg.data_dir.join("reports").to_string_lossy(), "url": url, "qrSvg": crate::remote::qr_svg(&url) }))
+        }
+        "recovery.status" => {
+            sys_access(core, &v, true)?;
+            Ok(json!({ "desktopMode": crate::recovery::desktop_mode(), "gameRunning": core.game_info().is_some() }))
+        }
+        "recovery.run" => {
+            sys_access(core, &v, true)?;
+            let action = s(&v, "action")?;
+            let fail = |e: String| RpcError::new(E_FAILED, &e);
+            let game = core.game_info().is_some();
+            match action.as_str() {
+                "restart_session" | "repair_shell" if game => return Err(RpcError::new(E_BUSY, "Feche o jogo antes")),
+                "restart_session" => blocking(crate::recovery::restart_session).await?.map_err(fail)?,
+                "repair_shell" => blocking(crate::recovery::repair_shell).await?.map_err(fail)?,
+                "desktop_on" | "desktop_off" => {
+                    let on = action == "desktop_on";
+                    blocking(move || crate::recovery::set_desktop_mode(on)).await?.map_err(fail)?
+                }
+                "restore_defaults" => {
+                    let db = core.db.clone();
+                    blocking(move || crate::recovery::restore_defaults(&db)).await?.map_err(fail)?;
+                    if let Some(p) = core.current_profile() {
+                        core.emit("session.changed", serde_json::to_value(core.session_info(core.accounts.get(&p.id).unwrap_or(p)))?);
+                    }
+                }
+                "erase_profile" => {
+                    let id = s(&v, "id")?;
+                    core.accounts.get(&id).ok_or_else(|| RpcError::new(E_NOT_FOUND, "perfil não existe"))?;
+                    let db = core.db.clone();
+                    let id2 = id.clone();
+                    blocking(move || crate::recovery::erase_profile_data(&db, &id2)).await?.map_err(fail)?;
+                    core.emit("profiles.changed", json!({}));
+                    if let Some(p) = core.accounts.get(&id).filter(|p| core.current_profile().is_some_and(|c| c.id == p.id)) {
+                        core.emit("session.changed", serde_json::to_value(core.session_info(p))?);
+                    }
+                }
+                "factory_reset" => {
+                    if game {
+                        return Err(RpcError::new(E_BUSY, "Feche o jogo antes"));
+                    }
+                    let (db, dir) = (core.db.clone(), core.cfg.data_dir.clone());
+                    blocking(move || crate::recovery::factory_reset(&db, &dir)).await?.map_err(fail)?;
+                    core.set_session(None);
+                    core.emit("session.changed", Value::Null);
+                    core.emit("profiles.changed", json!({}));
+                }
+                _ => return Err(RpcError::invalid("ação inválida")),
+            }
+            Ok(json!({ "ok": true, "desktopMode": crate::recovery::desktop_mode() }))
+        }
         _ => Err(RpcError::new(-32601, &format!("método desconhecido: {method}"))),
     }
 }
