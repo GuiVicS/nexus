@@ -135,7 +135,7 @@ scenarios.crianca = () =>
     // ajustes limitados
     await ui.ev(`document.querySelector('#sbGear').click()`);
     await ui.until(`()=>document.querySelector('.setrail')`, 'ajustes');
-    check((await ui.count('.setrail .ri[data-rail]')) === 3, 'só 3 categorias nos ajustes infantis');
+    check((await ui.count('.setrail .ri[data-rail]')) === 4, 'só 4 categorias nos ajustes infantis (inclui Áudio: volume é do dia a dia)');
     await ui.key('Escape');
     // sair do perfil infantil pede o PIN dos responsáveis
     await ui.key('Tab');
@@ -689,7 +689,7 @@ scenarios.bluetooth = async () => {
     await pinIfAsked();
     await ui.until(toast('/Pareado/'), 'controle pareado');
     check(bt('paired').includes('11:22:33:44:55:01') && bt('conn').includes('11:22:33:44:55:01'), 'Core pareou e conectou o controle');
-    check(/^bt-/.test((await ui.focusInfo())?.k || ''), 'item pareado some da lista e o foco fica no painel (não pula para Rede)');
+    await ui.until(`()=>/^bt-/.test(document.querySelector('.f.focus')?.dataset.k||'') && document.querySelector('.setpane h2')?.textContent==='Bluetooth'`, 'item pareado some da lista e o foco fica no painel (não pula para Rede)', 3000);
     await ui.until(`()=>/Xbox.*bateria 76%/.test(document.querySelector('[data-k=bt-d-1]')?.textContent||'')`, 'controle na lista com bateria');
     // o teclado recusa: mensagem clara
     await to((f) => f?.k === 'bt-f-0', { k: 'bt-f-0', label: 'teclado encontrado' });
@@ -717,6 +717,92 @@ scenarios.bluetooth = async () => {
     await ui.key('Enter');
     await ui.until(`()=>/Desligado/.test(document.querySelector('[data-k=bt-power]')?.textContent||'') && !document.querySelector('[data-k=bt-scan]')`, 'Bluetooth desligado');
     check(bt('power').trim() === 'no', 'Core desligou o adaptador');
+    check(ui.errors().length === 0, `sem erros de JavaScript${ui.errors().length ? ': ' + ui.errors().join(' | ') : ''}`);
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};
+
+// anda com ↑/↓ na direção do item data-k=k (sem sair do painel para a lista lateral)
+async function goTo(ui, k, label) {
+  for (let n = 0; n < 24; n++) {
+    if ((await ui.focusInfo())?.k === k) return;
+    const dir = await ui.ev(`(()=>{const t=document.querySelector('[data-k="${k}"]'),f=document.querySelector('.f.focus');if(!t||!f)return 'ArrowDown';return t.getBoundingClientRect().top<f.getBoundingClientRect().top?'ArrowUp':'ArrowDown'})()`);
+    await ui.key(dir, { wait: 80 });
+  }
+  check((await ui.focusInfo())?.k === k, `foco em ${label}`);
+}
+async function waitNode(pred, what, ms = 8000) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (pred()) return check(true, what);
+    await new Promise((r) => setTimeout(r, 80));
+  }
+  check(false, what);
+  throw new Error(`timeout: ${what}`);
+}
+async function openSettingsCat(ui, cat, label) {
+  for (let n = 0; n < 4; n++) await ui.key('ArrowUp', { wait: 80 });
+  for (let n = 0; n < 12 && (await ui.focusInfo())?.a !== 'settings'; n++) await ui.key('ArrowRight', { wait: 80 });
+  await ui.key('Enter');
+  await ui.until(`()=>document.querySelector('#ovs [data-kind=settings] .setrail')`, 'ajustes');
+  await goTo(ui, `sc-${cat}`, `categoria ${label}`);
+  await ui.key('Enter');
+}
+
+// B3: Ajustes → Áudio só com o controle (volume tira o mudo, saída, teste, microfone) e A2: volume real na Central.
+scenarios.audio = async () => {
+  const core = await startCore({ demo: true });
+  const A = `${core.dir}/fake-audio`;
+  fs.mkdirSync(A, { recursive: true });
+  fs.writeFileSync(`${A}/vol_55`, '0.40\n');
+  fs.writeFileSync(`${A}/mute_55`, '1\n');
+  const rd = (f) => (fs.existsSync(`${A}/${f}`) ? fs.readFileSync(`${A}/${f}`, 'utf8').trim() : '');
+  const toast = (re) => `()=>[...document.querySelectorAll('.toast')].some(t=>${re}.test(t.textContent))`;
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await openSettingsCat(ui, 'audio', 'Áudio');
+    await ui.until(`()=>/Volume \\(mudo\\).*40/.test(document.querySelector('[data-k=au-vol]')?.textContent||'')`, 'volume do sistema e mudo');
+    await ui.key('ArrowRight'); // entra no painel
+    await goTo(ui, 'au-vol', 'volume');
+    await ui.key('ArrowRight');
+    await ui.key('ArrowRight');
+    await waitNode(() => rd('vol_55') === '0.50' && rd('mute_55') === '0', 'volume 50 % aplicado e mudo desligado', 5000);
+    check(/Volume50/.test((await ui.text('[data-k=au-vol]')).replace(/\s/g, '')), 'tela mostra 50 sem mudo');
+    // saída: TV pelo HDMI
+    await goTo(ui, 'au-out-0', 'saída HDMI');
+    check(/TV ou monitor \(HDMI\)/.test(await ui.text('[data-k=au-out-0]')), 'saída HDMI identificada');
+    await ui.key('Enter');
+    await ui.until(toast('/Saída de som/'), 'saída trocada');
+    check(rd('default') === '54', 'Core trocou a saída padrão');
+    await ui.until(`()=>/em uso/.test(document.querySelector('[data-k=au-out-0]')?.textContent||'')`, 'HDMI marcada em uso');
+    // teste de som
+    await goTo(ui, 'au-test', 'testar o som');
+    await ui.key('Enter');
+    await ui.until(toast('/Som de teste/'), 'teste tocado');
+    check(/nexus-teste-som\.wav/.test(rd('played')), 'Core tocou o WAV de teste');
+    // microfone
+    await goTo(ui, 'au-mic', 'microfone');
+    await ui.key('ArrowLeft');
+    await waitNode(() => rd('vol_56') === '0.45', 'volume do microfone', 5000);
+    await ui.screens('b3-audio');
+    // Central rápida: o volume é o do sistema
+    for (let n = 0; n < 3 && (await ui.count('#ovs>*')) > 0; n++) await ui.key('Escape', { wait: 300 });
+    await ui.until(`()=>document.querySelectorAll('#ovs>*').length===0`, 'fechou os ajustes');
+    await ui.key('Tab');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=guide] [data-k=g-vol]')`, 'central com volume do sistema');
+    check(/50/.test(await ui.text('[data-k=g-vol]')), 'central mostra o volume do sistema (50)');
+    await ui.focusOn((f) => f.k === 'g-vol', 20, true);
+    await ui.key('ArrowLeft');
+    await waitNode(() => rd('vol_54') === '0.45', 'central muda o volume da saída em uso (HDMI)', 5000);
+    await ui.key('Enter');
+    await waitNode(() => rd('mute_54') === '1', 'A na central liga o mudo', 5000);
+    await new Promise((r) => setTimeout(r, 500));
+    check(rd('mute_54') === '1' && rd('vol_54') === '0.45', 'mudo continua depois do volume pendente (sem corrida)');
     check(ui.errors().length === 0, `sem erros de JavaScript${ui.errors().length ? ': ' + ui.errors().join(' | ') : ''}`);
   } finally {
     ui.close();

@@ -324,6 +324,11 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             core.accounts.get(&id).ok_or_else(|| RpcError::new(E_NOT_FOUND, "perfil não existe"))?;
             core.accounts.verify_profile_pin(&id, os(&v, "pin").as_deref()).map_err(|e| scoped(e, "profile"))?;
             core.set_session(Some(id.clone()));
+            // cada perfil volta para a saída de som que usava (fone, TV…), se estiver conectada
+            {
+                let (db, pid) = (core.db.clone(), id.clone());
+                tokio::task::spawn_blocking(move || crate::audio::apply_profile(&db, &pid));
+            }
             let info = core.session_info(core.accounts.get(&id).unwrap());
             core.emit("session.changed", serde_json::to_value(&info)?);
             core.adopt_running_game();
@@ -784,6 +789,49 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
         }
         "notifications.clear" => {
             core.notifs.lock().unwrap().clear();
+            Ok(json!({ "ok": true }))
+        }
+
+        // ---------- áudio (PipeWire) ----------
+        // volume e saída são do dia a dia: qualquer perfil (inclusive infantil) mexe sem PIN
+        "audio.status" => {
+            need_session(core)?;
+            Ok(blocking(crate::audio::status).await?)
+        }
+        "audio.set" => {
+            let p = need_session(core)?;
+            let fail = |e: String| RpcError::new(E_FAILED, &e);
+            let id = v.get("id").and_then(|x| x.as_u64()).map(|x| x as u32);
+            let source = v.get("source").and_then(|x| x.as_bool()).unwrap_or(false);
+            let volume = v.get("volume").and_then(|x| x.as_u64()).map(|x| x.min(100) as u8);
+            let muted = v.get("muted").and_then(|x| x.as_bool());
+            let default = v.get("default").and_then(|x| x.as_u64()).map(|x| x as u32);
+            let db = core.db.clone();
+            blocking(move || -> Result<(), String> {
+                // uma mudança por vez, na ordem em que chegaram (volume e mudo seguidos não podem se cruzar)
+                let _g = crate::audio::LOCK.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(d) = default {
+                    crate::audio::set_default(d)?;
+                    crate::audio::remember(&db, &p.id, d);
+                }
+                if let Some(vol) = volume {
+                    crate::audio::set_volume(id, source, vol)?;
+                }
+                if let Some(m) = muted {
+                    crate::audio::set_mute(id, source, m)?;
+                }
+                Ok(())
+            })
+            .await?
+            .map_err(fail)?;
+            let st = blocking(crate::audio::status).await?;
+            core.emit("audio.changed", json!({ "volume": st["volume"], "muted": st["muted"] }));
+            Ok(st)
+        }
+        "audio.test" => {
+            need_session(core)?;
+            let id = v.get("id").and_then(|x| x.as_u64()).map(|x| x as u32);
+            blocking(move || crate::audio::test(id)).await?.map_err(|e| RpcError::new(E_FAILED, &e))?;
             Ok(json!({ "ok": true }))
         }
 

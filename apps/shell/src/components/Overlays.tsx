@@ -7,6 +7,7 @@ import { closeOv, fail, findItem, guarded, hasGrant, isInstalled, isKid, me, pop
 import { effectivePrice, money, norm, priceNum } from '../lib/format';
 import { Avatar, Icon, Switch, Tile, appBg, Bar } from './ui';
 import { sfx } from '@nexus/ui';
+import { audio, loadAudio } from '../lib/audio';
 
 export const [clock, setClock] = createSignal('--:--');
 const tickClock = () => setClock(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
@@ -205,6 +206,7 @@ export function Search() {
 
 // ---------- Central de controle ----------
 export function Guide() {
+  onMount(() => void loadAudio());
   const game = () => (S.game ? findItem(S.game.itemId) : undefined);
   const prof = () => me()!;
   const sw = (k: 'sfx' | 'reduce', l: string) => (
@@ -232,7 +234,10 @@ export function Guide() {
           {row('closegame', 'power', `Fechar ${game()?.kind === 'app' ? 'app' : 'jogo'}`, game()?.kind === 'app' ? 'Volta ao Nexus' : 'O progresso é salvo pelo próprio jogo', 'Fechar')}
         </Show>
         <h3>Atalhos</h3>
-        <div class="row2 f slider" data-r="20" data-slider="vol" data-a="noop" data-verb="Ajustar"><Icon n="vol" /><div class="tr"><i style={{ width: `${prefs().vol}%` }} /></div><span class="v">{prefs().vol}</span></div>
+        {/* volume de verdade do sistema (jogos e apps), não só dos sons da interface */}
+        <Show when={audio()?.available} fallback={<div class="row2 info"><Icon n="vol" /><div><div class="tx">Som</div><small>{audio() ? 'Indisponível' : 'Carregando…'}</small></div></div>}>
+          <div class="row2 f slider" data-k="g-vol" data-r="20" data-slider="sysvol" data-a="audio:mute" data-verb="Mudo"><Icon n={audio()!.muted ? 'x' : 'vol'} /><div class="tr"><i style={{ width: `${audio()!.muted ? 0 : audio()!.volume}%` }} /></div><span class="v">{audio()!.muted ? 'mudo' : audio()!.volume}</span></div>
+        </Show>
         {sw('sfx', 'Sons')}
         {sw('reduce', 'Reduzir animações')}
         <div class="row2 f" data-r="20" data-cyc="theme" data-a="cyc:theme" data-verb="Alterar"><Icon n={document.documentElement.dataset.theme === 'light' ? 'sun' : 'moon'} /><div><div class="tx">Tema</div><small>{THEME_LABEL[prefs().theme]}</small></div></div>

@@ -1,0 +1,3 @@
+#!/bin/sh
+# pw-play falso: anota o que foi tocado em $NEXUS_FAKE_AUDIO/played.
+D=${NEXUS_FAKE_AUDIO:-/tmp/nexus-fake-audio}; mkdir -p "$D"; echo "$*" >> "$D/played"

@@ -49,6 +49,8 @@ export interface NetStatus {
 }
 export interface WifiNet { ssid: string; signal: number; secure: boolean; security: string; active: boolean; known: boolean }
 export interface NetTest { connectivity: string; online: boolean; dns: boolean; latencyMs: number | null; elapsedMs: number }
+export interface AudioNode { id: number; name: string; node: string; kind: 'hdmi' | 'analogica' | 'bluetooth' | 'usb'; default: boolean; volume: number; muted: boolean }
+export interface AudioStatus { available: boolean; error?: string; volume: number; muted: boolean; sinks: AudioNode[]; sources: AudioNode[]; mic: { id: number; volume: number; muted: boolean } | null }
 export interface LocaleStatus {
   timezone: string; ntp: boolean; synced: boolean; keyboard: string; language: string;
   timezones: { id: string; name: string }[]; keyboards: { id: string; name: string }[];
@@ -86,6 +88,9 @@ export function createApi(c: RpcClient) {
     wifiEnable: (on: boolean, a: Auth = {}) => call<{ ok: true }>('net.wifi_enable', { on, ...a }),
     setIpv4: (p: { connection: string; method: 'auto' | 'manual'; address?: string; gateway?: string; dns?: string[] } & Auth) => call<{ ok: true }>('net.set_ipv4', p, 60000),
     localeStatus: () => call<LocaleStatus>('locale.status'),
+    audioStatus: () => call<AudioStatus>('audio.status'),
+    audioSet: (p: { id?: number; source?: boolean; volume?: number; muted?: boolean; default?: number }) => call<AudioStatus>('audio.set', p),
+    audioTest: (id?: number) => call<{ ok: true }>('audio.test', id === undefined ? {} : { id }, 10000),
     localeSet: (p: { timezone?: string; keyboard?: string; ntp?: boolean } & Auth) => call<LocaleStatus>('locale.set', p, 20000),
     power: (action: 'off' | 'restart' | 'suspend') => call<{ simulated: boolean }>('system.power', { action }),
     steamOpen: () => call<{ ok: true }>('steam.open'),

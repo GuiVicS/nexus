@@ -356,6 +356,9 @@ export const ACT: Record<string, Fn> = {
   bt(a) {
     document.dispatchEvent(new CustomEvent('nexus:bt', { detail: a }));
   },
+  audio(a) {
+    document.dispatchEvent(new CustomEvent('nexus:audio', { detail: a }));
+  },
   emufetch(a) {
     document.dispatchEvent(new CustomEvent('nexus:emufetch', { detail: a }));
   },

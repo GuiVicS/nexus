@@ -1,8 +1,9 @@
-// Telas de sistema compartilhadas entre o assistente de primeiro uso e os Ajustes: Rede (B1), Bluetooth (B2) e
-// Idioma/hora (B8).
+// Telas de sistema compartilhadas entre o assistente de primeiro uso e os Ajustes: Rede (B1), Bluetooth (B2),
+// Áudio (B3) e Idioma/hora (B8).
 // Tudo passa pelo Core (sysnet.rs, locale.rs); a Shell só mostra e pede.
 import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
-import type { BtDevice, BtStatus, LocaleStatus, NetStatus, NetTest, WifiNet } from '@nexus/protocol';
+import type { AudioNode, BtDevice, BtStatus, LocaleStatus, NetStatus, NetTest, WifiNet } from '@nexus/protocol';
+import { audio, audioSet, loadAudio } from '../lib/audio';
 import { sfx } from '@nexus/ui';
 import { api, client } from '../lib/api';
 import { cycHandlers } from '../lib/actions';
@@ -477,6 +478,92 @@ export function BtPanel(p: { onlyPads?: boolean }) {
             <div class="srow f" data-k="bt-help" data-r="22" data-cyc="bt:help" data-a="cyc:bt:help" data-verb="Trocar">
               <div><b>Controle não pareia? {PAD_HELP[help()][0]}</b><small>{PAD_HELP[help()][1]}</small></div>
               <div class="cv"><Icon n="left" /><span>{help() + 1}/{PAD_HELP.length}</span><Icon n="right" /></div>
+            </div>
+          </Show>
+        </Show>
+      )}
+    </Show>
+  );
+}
+
+// ---------- B3 Áudio ----------
+const OUT_KIND: Record<AudioNode['kind'], [string, string]> = {
+  hdmi: ['TV ou monitor (HDMI)', 'tv'],
+  analogica: ['Alto-falantes ou fone com fio', 'vol'],
+  bluetooth: ['Bluetooth', 'bt'],
+  usb: ['USB', 'vol'],
+};
+
+/** Áudio: volume geral, mudo, saída (lembrada por perfil), teste de som e microfone. */
+export function AudioPanel() {
+  const [testing, setTesting] = createSignal(false);
+  const runTest = async () => {
+    setTesting(true);
+    try {
+      await api.audioTest();
+      toast('Som de teste tocado', 'Ouviu dois bipes? Se não, troque a saída abaixo', 'vol');
+    } catch (e) {
+      fail(e);
+    } finally {
+      setTesting(false);
+    }
+  };
+  onMount(() => {
+    void loadAudio();
+    const h = (e: Event) => {
+      const a = (e as CustomEvent<string>).detail;
+      const st = audio();
+      if (a === 'reload') void loadAudio();
+      else if (a === 'test') void runTest();
+      else if (a.startsWith('out:') && st) {
+        const o = st.sinks[Number(a.slice(4))];
+        if (o && !o.default) {
+          void audioSet({ default: o.id }).then(() => {
+            sfx('on');
+            toast('Saída de som', o.name, 'vol');
+          });
+        }
+      }
+    };
+    document.addEventListener('nexus:audio', h);
+    // fone Bluetooth ou TV ligados/desligados mudam a lista sozinhos
+    const t = setInterval(() => void loadAudio(), 6000);
+    onCleanup(() => {
+      clearInterval(t);
+      document.removeEventListener('nexus:audio', h);
+    });
+  });
+  return (
+    <Show when={audio()} fallback={<Info label="Carregando o som…" />}>
+      {(a) => (
+        <Show
+          when={a().available && a().sinks.length}
+          fallback={
+            <>
+              <Info k="au-none" label={a().available ? 'Nenhuma saída de som' : 'Som indisponível'} desc={a().available ? 'Ligue uma TV pelo HDMI, um fone ou caixa de som' : a().error || 'O serviço de som não respondeu'} />
+              <div class="srow f" data-k="au-reload" data-r="22" data-a="audio:reload" data-verb="Tentar"><div><b>Tentar de novo</b><small>Consulta o som outra vez</small></div><Icon n="refresh" /></div>
+            </>
+          }
+        >
+          <div class="srow f slider" data-k="au-vol" data-r="22" data-slider="sysvol" data-a="audio:mute" data-verb="Mudo">
+            <b>Volume{a().muted ? ' (mudo)' : ''}</b><div class="tr"><i style={{ width: `${a().muted ? 0 : a().volume}%` }} /></div><span class="v">{a().volume}</span>
+          </div>
+          <div class="srow f" data-k="au-mute" data-r="22" data-a="audio:mute" data-verb="Alternar"><div><b>Sem som (mudo)</b><small>Também nos jogos e apps</small></div><Switch on={a().muted} /></div>
+          <div class={`srow f ${testing() ? 'off' : ''}`} data-k="au-test" data-r="22" data-a="audio:test" data-verb="Tocar"><div><b>{testing() ? 'Tocando…' : 'Testar o som'}</b><small>Toca dois bipes na saída escolhida</small></div><Icon n="play" /></div>
+          <h3 class="sh2">Saída</h3>
+          <For each={a().sinks}>
+            {(o, i) => (
+              <div class="srow f" data-k={`au-out-${i()}`} data-r="22" data-a={`audio:out:${i()}`} data-verb="Usar">
+                <Icon n={OUT_KIND[o.kind]?.[1] ?? 'vol'} />
+                <div><b>{o.name}</b><small>{OUT_KIND[o.kind]?.[0] ?? 'Saída de som'}{o.default ? ' · em uso (lembrada para este perfil)' : ''}</small></div>
+                <Icon n={o.default ? 'check' : 'more'} />
+              </div>
+            )}
+          </For>
+          <Show when={a().mic}>
+            <h3 class="sh2">Microfone</h3>
+            <div class="srow f slider" data-k="au-mic" data-r="22" data-slider="micvol" data-a="audio:micmute" data-verb="Mudo">
+              <b>{a().sources.find((x) => x.default)?.name ?? 'Microfone'}{a().mic!.muted ? ' (mudo)' : ''}</b><div class="tr"><i style={{ width: `${a().mic!.muted ? 0 : a().mic!.volume}%` }} /></div><span class="v">{a().mic!.volume}</span>
             </div>
           </Show>
         </Show>

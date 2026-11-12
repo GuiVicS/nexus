@@ -105,7 +105,7 @@ export function startRemoteFallback() {
       const tr = el.querySelector('.tr')?.getBoundingClientRect();
       if (tr) {
         const { cx } = stagePoint();
-        document.dispatchEvent(new CustomEvent('nexus:slider-set', { detail: Math.round(Math.max(0, Math.min(1, (cx - tr.left) / tr.width)) * 100) }));
+        document.dispatchEvent(new CustomEvent('nexus:slider-set', { detail: { k: el.dataset.slider, v: Math.round(Math.max(0, Math.min(1, (cx - tr.left) / tr.width)) * 100) } }));
       }
       return;
     }
@@ -191,7 +191,7 @@ export function installInput(stage: HTMLElement): () => void {
     }
     if (el.dataset.slider) {
       const tr = el.querySelector('.tr')!.getBoundingClientRect();
-      document.dispatchEvent(new CustomEvent('nexus:slider-set', { detail: Math.round(Math.max(0, Math.min(1, (e.clientX - tr.left) / tr.width)) * 100) }));
+      document.dispatchEvent(new CustomEvent('nexus:slider-set', { detail: { k: el.dataset.slider, v: Math.round(Math.max(0, Math.min(1, (e.clientX - tr.left) / tr.width)) * 100) } }));
       fx.f?.set(el, { mouse: true, silent: true });
       return;
     }

@@ -5,63 +5,124 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Enviar jogos · Nexus</title>
 <style>
-  :root{--bg:#0b1012;--card:#141c1f;--fg:#f3faf9;--muted:#9fb3b0;--primary:#2bd4bd;--err:#fb7185;--ok:#4ade80}
+  :root{--bg:#0b1012;--card:#141c1f;--line:#243134;--fg:#f3faf9;--muted:#9fb3b0;--primary:#2bd4bd;--err:#fb7185;--ok:#4ade80}
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:20px 16px 40px}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1120px;margin:0 auto;padding:20px 16px 40px}
+  header{margin-bottom:20px}
   .brand{color:var(--primary);font-weight:700;letter-spacing:.3em;font-size:13px}
-  h1{font-size:26px;margin:6px 0 4px}
-  p.sub{color:var(--muted);margin:0 0 20px}
-  .card{background:var(--card);border-radius:18px;padding:18px;margin-bottom:16px}
-  label{display:block;font-weight:600;margin-bottom:8px}
-  select,button{width:100%;font:inherit;border-radius:12px;border:1px solid #2a3a3d;background:#0f1618;color:var(--fg);padding:14px}
-  button{background:var(--primary);color:#062420;border:none;font-weight:700;margin-top:14px}
-  button:disabled{opacity:.45}
-  .pick{display:flex;align-items:center;justify-content:center;border:2px dashed #2a3a3d;border-radius:14px;padding:22px;text-align:center;color:var(--muted);cursor:pointer}
-  .pick input{display:none}
-  ul{list-style:none;margin:12px 0 0;padding:0}
-  li{padding:10px 0;border-top:1px solid #1f2a2d}
+  h1{font-size:26px;margin:6px 0 4px;line-height:1.2}
+  p.sub{color:var(--muted);margin:0}
+  .grid{display:grid;gap:16px}
+  .card{background:var(--card);border-radius:18px;padding:18px}
+  .card h2{font-size:15px;margin:0 0 10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.08em}
+  label.l{display:block;font-weight:600;margin-bottom:8px}
+  select,button{width:100%;font:inherit;border-radius:12px;border:1px solid var(--line);background:#0f1618;color:var(--fg);padding:14px}
+  select{cursor:pointer}
+  button.send{background:var(--primary);color:#062420;border:none;font-weight:700;margin-top:14px;cursor:pointer}
+  button.send:disabled{opacity:.45;cursor:default}
+  .pick{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border:2px dashed var(--line);border-radius:14px;padding:26px 16px;text-align:center;color:var(--muted);cursor:pointer;transition:border-color .15s,background .15s}
+  .pick input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+  .pick b{color:var(--fg);font-size:17px}
+  .pick svg{width:36px;height:36px;stroke:var(--primary)}
+  .pick.drag,.pick:focus-within{border-color:var(--primary);background:rgba(43,212,189,.07)}
+  .sum{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:14px;margin-top:14px}
+  .sum:empty{display:none}
+  ul{list-style:none;margin:6px 0 0;padding:0}
+  li{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:10px 0;border-top:1px solid #1f2a2d}
   li .n{word-break:break-all}
-  li small{color:var(--muted)}
-  .bar{height:6px;border-radius:6px;background:#1f2a2d;margin-top:6px;overflow:hidden}
+  li small{color:var(--muted);grid-column:1}
+  li .x{grid-row:1/3;grid-column:2;align-self:center;width:36px;height:36px;padding:0;border-radius:50%;background:none;border:1px solid var(--line);color:var(--muted);font-size:18px;line-height:1;cursor:pointer}
+  li .x:hover{color:var(--err);border-color:var(--err)}
+  .bar{grid-column:1/-1;height:6px;border-radius:6px;background:#1f2a2d;margin-top:6px;overflow:hidden}
   .bar i{display:block;height:100%;width:0;background:var(--primary);transition:width .2s}
-  .ok{color:var(--ok)} .err{color:var(--err)}
-  .hint{font-size:14px;color:var(--muted);margin-top:10px}
+  .ok{color:var(--ok)!important} .err{color:var(--err)!important}
+  .hint{font-size:14px;color:var(--muted);margin:10px 0 0}
+  ol.tips{margin:0;padding-left:20px;color:var(--muted);font-size:14px}
+  ol.tips li{display:list-item;border:0;padding:4px 0}
+  .pc{display:none}
+  /* celular: console, arquivos e só depois as dicas */
+  .side{display:contents}
+  .tipsc{order:3}
+  @media (hover:hover) and (pointer:fine),(min-width:860px){
+    .touch{display:none}
+    .pc{display:inline}
+  }
+  @media (hover:hover) and (pointer:fine){
+    .pick:hover{border-color:var(--primary)}
+    select:hover{border-color:#3a4d51}
+    button.send:not(:disabled):hover{filter:brightness(1.08)}
+  }
+  /* PC e tablet deitado: duas colunas (console e dicas | arquivos) */
+  @media (min-width:860px){
+    .wrap{padding:44px 32px 60px}
+    h1{font-size:34px}
+    p.sub{font-size:17px;max-width:720px}
+    header{margin-bottom:28px}
+    .grid{grid-template-columns:minmax(280px,360px) 1fr;align-items:start;gap:20px}
+    .side{position:sticky;top:24px;display:grid;gap:20px}
+    .tipsc{order:0}
+    .card{padding:24px}
+    .pick{padding:56px 24px;min-height:240px}
+    .pick b{font-size:20px}
+    ul{max-height:46vh;overflow:auto;padding-right:6px}
+    button.send{width:auto;min-width:220px;float:right;padding:14px 28px}
+    .files::after{content:"";display:block;clear:both}
+  }
 </style>
 </head>
 <body>
-  <div class="brand">NEXUS</div>
-  <h1>Enviar jogos para a TV</h1>
-  <p class="sub">Escolha o console e os arquivos dos jogos (ROMs). Eles aparecem na aba Emuladores assim que chegarem.</p>
+<div class="wrap">
+  <header>
+    <div class="brand">NEXUS</div>
+    <h1>Enviar jogos para a TV</h1>
+    <p class="sub">Escolha o console e os arquivos dos jogos (ROMs). Eles aparecem na aba Emuladores assim que chegarem.</p>
+  </header>
 
-  <div class="card">
-    <label for="sys">Console</label>
-    <select id="sys"><option value="">Detectar pelo tipo de arquivo</option></select>
-    <p class="hint" id="exts"></p>
-  </div>
+  <div class="grid">
+    <div class="side">
+      <div class="card">
+        <label class="l" for="sys">Console</label>
+        <select id="sys"><option value="">Detectar pelo tipo de arquivo</option></select>
+        <p class="hint" id="exts">Arquivos .zip e .7z também servem.</p>
+      </div>
+      <div class="card tipsc">
+        <h2>Como funciona</h2>
+        <ol class="tips">
+          <li>Este aparelho e a TV precisam estar na mesma rede Wi-Fi.</li>
+          <li>Se o console não for detectado, escolha-o na lista “Console”.</li>
+          <li>Deixe esta página aberta até aparecer “Enviado ✓”.</li>
+        </ol>
+      </div>
+    </div>
 
-  <div class="card">
-    <label class="pick">
-      <input id="files" type="file" multiple>
-      <span id="pickTxt">Toque para escolher os arquivos</span>
-    </label>
-    <ul id="list"></ul>
-    <button id="send" disabled>Enviar</button>
+    <div class="card files">
+      <label class="pick" id="drop">
+        <input id="files" type="file" multiple>
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+        <b id="pickTxt"><span class="touch">Toque para escolher os arquivos</span><span class="pc">Arraste os arquivos para cá</span></b>
+        <span class="pc">ou clique para procurar os arquivos</span>
+      </label>
+      <div class="sum" id="sum"></div>
+      <ul id="list"></ul>
+      <button class="send" id="send" disabled>Enviar</button>
+    </div>
   </div>
+</div>
 
 <script>
   const SYSTEMS = __SYSTEMS__;
   const token = new URLSearchParams(location.search).get('t') || '';
-  const sel = document.getElementById('sys');
-  const files = document.getElementById('files');
-  const list = document.getElementById('list');
-  const send = document.getElementById('send');
+  const $ = (id) => document.getElementById(id);
+  const sel = $('sys'), input = $('files'), list = $('list'), send = $('send'), drop = $('drop'), sum = $('sum');
   for (const s of SYSTEMS) {
     const o = document.createElement('option');
     o.value = s.dir; o.textContent = s.name; sel.appendChild(o);
   }
   sel.onchange = () => {
     const s = SYSTEMS.find((x) => x.dir === sel.value);
-    document.getElementById('exts').textContent = s ? 'Arquivos aceitos: .' + s.exts.join(' .') + ' .zip .7z' : '';
+    $('exts').textContent = s ? 'Arquivos aceitos: .' + s.exts.join(' .') + ' .zip .7z' : 'Arquivos .zip e .7z também servem.';
     render();
   };
   const ext = (n) => (n.split('.').pop() || '').toLowerCase();
@@ -72,24 +133,47 @@
   };
   const target = (f) => sel.value || guess(f.name);
   const fmt = (b) => b > 1e9 ? (b / 1e9).toFixed(1) + ' GB' : b > 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1e3)) + ' KB';
+  let picked = []; // arquivos escolhidos (podem vir em várias levas: clique e arrastar)
   let rows = [];
+  let busy = false;
+  function add(fl) {
+    for (const f of fl) if (!picked.some((p) => p.name === f.name && p.size === f.size)) picked.push(f);
+    render();
+  }
   function render() {
     list.innerHTML = '';
-    rows = [...files.files].map((f) => {
+    rows = picked.map((f, i) => {
       const li = document.createElement('li');
       const sys = target(f);
       const name = SYSTEMS.find((s) => s.dir === sys)?.name;
-      li.innerHTML = '<div class="n"></div><small></small><div class="bar"><i></i></div>';
+      li.innerHTML = '<div class="n"></div><small></small><button class="x" title="Tirar da lista" aria-label="Tirar da lista">×</button><div class="bar"><i></i></div>';
       li.querySelector('.n').textContent = f.name;
-      li.querySelector('small').textContent = fmt(f.size) + ' · ' + (name || 'escolha o console acima');
+      li.querySelector('small').textContent = fmt(f.size) + ' · ' + (name || 'escolha o console na lista “Console”');
       if (!name) li.querySelector('small').className = 'err';
+      const x = li.querySelector('.x');
+      x.hidden = busy;
+      x.onclick = () => { picked.splice(i, 1); render(); };
       list.appendChild(li);
       return { f, li, sys };
     });
-    document.getElementById('pickTxt').textContent = rows.length ? rows.length + (rows.length === 1 ? ' arquivo escolhido' : ' arquivos escolhidos') : 'Toque para escolher os arquivos';
-    send.disabled = !rows.length || rows.some((r) => !r.sys);
+    const total = picked.reduce((a, f) => a + f.size, 0);
+    sum.innerHTML = '';
+    if (rows.length) {
+      const a = document.createElement('span'); a.textContent = rows.length + (rows.length === 1 ? ' arquivo' : ' arquivos') + ' · ' + fmt(total);
+      const b = document.createElement('span'); b.id = 'prog';
+      sum.append(a, b);
+    }
+    send.disabled = busy || !rows.length || rows.some((r) => !r.sys);
   }
-  files.onchange = render;
+  input.onchange = () => { add(input.files); input.value = ''; };
+  // arrastar e soltar (computador)
+  for (const ev of ['dragenter', 'dragover']) drop.addEventListener(ev, (e) => { e.preventDefault(); if (!busy) drop.classList.add('drag'); });
+  for (const ev of ['dragleave', 'drop']) drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('drag'); });
+  drop.addEventListener('drop', (e) => { if (!busy && e.dataTransfer?.files?.length) add(e.dataTransfer.files); });
+  // soltar fora da área não abre o arquivo no navegador
+  addEventListener('dragover', (e) => e.preventDefault());
+  addEventListener('drop', (e) => e.preventDefault());
+
   function upload(r) {
     return new Promise((done) => {
       const x = new XMLHttpRequest();
@@ -100,23 +184,30 @@
       x.onload = () => {
         let j = {};
         try { j = JSON.parse(x.responseText); } catch (_) {}
-        if (x.status === 200 && j.ok) { bar.style.width = '100%'; msg.textContent = 'Enviado ✓'; msg.className = 'ok'; }
-        else { msg.textContent = j.error || 'Não foi possível enviar'; msg.className = 'err'; }
-        done();
+        if (x.status === 200 && j.ok) { bar.style.width = '100%'; msg.textContent = 'Enviado ✓'; msg.className = 'ok'; done(true); }
+        else { msg.textContent = j.error || 'Não foi possível enviar'; msg.className = 'err'; done(false); }
       };
-      x.onerror = () => { msg.textContent = 'Sem conexão com a TV (mesma rede Wi-Fi?)'; msg.className = 'err'; done(); };
+      x.onerror = () => { msg.textContent = 'Sem conexão com a TV (mesma rede Wi-Fi?)'; msg.className = 'err'; done(false); };
       x.send(r.f);
     });
   }
   let sent = false;
   send.onclick = async () => {
     if (sent) { // "Enviar mais": limpa a lista e abre a escolha de arquivos de novo
-      sent = false; files.value = ''; render(); send.textContent = 'Enviar'; files.click();
+      sent = false; picked = []; render(); send.textContent = 'Enviar'; input.click();
       return;
     }
-    send.disabled = true; files.disabled = true; sel.disabled = true;
-    for (const r of rows) await upload(r);
-    files.disabled = false; sel.disabled = false;
+    busy = true; input.disabled = true; sel.disabled = true;
+    for (const b of list.querySelectorAll('.x')) b.hidden = true;
+    send.disabled = true;
+    let ok = 0;
+    for (let i = 0; i < rows.length; i++) {
+      $('prog').textContent = 'Enviando ' + (i + 1) + ' de ' + rows.length + '…';
+      if (await upload(rows[i])) ok++;
+    }
+    $('prog').textContent = ok === rows.length ? 'Tudo enviado ✓' : ok + ' de ' + rows.length + ' enviados';
+    $('prog').className = ok === rows.length ? 'ok' : 'err';
+    busy = false; input.disabled = false; sel.disabled = false;
     sent = true;
     send.textContent = 'Enviar mais';
     send.disabled = false;

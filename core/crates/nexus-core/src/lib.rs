@@ -13,6 +13,7 @@ pub mod game;
 pub mod guide;
 pub mod hardware;
 pub mod inputmap;
+pub mod audio;
 pub mod bluetooth;
 pub mod locale;
 pub mod net;

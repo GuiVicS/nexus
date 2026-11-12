@@ -1,0 +1,27 @@
+#!/bin/sh
+# wpctl falso para os cenários de UI. Estado na pasta $NEXUS_FAKE_AUDIO: default (id da saída padrão), vol_<id>
+# (0.00–1.00) e mute_<id> (0/1). Saídas: 54 TV pelo HDMI, 55 analógica; entrada: 56 microfone.
+D=${NEXUS_FAKE_AUDIO:-/tmp/nexus-fake-audio}
+mkdir -p "$D"; [ -f "$D/default" ] || echo 55 > "$D/default"
+vol() { cat "$D/vol_$1" 2>/dev/null || echo 0.50; }
+mut() { [ "$(cat "$D/mute_$1" 2>/dev/null)" = 1 ] && echo " MUTED"; }
+star() { [ "$(cat "$D/default")" = "$1" ] && echo "*" || echo " "; }
+tgt() { case $1 in @DEFAULT_AUDIO_SINK@) cat "$D/default";; @DEFAULT_AUDIO_SOURCE@) echo 56;; *) echo $1;; esac; }
+case "$1" in
+  status)
+    printf 'PipeWire %s\n └─ Clients:\n\nAudio\n ├─ Devices:\n │      48. Áudio interno   [alsa]\n │  \n ├─ Sinks:\n' "'pipewire-0'"
+    printf ' │  %s   54. TV Samsung (HDMI)                [vol: %s%s]\n' "$(star 54)" "$(vol 54)" "$(mut 54)"
+    printf ' │  %s   55. Áudio interno Estéreo analógico  [vol: %s%s]\n' "$(star 55)" "$(vol 55)" "$(mut 55)"
+    printf ' │  \n ├─ Sources:\n │  *   56. Microfone interno  [vol: %s%s]\n │  \n ├─ Filters:\n │  \n └─ Streams:\n\nVideo\n ├─ Devices:\n' "$(vol 56)" "$(mut 56)" ;;
+  inspect)
+    case $2 in
+      54) printf 'id 54, type PipeWire:Interface:Node\n  * node.name = "alsa_output.pci-0000_01_00.1.hdmi-stereo"\n    device.api = "alsa"\n' ;;
+      55) printf 'id 55, type PipeWire:Interface:Node\n  * node.name = "alsa_output.pci-0000_00_1f.3.analog-stereo"\n    device.api = "alsa"\n    device.profile.description = "Estéreo analógico"\n' ;;
+      *) printf 'id %s\n  * node.name = "alsa_input.pci.analog-stereo"\n' "$2" ;;
+    esac ;;
+  set-volume) echo "$3" > "$D/vol_$(tgt $2)" ;;
+  set-mute) echo "$3" > "$D/mute_$(tgt $2)" ;;
+  set-default) echo "$2" > "$D/default" ;;
+  get-volume) echo "Volume: $(vol $(tgt $2))$(mut $(tgt $2) | sed 's/ MUTED/ [MUTED]/')" ;;
+  *) echo "wpctl falso: não sei responder a: $*" >&2; exit 2 ;;
+esac

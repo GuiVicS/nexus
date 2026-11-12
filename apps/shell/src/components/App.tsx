@@ -228,8 +228,11 @@ export function App() {
     const focusHome = () => f.set(firstFocus('home'), { silent: true, snap: true });
     document.addEventListener('nexus:focus-home', focusHome);
     const slider = (e: Event) => {
-      const v = (e as CustomEvent<number>).detail;
-      void import('../lib/state').then((m) => m.setPref({ vol: v }));
+      // clique/toque no trilho: cada slider tem seu dono (sons da interface, volume do sistema, microfone)
+      const { k, v } = (e as CustomEvent<{ k?: string; v: number }>).detail;
+      if (k === 'vol') void import('../lib/state').then((m) => m.setPref({ vol: v }));
+      else if (k === 'sysvol') void import('../lib/audio').then((m) => m.sysVolStep(v - (m.audio()?.volume ?? v)));
+      else if (k === 'micvol') void import('../lib/audio').then((m) => m.micVolStep(v - (m.audio()?.mic?.volume ?? v)));
     };
     document.addEventListener('nexus:slider-set', slider);
     const started = Date.now();

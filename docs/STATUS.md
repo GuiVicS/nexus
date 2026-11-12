@@ -201,7 +201,7 @@ Legenda: ✅ existe · 🟡 parcial · ❌ falta. Serviços disponíveis na VM: 
 | Item | Estado | O que existe | O que falta |
 |---|---|---|---|
 | A1 Barra de status | 🟡 | Abas, relógio, chip do jogo, busca, sino, engrenagem, avatar, tempo restante (criança) | Wi-Fi/cabo, Bluetooth, volume/mudo, bateria dos controles, alertas (sem internet, disco cheio) |
-| A2 Central rápida | 🟡 | Guia/F1/Select+Start: Retomar, Início, Fechar, volume **(só sons da UI)**, tema, trocar perfil, reiniciar, desligar | Volume real do sistema, saída de áudio, Wi-Fi/BT liga-desliga, suspender, brilho |
+| A2 Central rápida | 🟡 | Guia/F1/Select+Start: Retomar, Início, Fechar, volume **do sistema** (desde o B3), tema, trocar perfil, reiniciar, desligar | Volume real do sistema, saída de áudio, Wi-Fi/BT liga-desliga, suspender, brilho |
 | A3 Overlay no jogo | 🟡 | Menu rápido sobre o jogo; "Forçar encerramento"; kill do escopo após a carência | Volume e bateria do controle no overlay; aviso de notificação importante por cima do jogo |
 | A4 Notificações | 🟡 | Toasts e central de notificações (updates, downloads, ROM recebida) | Fila curta com limite, "silenciar durante jogos", controle desconectado, disco cheio |
 | A5 Bloqueio / desligar | 🟡 | Standby "Pressione A", escolha de perfil com PIN, desligar/reiniciar | Tela de energia única (suspender/reiniciar/desligar/trocar perfil) |
@@ -209,7 +209,7 @@ Legenda: ✅ existe · 🟡 parcial · ❌ falta. Serviços disponíveis na VM: 
 | A7 Primeiro uso | ✅ (ver A7) | Boas-vindas → criar perfil → PIN (opcional) → pronto | Idioma/fuso/teclado, rede, parear controle, pasta de ROMs, parear celular, Steam |
 | B1 Rede | ✅ (ver B1) | — | Tudo (Wi-Fi, cabo, IP/DNS, oculta, esquecer, teste, IP fixo) |
 | B2 Bluetooth | ✅ (ver B2) | Buscar/parear/remover **controles** (Controles → Bluetooth) | Ligar/desligar, fones/teclados, conectar, bateria, ajuda por modelo |
-| B3 Áudio | ❌ | Só volume dos sons da UI | Saída, volume geral, teste, microfone, saída por perfil |
+| B3 Áudio | ✅ (ver B3) | Só volume dos sons da UI | Saída, volume geral, teste, microfone, saída por perfil |
 | B4 Tela e vídeo | ❌ | Mostra a resolução | Resolução, Hz, escala, margem, rotação, HDR/VRR, confirmação de 15 s |
 | B5 HDMI-CEC | ❌ | — | Tudo (depende de hardware) |
 | B6 Controles | 🟡 | Lista, apelido, jogador, mapeamento, exporta para RetroArch, vibração/inverter Y (prefs) | Teste de botões/analógicos, zona morta, ajuda para controles sem suporte |
@@ -308,3 +308,39 @@ Ordem de implementação: A6, A7, B1–B4 → A1–A4, B10, B9 → B6, B7, B11, 
   "Bluetooth indisponível".
 - **Captura:** `b2-bluetooth` 1080p/720p. **Memória da Shell:** 162 MB com Ajustes → Bluetooth aberto e 170 MB no
   Início logo depois. A variação vem do coletor de lixo (±10 MB); a tela não pesa de forma mensurável.
+
+### B3 — áudio (2026-11-12) ✅
+
+- Ajustes → **Áudio** (nova categoria; perfis infantis também veem, porque volume é do dia a dia): volume geral com
+  slider (←/→; mexer tira o mudo), mudo, **testar o som** (dois bipes na saída em uso), lista de **saídas** com
+  tipo (TV/HDMI, analógica, Bluetooth, USB) e microfone com volume. A saída escolhida é **lembrada por perfil**
+  (pelo `node.name`, que não muda entre boots) e reaplicada ao entrar no perfil.
+- **Central rápida (A2):** o slider de volume agora é o volume **do sistema** (jogos e apps), e A liga/desliga o
+  mudo. Era a lacuna "o volume só muda os sons da interface" do item 9. O volume dos sons da interface continua em
+  Ajustes → Tela e aparência (antes "Tela e som").
+- Core: `audio.rs` sobre `wpctl` (lê só o bloco Audio do `wpctl status`; tipo pelo `wpctl inspect`), `pw-play` com
+  um WAV gerado no próprio Core. As mudanças são serializadas (volume e mudo seguidos não se cruzam) e emitem
+  `audio.changed`.
+- **Bugs corrigidos no caminho:**
+  - Apertar A até 120 ms depois de mexer no volume ligava o mudo, e o volume atrasado o desligava em seguida. Agora
+    vão juntos, e o Core aplica uma mudança por vez.
+  - Clicar ou tocar no trilho de **qualquer** slider mudava o volume dos sons da interface. Agora cada slider tem
+    seu dono.
+- **Testes:** unidade (parser do `wpctl status`, tipo da saída, WAV válido, saída lembrada por perfil com o
+  `wpctl` falso) e cenário de UI `audio`. O cenário percorre volume, saída HDMI, teste, microfone e a Central
+  (volume do sistema e mudo, sem corrida). **Na VM real** (PipeWire de verdade): estado correto (40 %, mudo,
+  saída analógica, microfone) e o teste de som tocou.
+- **Captura:** `b3-audio` 1080p/720p. **Memória da Shell:** 186–191 MB com Ajustes → Áudio aberto e 188 MB no
+  Início, na mesma sessão (a sessão está mais pesada que nas medições anteriores; a tela não acrescenta nada
+  mensurável).
+
+### Página de envio de ROMs (celular e PC) (2026-11-12)
+
+- `roms_upload.html` (aberta pelo QR/link) agora é responsiva:
+  - **Celular:** uma coluna (console → arquivos → dicas).
+  - **PC (≥ 860 px ou mouse):** duas colunas (console e dicas fixos à esquerda, arquivos à direita), **arrastar e
+    soltar** arquivos, textos "Arraste… ou clique", estados de hover e lista com rolagem.
+  - **Os dois:** dá para escolher arquivos em várias levas, tirar um da lista antes de enviar, ver o total
+    (quantidade e tamanho) e o progresso geral ("Enviando 2 de 5…"). Sem dependências externas.
+- Conferido renderizando em 1440×900 e 390×844 (sem rolagem horizontal). O teste `roms_upload_from_phone` continua
+  passando.
