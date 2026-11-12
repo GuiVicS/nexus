@@ -11,4 +11,12 @@ kind: string, hasIcon: boolean, hasCover: boolean, hasHero: boolean,
 /**
  * o arquivo .desktop original ainda existe
  */
-available: boolean, };
+available: boolean, 
+/**
+ * B17: fica fora da biblioteca, mas continua instalado e registrado
+ */
+hidden: boolean, 
+/**
+ * B17: categoria escolhida (vazio = a do atalho)
+ */
+category: string | null, };

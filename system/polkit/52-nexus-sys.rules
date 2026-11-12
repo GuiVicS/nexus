@@ -5,7 +5,7 @@ polkit.addRule(function (action, subject) {
   if (action.id == "org.freedesktop.systemd1.manage-units" && subject.active && subject.local) {
     var unit = action.lookup("unit") || "";
     var verb = action.lookup("verb") || "";
-    if (verb == "start" && /^nexus-sys@(update-nexus:(latest|[0-9]+\.[0-9]+\.[0-9]+)|upgrade-system|ssh-on|ssh-off)\.service$/.test(unit)) {
+    if (verb == "start" && /^nexus-sys@(update-nexus:(latest|[0-9]+\.[0-9]+\.[0-9]+)|upgrade-system|ssh-on|ssh-off|remove-pkg:[a-z0-9][a-z0-9+.-]+|flatpak-rm:[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)+)\.service$/.test(unit)) {
       return polkit.Result.YES;
     }
   }

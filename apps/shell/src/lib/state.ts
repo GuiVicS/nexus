@@ -8,10 +8,10 @@ import { api } from './api';
 
 export type Screen = 'boot' | 'standby' | 'onboarding' | 'profiles' | 'shell';
 export type Tab = 'home' | 'biblioteca' | 'emu' | 'midia' | 'loja';
-export type OvKind = 'sheet' | 'hub' | 'search' | 'settings' | 'guide' | 'notif' | 'launch' | 'pin' | 'text' | 'profile' | 'timeup' | 'confirm' | 'appicker' | 'appedit' | 'filepick' | 'padmap' | 'padedit' | 'roms' | 'fault' | 'margin' | 'padtest';
+export type OvKind = 'sheet' | 'hub' | 'search' | 'settings' | 'guide' | 'notif' | 'launch' | 'pin' | 'text' | 'profile' | 'timeup' | 'confirm' | 'appicker' | 'appedit' | 'filepick' | 'padmap' | 'padedit' | 'roms' | 'fault' | 'margin' | 'padtest' | 'energia';
 export type Mode = 'key' | 'pad' | 'ptr';
 
-export const DEFAULT_PREFS: Prefs = { theme: 'dark', sfx: true, vol: 60, reduce: false, hc: false, subs: false, invy: false, vib: true, pins: [], favs: [] };
+export const DEFAULT_PREFS: Prefs = { theme: 'dark', sfx: true, vol: 60, reduce: false, hc: false, subs: false, invy: false, vib: true, pins: [], favs: [], textSize: 0, bg: 'art', screenReader: false };
 
 interface State {
   conn: boolean;
@@ -359,6 +359,9 @@ export function applyPrefs() {
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', t === 'light' ? '#f3f7f6' : '#0b1012');
   document.body.classList.toggle('reduce', p.reduce || effectsLevel() === 'minimal');
   document.body.classList.toggle('hc', p.hc);
+  document.body.classList.toggle('ts1', (p.textSize ?? 0) === 1);
+  document.body.classList.toggle('ts2', (p.textSize ?? 0) >= 2);
+  document.documentElement.dataset.bgstyle = p.bg ?? 'art';
   document.body.classList.toggle('kid', isKid());
   document.body.classList.toggle('fx-reduced', effectsLevel() !== 'full');
   configureSfx({ enabled: p.sfx, volume: p.vol });

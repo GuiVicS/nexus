@@ -1,0 +1,14 @@
+#!/bin/sh
+# cec-client falso: `-l` lista o adaptador se $NEXUS_FAKE_CEC/adapter existir; `-s` grava cada comando lido em $NEXUS_FAKE_CEC/calls
+C=${NEXUS_FAKE_CEC:-/tmp/nexus-fake-cec}
+mkdir -p "$C"
+case "$1" in
+  -l)
+    echo "libCEC version: 6.0.2"
+    if [ -f "$C/adapter" ]; then
+      echo "Found devices: 1"; echo; echo "device:              1"; echo "com port:            /dev/ttyACM0"; echo "vendor id:           2548"; echo "type:                Pulse-Eight USB-CEC Adapter"
+    else echo "Found devices: NONE"; fi
+    exit 0 ;;
+  -s) while read -r l; do echo "$l" >> "$C/calls"; done; exit 0 ;;
+esac
+exit 2

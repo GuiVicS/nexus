@@ -24,6 +24,9 @@ pub mod procs;
 pub mod providers;
 pub mod remote;
 pub mod recovery;
+pub mod cec;
+pub mod privacy;
+pub mod programs;
 pub mod roms;
 pub mod sshd;
 pub mod sysops;
@@ -73,6 +76,12 @@ pub async fn run(cfg: config::Config) -> anyhow::Result<Running> {
                 Ok(Err(e)) => tracing::warn!("google drive: {e}"),
                 Err(_) => {}
             }
+        });
+    }
+    if cec::flag(&core.db, "cec_wake") {
+        // B5: liga a TV junto com o Nexus (só se o usuário pediu e há cec-client)
+        std::thread::spawn(|| {
+            let _ = cec::tv(true);
         });
     }
     let started = net::start(core.clone()).await?;

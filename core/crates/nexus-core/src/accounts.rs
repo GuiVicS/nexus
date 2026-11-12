@@ -270,6 +270,7 @@ impl Accounts {
             }
             None => {
                 let _ = self.db.kv_del("parental_pin");
+                let _ = self.db.kv_del("parental_recovery");
             }
         }
         Ok(())
@@ -385,6 +386,75 @@ impl Accounts {
     }
 }
 
+/// Letras e números sem confusão (sem 0/O, 1/I/L).
+const CODE_ALPHABET: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+fn norm_code(c: &str) -> String {
+    c.chars().filter(|x| x.is_ascii_alphanumeric()).map(|x| x.to_ascii_uppercase()).collect()
+}
+
+impl Accounts {
+    // ---- recuperar o PIN dos responsáveis (B12) ----
+    pub fn has_recovery(&self) -> bool {
+        self.db.kv_get("parental_recovery").is_some()
+    }
+
+    /// Gera um código novo (XXXX-XXXX-XXXX), guarda só o resumo dele e devolve o texto para mostrar uma vez.
+    pub fn new_recovery_code(&self) -> String {
+        let raw = util::random_bytes::<12>();
+        let code: String = raw.iter().map(|b| CODE_ALPHABET[*b as usize % CODE_ALPHABET.len()] as char).collect();
+        let salt = util::random_bytes::<16>();
+        let _ = self.db.kv_set("parental_recovery", &format!("{}:{}", hex(&hash_pin(&code, &salt)), hex(&salt)));
+        format!("{}-{}-{}", &code[0..4], &code[4..8], &code[8..12])
+    }
+
+    /// Define um PIN novo com o código de recuperação (para quem esqueceu o PIN). Devolve o código seguinte.
+    pub fn recover_parental(&self, code: &str, new_pin: &str) -> Result<String, PinError> {
+        self.check_lock("recovery")?;
+        let Some(stored) = self.db.kv_get("parental_recovery") else { return Err(PinError::Required) };
+        if !valid_pin(new_pin) {
+            return Err(PinError::Malformed);
+        }
+        let (h, s) = stored.split_once(':').unwrap_or(("", ""));
+        if !ct_eq(&hash_pin(&norm_code(code), &unhex(s)), &unhex(h)) {
+            return Err(self.fail("recovery"));
+        }
+        self.ok("recovery");
+        self.ok("parental");
+        let salt = util::random_bytes::<16>();
+        let _ = self.db.kv_set("parental_pin", &format!("{}:{}", hex(&hash_pin(new_pin, &salt)), hex(&salt)));
+        Ok(self.new_recovery_code())
+    }
+
+    // ---- relatório de uso (B12) ----
+    /// Últimos 7 dias com uso: (dia, segundos), do mais recente para o mais antigo.
+    pub fn usage_days(&self, profile: &str) -> Vec<(String, u64)> {
+        self.db
+            .with(|c| {
+                let mut st = c.prepare("SELECT day,seconds FROM usage WHERE profile_id=?1 ORDER BY day DESC LIMIT 7")?;
+                let v = st.query_map(params![profile], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u64)))?.collect::<Result<Vec<_>, _>>()?;
+                Ok(v)
+            })
+            .unwrap_or_default()
+    }
+
+    /// Os jogos/apps mais usados: (item, segundos, última vez).
+    pub fn top_played(&self, profile: &str, n: u32) -> Vec<(String, u64, Option<i64>)> {
+        self.db
+            .with(|c| {
+                let mut st = c.prepare("SELECT item_id,seconds,last_played FROM playtime WHERE profile_id=?1 AND seconds>0 ORDER BY seconds DESC LIMIT ?2")?;
+                let v = st.query_map(params![profile, n], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u64, r.get::<_, Option<i64>>(2)?)))?.collect::<Result<Vec<_>, _>>()?;
+                Ok(v)
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn usage_today(&self, profile: &str) -> u64 {
+        let day = util::today();
+        self.db.with(|c| c.query_row("SELECT seconds FROM usage WHERE profile_id=?1 AND day=?2", params![profile, day], |r| r.get::<_, i64>(0))).map(|s| s as u64).unwrap_or(0)
+    }
+}
+
 fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
@@ -448,6 +518,26 @@ mod tests {
         a.set_parental(Some("1111"), Some("4321")).unwrap();
         a.set_parental(None, Some("1111")).unwrap();
         assert!(!a.parental().has_pin);
+    }
+
+    #[test]
+    fn parental_recovery_code() {
+        let a = acc();
+        a.set_parental(Some("1234"), None).unwrap();
+        assert!(!a.has_recovery());
+        let code = a.new_recovery_code();
+        assert_eq!(code.len(), 14);
+        assert!(a.has_recovery());
+        assert!(matches!(a.recover_parental("AAAA-BBBB-CCCC", "5555"), Err(PinError::Invalid { .. })));
+        assert!(a.verify_parental(Some("1234")).is_ok(), "código errado não muda o PIN");
+        assert!(matches!(a.recover_parental(&code, "12"), Err(PinError::Malformed)));
+        let next = a.recover_parental(&code.to_lowercase().replace('-', " "), "5555").unwrap();
+        assert!(a.verify_parental(Some("5555")).is_ok());
+        assert!(a.verify_parental(Some("1234")).is_err());
+        assert_ne!(next, code);
+        assert!(a.recover_parental(&code, "6666").is_err(), "o código antigo não vale mais");
+        a.set_parental(None, Some("5555")).unwrap();
+        assert!(!a.has_recovery(), "sem PIN, sem código");
     }
 
     #[test]

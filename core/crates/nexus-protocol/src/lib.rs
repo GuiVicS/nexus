@@ -195,11 +195,17 @@ pub struct Prefs {
     pub vib: bool,
     pub pins: Vec<ItemId>,
     pub favs: Vec<ItemId>,
+    /// B13/B14: tamanho do texto (0 normal, 1 grande, 2 muito grande)
+    pub text_size: u8,
+    /// B13: fundo da interface ("art" = imagem do item em foco, "solid" = cor lisa, "blue"/"green"/"purple"/"orange" = degradê)
+    pub bg: String,
+    /// B14: leitor de tela (fala o item em foco)
+    pub screen_reader: bool,
 }
 
 impl Default for Prefs {
     fn default() -> Self {
-        Prefs { theme: "dark".into(), sfx: true, vol: 60, reduce: false, hc: false, subs: false, invy: false, vib: true, pins: vec![], favs: vec![] }
+        Prefs { theme: "dark".into(), sfx: true, vol: 60, reduce: false, hc: false, subs: false, invy: false, vib: true, pins: vec![], favs: vec![], text_size: 0, bg: "art".into(), screen_reader: false }
     }
 }
 
@@ -331,6 +337,10 @@ pub struct CustomApp {
     pub has_hero: bool,
     /// o arquivo .desktop original ainda existe
     pub available: bool,
+    /// B17: fica fora da biblioteca, mas continua instalado e registrado
+    pub hidden: bool,
+    /// B17: categoria escolhida (vazio = a do atalho)
+    pub category: Option<String>,
 }
 
 /// Item da lista de apps instalados no sistema, para escolher quais entram no Nexus.

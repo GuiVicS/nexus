@@ -12,9 +12,11 @@ export async function setParentalPin() {
   const n = await askPin({ title: had ? 'Novo PIN' : 'Crie o PIN dos responsáveis', sub: 'De 4 a 6 números. Ele protege perfis infantis, compras e ajustes.', confirm: true });
   if (n === null) return;
   try {
-    setS('parental', await api.parentalSet(n, current));
+    const r = await api.parentalSet(n, current);
+    setS('parental', { hasPin: r.hasPin });
     setS('grant', null);
     toast('PIN dos responsáveis salvo', '', 'lock');
+    if (r.recoveryCode) await askConfirm({ title: 'Código de recuperação', sub: `Anote: ${r.recoveryCode}. Se esquecer o PIN, use este código em Controle parental → Esqueci o PIN. Ele aparece só agora.`, yes: 'Anotei', no: 'Fechar' });
   } catch (e) {
     fail(e);
   }

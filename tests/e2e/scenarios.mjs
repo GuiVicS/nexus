@@ -1433,3 +1433,383 @@ scenarios.recuperacao = async () => {
     await core.stop();
   }
 };
+
+// ============================================================ Fase 4 (E): A5, B5, B12, B13, B14, B17, B18, B19
+const fake4 = (core) => {
+  const C = `${core.dir}/fake-cec`;
+  fs.mkdirSync(C, { recursive: true });
+  return { C, calls: () => (fs.existsSync(`${C}/calls`) ? fs.readFileSync(`${C}/calls`, 'utf8').split('\n').filter(Boolean) : []) };
+};
+const cecEnv = (dir) => ({ NEXUS_CEC_CLIENT: `${ROOT}/tests/e2e/fake/cec-client`, NEXUS_FAKE_CEC: `${dir}/fake-cec` });
+const enterPane = async (ui) => ui.key('ArrowRight');
+const noJs = (ui) => check(ui.errors().length === 0, `sem erros de JavaScript${ui.errors().length ? ': ' + ui.errors().join(' | ') : ''}`);
+const mkdir4 = () => fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-e2e-'));
+
+// A5 tela de energia + B5 CEC (sem hardware: cec-client falso)
+scenarios.energia = async () => {
+  const dir = mkdir4();
+  const core = await startCore({ demo: true, dir, env: cecEnv(dir) });
+  const f = fake4(core);
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await openSettingsCat(ui, 'cec', 'TV (HDMI-CEC)');
+    await ui.until(`()=>document.querySelector('[data-k=cec-adapter]')`, 'tela do CEC');
+    check(/Nenhum adaptador/.test(await txt(ui, 'cec-adapter')), 'sem adaptador: explica');
+    await ui.screens('b5-cec-sem-adaptador');
+    fs.writeFileSync(`${f.C}/adapter`, '1');
+    await ui.key('ArrowLeft');
+    await goTo(ui, 'sc-sis', 'categoria Sistema');
+    await ui.key('Enter');
+    await goTo(ui, 'sc-cec', 'categoria CEC');
+    await ui.key('Enter');
+    await ui.until(`()=>/Pulse-Eight/.test(document.querySelector('[data-k=cec-adapter]')?.textContent||'')`, 'adaptador encontrado');
+    await enterPane(ui);
+    await goTo(ui, 'cec-sleep', 'desligar a TV junto');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('[data-k=cec-sleep] .sw[aria-checked=true]')`, 'ligado');
+    await goTo(ui, 'cec-wake', 'ligar a TV junto');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('[data-k=cec-wake] .sw[aria-checked=true]')`, 'ligar ao abrir ligado');
+    await goTo(ui, 'cec-on', 'ligar a TV agora');
+    await ui.key('Enter');
+    await waitNode(() => f.calls().includes('on 0'), 'cec-client recebeu "on 0"');
+    await goTo(ui, 'cec-off', 'desligar a TV agora');
+    await ui.key('Enter');
+    await waitNode(() => f.calls().includes('standby 0'), 'cec-client recebeu "standby 0"');
+    await ui.screens('b5-cec');
+    // A5: Ajustes → Sistema → Energia
+    await ui.key('ArrowLeft');
+    await goTo(ui, 'sc-sis', 'categoria Sistema');
+    await ui.key('Enter');
+    await enterPane(ui);
+    await goTo(ui, 's-energia', 'linha Energia');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=energia] [data-k=pw-suspend]')`, 'tela de energia');
+    check((await ui.has('[data-k=pw-restart]')) && (await ui.has('[data-k=pw-off]')) && (await ui.has('[data-k=pw-switch]')), 'suspender, reiniciar, desligar e trocar de perfil');
+    await ui.screens('a5-energia');
+    await goTo(ui, 'pw-suspend', 'suspender');
+    await ui.key('Enter');
+    await ui.until(toastRe('/Suspendendo/'), 'suspensão pedida (simulada em modo dev)');
+    const before = f.calls().filter((c) => c === 'standby 0').length;
+    await core.rpc('system.power', { action: 'off' });
+    await waitNode(() => f.calls().filter((c) => c === 'standby 0').length > before, 'desligar o aparelho desliga a TV (CEC)');
+    noJs(ui);
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};
+
+// B12: código de recuperação do PIN dos responsáveis e relatório de uso
+scenarios.perfil_pin = async () => {
+  const core = await startCore({ demo: true });
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    const first = (await core.rpc('parental.recovery_new', { parentPin: '1234' })).code;
+    check(/^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(first), 'Core gera o código (XXXX-XXXX-XXXX)');
+    await openSettingsCat(ui, 'parental', 'Controle parental');
+    await enterPane(ui);
+    await goTo(ui, 'par-newcode', 'gerar código novo');
+    await ui.key('Enter');
+    await ui.typePin('1234');
+    await ui.until(`()=>/Novo código de recuperação/.test(document.querySelector('#ovs [data-kind=confirm]')?.textContent||'')`, 'mostra o código novo');
+    const shown = (await ui.text('#ovs [data-kind=confirm]')).match(/[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}/)?.[0];
+    check(!!shown && shown !== first, 'o código novo é diferente do antigo');
+    await ui.screens('b12-codigo');
+    await ui.key('Enter');
+    const rafa = (await core.rpc('profiles.list')).find((p) => p.name === 'Rafa').id;
+    await goTo(ui, `par-rep-${rafa}`, 'relatório do Rafa');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('[data-k=rep-head]')`, 'relatório aberto');
+    check(/Rafa/.test(await txt(ui, 'rep-head')), 'relatório do perfil escolhido');
+    await ui.screens('b12-relatorio');
+    // esqueci o PIN: código errado não muda nada
+    await goTo(ui, 'par-forgot', 'esqueci o PIN');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=text]')`, 'pede o código');
+    for (const ch of 'AAAABBBBCCCC') await ui.key(ch, { wait: 60 });
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=pin]')`, 'pede o PIN novo');
+    await ui.typePin('5678');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=pin]')`, 'repete o PIN');
+    await ui.typePin('5678');
+    await ui.until(toastRe('/Código incorreto/'), 'código errado recusado');
+    await core.rpc('parental.verify', { pin: '1234' });
+    check(true, 'o PIN antigo continua valendo depois do código errado');
+    const ok = await core.rpc('parental.recover', { code: shown.toLowerCase(), newPin: '5678' });
+    check(ok.code && ok.code !== shown, 'código certo troca o PIN e devolve outro código');
+    await core.rpc('parental.verify', { pin: '5678' });
+    let bad = false;
+    await core.rpc('parental.verify', { pin: '1234' }).catch(() => { bad = true; });
+    check(bad, 'PIN antigo não vale mais');
+    noJs(ui);
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};
+
+// B13 + B14: tamanho do texto, fundo e leitor de tela (voz simulada)
+scenarios.aparencia = async () => {
+  const core = await startCore({ demo: true });
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await ui.ev(`window.__said=[];window.speechSynthesis.cancel=()=>{};window.speechSynthesis.speak=(u)=>window.__said.push(u.text);0`);
+    await openSettingsCat(ui, 'som', 'Aparência');
+    await enterPane(ui);
+    await goTo(ui, 's-ts', 'tamanho do texto');
+    const h0 = await ui.ev(`document.querySelector('[data-k=s-ts]').getBoundingClientRect().height`);
+    await ui.key('ArrowRight');
+    await ui.until(`()=>document.body.classList.contains('ts1')`, 'texto grande');
+    const h1 = await ui.ev(`document.querySelector('[data-k=s-ts]').getBoundingClientRect().height`);
+    check(h1 > h0 * 1.1, `as linhas ficam maiores (${Math.round(h0)} → ${Math.round(h1)} px)`);
+    await ui.screens('b13-texto-grande');
+    await ui.key('ArrowRight');
+    await ui.until(`()=>document.body.classList.contains('ts2')`, 'texto muito grande');
+    await ui.screens('b13-texto-muito-grande');
+    check((await core.rpc('session.current'))?.prefs?.textSize === 2, 'preferência guardada no Core (por perfil)');
+    await ui.key('ArrowRight');
+    await ui.until(`()=>!document.body.classList.contains('ts1')&&!document.body.classList.contains('ts2')`, 'volta ao normal');
+    await goTo(ui, 's-bg', 'fundo');
+    await ui.key('ArrowRight');
+    await ui.until(`()=>document.documentElement.dataset.bgstyle==='solid'`, 'fundo cor lisa');
+    await ui.key('ArrowRight');
+    await ui.until(`()=>document.documentElement.dataset.bgstyle==='blue'`, 'fundo azul');
+    await ui.screens('b13-fundo-azul');
+    await ui.key('ArrowLeft');
+    await ui.key('ArrowLeft');
+    await ui.until(`()=>document.documentElement.dataset.bgstyle==='art'`, 'volta à imagem do jogo');
+    await goTo(ui, 's-sfx', 'sons (linha sem ajuste)');
+    await ui.key('ArrowLeft');
+    await goTo(ui, 'sc-acess', 'categoria Acessibilidade');
+    await ui.key('Enter');
+    await enterPane(ui);
+    await goTo(ui, 's-sr', 'leitor de tela');
+    await ui.key('Enter');
+    await ui.until(`()=>window.__said.some(t=>/Leitor de tela ligado/.test(t))`, 'leitor de tela liga e fala');
+    await ui.ev(`window.__said.length=0`);
+    await ui.key('ArrowUp');
+    await ui.until(`()=>window.__said.length>0`, 'fala o item em foco ao mover');
+    await ui.screens('b14-acessibilidade');
+    check((await core.rpc('session.current'))?.prefs?.screenReader === true, 'leitor de tela guardado no perfil');
+    noJs(ui);
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};
+
+// B17: programa sem atalho (.jar e AppImage) pelo navegador de arquivos, ocultar, categoria, tamanho e desinstalar
+scenarios.apps_instalados = async () => {
+  const dir = mkdir4();
+  const home = `${dir}/home`;
+  const dirp = `${home}/Programas`;
+  fs.mkdirSync(dirp, { recursive: true });
+  fs.writeFileSync(`${dirp}/TLauncher.jar`, 'PK'.repeat(2048));
+  fs.writeFileSync(`${dirp}/Jogo.AppImage`, '#!/bin/sh\nexit 0\n');
+  fs.writeFileSync(`${dirp}/nota.txt`, 'x');
+  const core = await startCore({ demo: true, dir, env: { NEXUS_JAVA: `${ROOT}/tests/e2e/fake/java` } });
+  const ui = await openUi(core);
+  const inLib = async () => (await core.rpc('library.list')).items.some((i) => i.title === 'TLauncher');
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await openSettingsCat(ui, 'apps', 'Apps e jogos');
+    await enterPane(ui);
+    await goTo(ui, 's-progadd', 'adicionar programa por arquivo');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('[data-k="fp-${dirp}"]')`, 'navegador de arquivos com a pasta Programas');
+    await goTo(ui, `fp-${dirp}`, 'pasta Programas');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('[data-k="fp-${dirp}/TLauncher.jar"]')`, 'TLauncher.jar listado');
+    check(!(await ui.has(`[data-k="fp-${dirp}/nota.txt"]`)), 'arquivo comum não aparece');
+    check(await ui.has(`[data-k="fp-${dirp}/Jogo.AppImage"]`), 'AppImage aparece');
+    await ui.screens('b17-navegador');
+    await goTo(ui, `fp-${dirp}/TLauncher.jar`, 'TLauncher.jar');
+    await ui.key('Enter');
+    await ui.until(`()=>/TLauncher/.test(document.querySelector('#ovs [data-kind=confirm]')?.textContent||'')`, 'pergunta como adicionar');
+    await ui.key('Enter');
+    await ui.typePin('1234');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=appedit]')`, 'editor do app novo');
+    const apps = await core.rpc('apps.registered');
+    check(apps.length === 1 && apps[0].name === 'TLauncher' && apps[0].kind === 'game', 'registrado como jogo "TLauncher"');
+    const desk = fs.readdirSync(`${dir}/noapps`).find((f) => f.startsWith('programa-tlauncher'));
+    const dtxt = fs.readFileSync(`${dir}/noapps/${desk}`, 'utf8');
+    check(/Exec="[^"]*java" -jar "[^"]*TLauncher\.jar"/.test(dtxt), 'atalho .desktop com java -jar e o caminho certo');
+    await ui.until(`()=>document.querySelector('[data-k=ae-size]') && /4,1 KB/.test(document.querySelector('[data-k=ae-size]').textContent)`, 'tamanho do .jar mostrado (4 KB)');
+    check(await inLib(), 'aparece na Biblioteca como jogo');
+    await ui.screens('b17-editor');
+    await goTo(ui, 'ae-cat', 'categoria');
+    await ui.key('ArrowRight');
+    await ui.until(`()=>/Jogos/.test(document.querySelector('[data-k=ae-cat]')?.textContent||'')`, 'categoria escolhida');
+    await goTo(ui, 'ae-hide', 'ocultar');
+    await ui.key('Enter');
+    for (let i = 0; i < 30 && (await inLib()); i++) await ui.wait(150);
+    check(!(await inLib()), 'oculto: sai da Biblioteca');
+    check((await core.rpc('apps.registered'))[0].hidden === true, 'continua registrado');
+    await ui.key('Enter');
+    for (let i = 0; i < 30 && !(await inLib()); i++) await ui.wait(150);
+    check(await inLib(), 'mostrar de novo volta à Biblioteca');
+    await goTo(ui, 'ae-done', 'concluir');
+    await ui.key('ArrowRight');
+    await ui.key('ArrowRight');
+    check((await ui.focusInfo())?.k === 'ae-uninstall', 'foco em desinstalar');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação');
+    await ui.key('Enter');
+    await ui.until(toastRe('/Desinstalado/'), 'desinstalado');
+    check(!fs.existsSync(`${dir}/noapps/${desk}`), 'atalho removido');
+    check(fs.existsSync(`${dirp}/TLauncher.jar`), 'arquivo original continua na pasta');
+    check((await core.rpc('apps.registered')).length === 0, 'sem app registrado');
+    await core.rpc('programs.add', { path: `${dirp}/Jogo.AppImage`, kind: 'app', parentPin: '1234' }).catch(() => {});
+    const reg = await core.rpc('apps.registered');
+    check(reg.length === 1 && reg[0].kind === 'app' && (fs.statSync(`${dirp}/Jogo.AppImage`).mode & 0o111) !== 0, 'AppImage marcado como executável e adicionado');
+    let m1 = '', m2 = '';
+    await core.rpc('programs.info', { path: `${dirp}/nota.txt` }).catch((e) => { m1 = e.message; });
+    await core.rpc('programs.info', { path: '/etc/passwd' }).catch((e) => { m2 = e.message; });
+    check(/não parece um programa/.test(m1) && /fora das pastas/.test(m2), 'arquivo comum e fora das pastas recusados');
+    noJs(ui);
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};
+
+// B17: sem Java, a tela diz como instalar
+scenarios.apps_sem_java = async () => {
+  const dir = mkdir4();
+  fs.mkdirSync(`${dir}/home/P`, { recursive: true });
+  fs.writeFileSync(`${dir}/home/P/TLauncher.jar`, 'PK');
+  const core = await startCore({ demo: true, dir, env: { NEXUS_JAVA: `${dir}/nao-existe/java` } });
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await openSettingsCat(ui, 'apps', 'Apps e jogos');
+    await enterPane(ui);
+    await goTo(ui, 's-progadd', 'adicionar programa por arquivo');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('[data-k="fp-${dir}/home/P"]')`, 'navegador');
+    await goTo(ui, `fp-${dir}/home/P`, 'pasta P');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('[data-k="fp-${dir}/home/P/TLauncher.jar"]')`, 'jar listado');
+    await goTo(ui, `fp-${dir}/home/P/TLauncher.jar`, 'jar');
+    await ui.key('Enter');
+    await ui.until(`()=>/sudo apt install default-jre/.test(document.querySelector('#ovs [data-kind=confirm]')?.textContent||'')`, 'diz: sudo apt install default-jre');
+    await ui.screens('b17-sem-java');
+    check((await core.rpc('apps.registered')).length === 0, 'nada foi adicionado');
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};
+
+// B18: pastas extras de ROMs, reescanear e núcleo padrão por console
+scenarios.roms_pastas = async () => {
+  const dir = mkdir4();
+  const roms = `${dir}/roms-tv`;
+  fs.mkdirSync(`${roms}/snes`, { recursive: true });
+  fs.writeFileSync(`${roms}/snes/Chrono Trigger (USA).sfc`, 'x');
+  fs.mkdirSync(`${dir}/home/Pendrive/snes`, { recursive: true });
+  fs.mkdirSync(`${dir}/home/Pendrive/gba`, { recursive: true });
+  fs.writeFileSync(`${dir}/home/Pendrive/snes/Chrono Trigger (USA).sfc`, 'y');
+  fs.writeFileSync(`${dir}/home/Pendrive/snes/Earthbound (USA).sfc`, 'z');
+  fs.writeFileSync(`${dir}/home/Pendrive/gba/Pokemon Emerald.gba`, 'w');
+  const core = await startCore({ demo: true, dir, env: { NEXUS_EMULATION: '1', NEXUS_ROMS_DIR: roms } });
+  const ui = await openUi(core);
+  const titles = async () => (await core.rpc('library.list')).items.filter((i) => i.tags.includes('emu')).map((i) => i.title).sort();
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await openSettingsCat(ui, 'emu', 'Emuladores');
+    await ui.until(`()=>document.querySelector('[data-k=rom-add]')`, 'tela de emuladores com pastas');
+    await enterPane(ui);
+    await goTo(ui, 'rom-add', 'adicionar pasta');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=filepick] [data-k=fp-use]')`, 'navegador de pastas');
+    await goTo(ui, `fp-${dir}/home/Pendrive`, 'pasta Pendrive');
+    await ui.key('Enter');
+    await ui.until(`()=>/Pendrive/.test(document.querySelector('#ovs [data-kind=filepick] .mono')?.textContent||'')`, 'dentro do Pendrive');
+    await goTo(ui, 'fp-use', 'usar esta pasta');
+    await ui.key('Enter');
+    await ui.until(toastRe('/Pasta adicionada/'), 'pasta adicionada');
+    await ui.until(`()=>document.querySelector('[data-k=rom-extra-0]')`, 'pasta extra na lista');
+    const t = await titles();
+    check(t.join('|') === 'Chrono Trigger|Earthbound|Pokemon Emerald', `jogos das duas pastas, sem repetir (${t.join('|')})`);
+    fs.writeFileSync(`${dir}/home/Pendrive/gba/Metroid Fusion.gba`, 'v');
+    await goTo(ui, 'rom-rescan', 'procurar jogos de novo');
+    await ui.key('Enter');
+    await ui.until(toastRe('/reescaneados/'), 'reescaneou');
+    check((await titles()).includes('Metroid Fusion'), 'jogo novo apareceu depois de reescanear');
+    await ui.screens('b18-roms');
+    await goTo(ui, 'core-gba', 'núcleo do Game Boy Advance');
+    check(/mgba/.test(await txt(ui, 'core-gba')), 'padrão do GBA é o mgba');
+    await ui.key('ArrowRight');
+    await ui.until(`()=>/gpsp/.test(document.querySelector('[data-k=core-gba]')?.textContent||'')`, 'núcleo trocado');
+    const st = await core.rpc('emu.status');
+    check(st.systems.find((s) => s.dir === 'gba').core === 'gpsp', 'Core guarda o núcleo escolhido');
+    check(st.extraDirs.length === 1, 'Core guarda a pasta extra');
+    await ui.screens('b18-nucleos');
+    await goTo(ui, 'rom-extra-0', 'pasta extra');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'confirma tirar');
+    await ui.key('Enter');
+    await ui.until(`()=>!document.querySelector('[data-k=rom-extra-0]')`, 'pasta tirada');
+    check((await titles()).join('|') === 'Chrono Trigger', 'sem a pasta extra só sobra a da TV');
+    let msg = '';
+    await core.rpc('roms.add_dir', { path: '/etc' }).catch((e) => { msg = e.message; });
+    check(/dentro do seu usuário/.test(msg), 'pasta fora das permitidas recusada');
+    noJs(ui);
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};
+
+// B19: o que vai pela rede, telemetria e limpar histórico
+scenarios.privacidade = async () => {
+  const core = await startCore({ demo: true });
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await openSettingsCat(ui, 'priv', 'Privacidade');
+    await ui.until(`()=>document.querySelector('[data-k=priv-tele]')`, 'tela de privacidade');
+    check(/não envia dados/i.test(await txt(ui, 'priv-tele')), 'diz que o Nexus não tem telemetria');
+    check((await ui.count('[data-k^=priv-net-]')) >= 6, 'lista as conexões de rede');
+    await ui.screens('b19-privacidade');
+    await enterPane(ui);
+    // gera um registro de jogo real (abre e fecha um jogo da demonstração)
+    await core.rpc('item.launch', { id: 'demo:g1' });
+    await ui.wait(1500);
+    await core.rpc('game.close');
+    await ui.wait(800);
+    const recent = async () => Number((await core.rpc('privacy.status')).stores[0].detail.split(' ')[0]);
+    const before = await recent();
+    check(before > 0, `há jogos recentes antes (${before})`);
+    await goTo(ui, 'priv-recent', 'limpar jogos recentes');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação');
+    await ui.key('Enter');
+    await ui.until(toastRe('/Limpo/'), 'limpou');
+    check((await recent()) === 0, 'jogos recentes zerados');
+    check((await core.rpc('privacy.status')).telemetry === false, 'Core confirma: telemetria desligada');
+    noJs(ui);
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};

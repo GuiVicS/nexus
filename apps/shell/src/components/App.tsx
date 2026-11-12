@@ -19,9 +19,10 @@ import { PinPad, TextEntry } from './Entry';
 import { Settings } from './Settings';
 import { AppEditor, AppPicker, FilePicker } from './Apps';
 import { PadEditor, PadMapper } from './Pads';
+import { PowerScreen, speak } from './Fase4';
 import { Boot, Onboarding, ProfileEditor, ProfilePicker, Standby } from './Profiles';
 
-const FULL: Ov['kind'][] = ['margin', 'padtest', 'fault', 'hub', 'search', 'settings', 'launch', 'profile', 'timeup', 'appicker', 'appedit', 'filepick', 'padmap', 'padedit', 'roms'];
+const FULL: Ov['kind'][] = ['margin', 'padtest', 'fault', 'hub', 'search', 'settings', 'launch', 'profile', 'timeup', 'appicker', 'appedit', 'filepick', 'padmap', 'padedit', 'roms', 'energia'];
 
 function OvBody(p: { o: Ov }) {
   const o = p.o;
@@ -44,7 +45,8 @@ function OvBody(p: { o: Ov }) {
       <Match when={o.kind === 'padmap'}><PadMapper pad={o.props.pad} oid={o.id} /></Match>
       <Match when={o.kind === 'roms'}><Roms oid={o.id} /></Match>
       <Match when={o.kind === 'fault'}><Fault /></Match>
-      <Match when={o.kind === 'filepick'}><FilePicker title={o.props.title} oid={o.id} /></Match>
+      <Match when={o.kind === 'filepick'}><FilePicker title={o.props.title} mode={o.props.mode} oid={o.id} /></Match>
+      <Match when={o.kind === 'energia'}><PowerScreen oid={o.id} /></Match>
       <Match when={o.kind === 'confirm'}><Confirm title={o.props.title} sub={o.props.sub} yes={o.props.yes} no={o.props.no} danger={o.props.danger} countdown={o.props.countdown} oid={o.id} /></Match>
       <Match when={o.kind === 'margin'}><MarginWizard /></Match>
       <Match when={o.kind === 'padtest'}><PadTest oid={o.id} /></Match>
@@ -205,6 +207,7 @@ export function App() {
       onFocus: (el, o) => {
         setFinfo({ verb: el.dataset.verb || 'Selecionar', opt: !!el.dataset.opt, adj: !!(el.dataset.slider || el.dataset.cyc), acts: !!el.closest('#acts') });
         if (!o.silent) sfx('move');
+        if (prefs().screenReader) speak(el.getAttribute('aria-label') || (el.textContent ?? ''));
         if (el.classList.contains('tab') && el.dataset.tab !== S.tab) {
           clearTimeout(tabT);
           tabT = setTimeout(() => focusNow() === el && tab(el.dataset.tab!), 210);

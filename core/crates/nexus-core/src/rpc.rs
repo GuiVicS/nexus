@@ -168,6 +168,11 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
                 "suspend" => "suspend",
                 _ => return Err(RpcError::invalid("ação inválida")),
             };
+            // B5: desliga a TV junto (se o usuário pediu), antes de o aparelho apagar
+            {
+                let (db, a2) = (core.db.clone(), a.clone());
+                let _ = blocking(move || crate::cec::on_power(&db, &a2)).await;
+            }
             if core.cfg.dev {
                 core.emit("system.power", json!({ "action": a, "simulated": true }));
                 return Ok(json!({ "simulated": true }));
@@ -215,7 +220,33 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
         "parental.set" => {
             let new = os(&v, "newPin");
             core.accounts.set_parental(new.as_deref(), os(&v, "currentPin").as_deref()).map_err(|e| scoped(e, "parental"))?;
-            ok(core.accounts.parental())
+            // B12: o PIN novo vem com um código de recuperação (mostrado uma única vez)
+            let code = if new.is_some() && !core.accounts.has_recovery() { Some(core.accounts.new_recovery_code()) } else { None };
+            Ok(json!({ "hasPin": core.accounts.parental().has_pin, "recoveryCode": code }))
+        }
+        "parental.recovery_new" => {
+            parental(core, &v)?;
+            if !core.accounts.parental().has_pin {
+                return Err(RpcError::new(E_FAILED, "Defina o PIN dos responsáveis primeiro"));
+            }
+            Ok(json!({ "code": core.accounts.new_recovery_code() }))
+        }
+        "parental.recover" => {
+            let next = core.accounts.recover_parental(&s(&v, "code")?, &s(&v, "newPin")?).map_err(|e| scoped(e, "recovery"))?;
+            Ok(json!({ "code": next }))
+        }
+        "parental.recovery_status" => Ok(json!({ "has": core.accounts.has_recovery() })),
+        "parental.report" => {
+            parental(core, &v)?;
+            let id = s(&v, "profileId")?;
+            let prof = core.accounts.get(&id).ok_or_else(|| RpcError::new(E_NOT_FOUND, "perfil não existe"))?;
+            let mut top = vec![];
+            for (item, secs, last) in core.accounts.top_played(&id, 8) {
+                let title = core.find_item(&item).await.map(|i| i.title).unwrap_or_else(|| item.clone());
+                top.push(json!({ "id": item, "title": title, "seconds": secs, "lastPlayed": last }));
+            }
+            let days: Vec<Value> = core.accounts.usage_days(&id).into_iter().map(|(d, s)| json!({ "day": d, "seconds": s })).collect();
+            Ok(json!({ "name": prof.name, "kid": prof.kind == ProfileKind::Kid, "limitMin": prof.daily_limit_min, "todaySeconds": core.accounts.usage_today(&id), "days": days, "top": top }))
         }
         "parental.extend" => {
             parental(core, &v)?;
@@ -718,7 +749,7 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
         "fs.list" | "profiles.avatar_import" => {
             may_browse(core, &v)?;
             if method == "fs.list" {
-                return ok(crate::customart::list(core.native.roots(), os(&v, "path").as_deref()).map_err(|e| RpcError::new(E_FAILED, &e))?);
+                return ok(crate::customart::list_mode(core.native.roots(), os(&v, "path").as_deref(), os(&v, "mode").as_deref().unwrap_or("image")).map_err(|e| RpcError::new(E_FAILED, &e))?);
             }
             let avatar = crate::avatars::import(core, &s(&v, "path")?).map_err(|e| RpcError::new(E_FAILED, &e))?;
             Ok(json!({ "avatar": avatar }))
@@ -738,7 +769,7 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
                         "apps.add" => core.native.add(&s(&v, "fileId")?, os(&v, "kind").as_deref())?,
                         "apps.update" => {
                             let id = s(&v, "id")?;
-                            core.native.update(&id, crate::providers::native::RegPatch { name: opt("name"), kind: os(&v, "kind"), icon: opt("icon"), cover: opt("cover"), hero: opt("hero") })?;
+                            core.native.update(&id, crate::providers::native::RegPatch { name: opt("name"), kind: os(&v, "kind"), icon: opt("icon"), cover: opt("cover"), hero: opt("hero"), hidden: v.get("hidden").and_then(|b| b.as_bool()), category: opt("category") })?;
                             id
                         }
                         _ => {
@@ -1171,6 +1202,178 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
                 _ => return Err(RpcError::invalid("ação inválida")),
             }
             Ok(json!({ "ok": true, "desktopMode": crate::recovery::desktop_mode() }))
+        }
+        // ---------- B17: programas sem atalho, tamanho, desinstalar ----------
+        "programs.info" | "programs.add" => {
+            let p = need_session(core)?;
+            if p.kind == ProfileKind::Kid {
+                return Err(RpcError::new(E_FORBIDDEN, "Indisponível neste perfil"));
+            }
+            let path = s(&v, "path")?;
+            let roots = core.native.roots().to_vec();
+            if method == "programs.info" {
+                return Ok(blocking(move || crate::programs::file_info(&roots, &path)).await?.map_err(|e| RpcError::new(E_FAILED, &e))?);
+            }
+            parental(core, &v)?;
+            let apps_dir = core.cfg.apps_dirs.first().cloned().ok_or_else(|| RpcError::new(E_FAILED, "Sem pasta de atalhos"))?;
+            let name = os(&v, "name");
+            let game = os(&v, "kind").as_deref() != Some("app");
+            let fid = blocking(move || crate::programs::add_file(&roots, &apps_dir, &path, name.as_deref(), game)).await?.map_err(|e| RpcError::new(E_FAILED, &e))?;
+            let id = core.native.add(&fid, Some(if game { "game" } else { "app" }))?;
+            core.refresh_library().await;
+            ok(core.native.custom_apps().into_iter().find(|a| a.id == id))
+        }
+        "apps.details" => {
+            let p = need_session(core)?;
+            if p.kind == ProfileKind::Kid {
+                return Err(RpcError::new(E_FORBIDDEN, "Indisponível neste perfil"));
+            }
+            let n = core.native.clone();
+            Ok(blocking(move || {
+                let list: Vec<Value> = n
+                    .registered()
+                    .into_iter()
+                    .map(|r| {
+                        let e = n.entry(&r.file_id);
+                        let (src, size) = match &e {
+                            Some(e) => {
+                                let s = crate::programs::source_of(&r.file_id, &e.exec, n.desktop_path(&r.file_id).as_deref());
+                                let sz = crate::programs::size_of(&s, &e.exec);
+                                (s, sz)
+                            }
+                            None => (crate::programs::Source::Other, None),
+                        };
+                        let (origin, can) = match &src {
+                            crate::programs::Source::File(_) => ("Programa adicionado por arquivo", true),
+                            crate::programs::Source::Flatpak { .. } => ("Flatpak", true),
+                            crate::programs::Source::Apt(_) => ("Pacote do sistema (apt)", true),
+                            crate::programs::Source::Other => ("Instalado fora do apt", false),
+                        };
+                        json!({ "id": r.item_id, "name": r.name.clone().or(e.as_ref().map(|e| e.name.clone())).unwrap_or(r.file_id.clone()), "kind": r.kind, "hidden": r.hidden, "category": r.category, "sizeBytes": size, "origin": origin, "canUninstall": can && e.is_some(), "categories": crate::providers::native::CATEGORIES })
+                    })
+                    .collect();
+                Value::Array(list)
+            })
+            .await?)
+        }
+        "apps.uninstall" => {
+            let p = need_session(core)?;
+            if p.kind == ProfileKind::Kid {
+                return Err(RpcError::new(E_FORBIDDEN, "Indisponível neste perfil"));
+            }
+            parental(core, &v)?;
+            let id = s(&v, "id")?;
+            if core.game_info().as_ref().is_some_and(|g| g.item_id == id) {
+                return Err(RpcError::new(E_BUSY, "Feche o app antes de desinstalar"));
+            }
+            let r = core.native.custom_apps().into_iter().find(|a| a.id == id).ok_or_else(|| RpcError::new(E_NOT_FOUND, "app não encontrado"))?;
+            let fid = id.strip_prefix("native:").unwrap_or(&id).to_string();
+            let e = core.native.entry(&fid).ok_or_else(|| RpcError::new(E_NOT_FOUND, "O atalho do programa não existe mais"))?;
+            let dp = core.native.desktop_path(&fid);
+            let src = crate::programs::source_of(&fid, &e.exec, dp.as_deref());
+            match src {
+                crate::programs::Source::File(f) => {
+                    // só tira o atalho criado pelo Nexus; o arquivo original (.jar, AppImage) não é apagado
+                    let _ = std::fs::remove_file(f);
+                }
+                crate::programs::Source::Other => return Err(RpcError::new(E_UNSUPPORTED, "Não sei desinstalar este programa. Use o gerenciador do sistema.")),
+                s => blocking(move || crate::programs::uninstall(&s)).await?.map_err(|e| RpcError::new(E_FAILED, &e))?,
+            }
+            core.native.remove(&id)?;
+            let mut prefs = core.accounts.prefs(&p.id);
+            prefs.pins.retain(|x| x != &id);
+            prefs.favs.retain(|x| x != &id);
+            core.accounts.set_prefs(&p.id, &prefs)?;
+            core.refresh_library().await;
+            Ok(json!({ "ok": true, "name": r.name }))
+        }
+        // ---------- B5: CEC ----------
+        "cec.status" => {
+            need_session(core)?;
+            let db = core.db.clone();
+            Ok(blocking(move || crate::cec::status(&db)).await?)
+        }
+        "cec.set" => {
+            let p = need_session(core)?;
+            if p.kind == ProfileKind::Kid {
+                return Err(RpcError::new(E_FORBIDDEN, "Indisponível neste perfil"));
+            }
+            for (k, key) in [("wake", "cec_wake"), ("sleep", "cec_sleep")] {
+                if let Some(b) = v.get(k).and_then(|b| b.as_bool()) {
+                    core.db.kv_set(key, if b { "1" } else { "0" })?;
+                }
+            }
+            let db = core.db.clone();
+            Ok(blocking(move || crate::cec::status(&db)).await?)
+        }
+        "cec.tv" => {
+            let p = need_session(core)?;
+            if p.kind == ProfileKind::Kid {
+                return Err(RpcError::new(E_FORBIDDEN, "Indisponível neste perfil"));
+            }
+            let on = v.get("on").and_then(|b| b.as_bool()).ok_or_else(|| RpcError::invalid("falta 'on'"))?;
+            blocking(move || crate::cec::tv(on)).await?.map_err(|e| RpcError::new(E_FAILED, &e))?;
+            Ok(json!({ "ok": true }))
+        }
+        // ---------- B19: privacidade ----------
+        "privacy.status" => {
+            let p = need_session(core)?;
+            let c = core.clone();
+            Ok(blocking(move || crate::privacy::status(&c, &p.id)).await?)
+        }
+        "privacy.clear" => {
+            let p = need_session(core)?;
+            if p.kind == ProfileKind::Kid {
+                parental(core, &v)?;
+            }
+            let what = s(&v, "what")?;
+            let c = core.clone();
+            let pid = p.id.clone();
+            let n = blocking(move || crate::privacy::clear(&c, &pid, &what)).await?.map_err(|e| RpcError::new(E_FAILED, &e))?;
+            if let Some(cur) = core.accounts.get(&p.id) {
+                core.emit("session.changed", serde_json::to_value(core.session_info(cur))?);
+            }
+            core.refresh_library().await;
+            Ok(json!({ "cleared": n }))
+        }
+        // ---------- B18: ROMs ----------
+        "roms.dirs" | "roms.add_dir" | "roms.remove_dir" | "roms.rescan" | "emu.set_core" => {
+            let p = need_session(core)?;
+            if p.kind == ProfileKind::Kid {
+                return Err(RpcError::new(E_FORBIDDEN, "Indisponível neste perfil"));
+            }
+            use crate::providers::emu;
+            match method {
+                "roms.add_dir" => {
+                    let path = std::path::PathBuf::from(s(&v, "path")?);
+                    if !crate::customart::inside(core.native.roots(), &path) || !path.is_dir() {
+                        return Err(RpcError::new(E_FAILED, "Escolha uma pasta dentro do seu usuário ou de um pendrive"));
+                    }
+                    let path = path.canonicalize().unwrap_or(path);
+                    if path == emu::roms_dir() {
+                        return Err(RpcError::new(E_FAILED, "Essa já é a pasta de ROMs da TV"));
+                    }
+                    let mut d = emu::extra_dirs();
+                    if !d.contains(&path) {
+                        d.push(path);
+                    }
+                    emu::set_extra_dirs(d);
+                }
+                "roms.remove_dir" => {
+                    let path = std::path::PathBuf::from(s(&v, "path")?);
+                    emu::set_extra_dirs(emu::extra_dirs().into_iter().filter(|d| d != &path).collect());
+                }
+                "emu.set_core" => {
+                    emu::set_core_pref(&s(&v, "dir")?, &s(&v, "core")?).map_err(|e| RpcError::new(E_FAILED, &e))?;
+                }
+                _ => {}
+            }
+            if method != "roms.dirs" {
+                let db = core.db.clone();
+                blocking(move || emu::save_prefs(&db)).await?;
+                core.refresh_library().await;
+            }
+            Ok(json!({ "dirs": emu::extra_dirs(), "status": blocking(emu::systems_status).await? }))
         }
         _ => Err(RpcError::new(-32601, &format!("método desconhecido: {method}"))),
     }
