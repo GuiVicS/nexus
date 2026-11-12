@@ -7,6 +7,7 @@ import { askConfirm, closeAllOv, fail, findItem, focusNow, fx, guarded, hasOv, i
 import { enterProfile, leaveProfile, loadProfiles } from './session';
 import { effectivePrice, priceNum } from './format';
 import { removeParentalPin, setParentalPin } from './flows';
+import { status } from './status';
 
 export const TABS: [string, string][] = [['home', 'Início'], ['biblioteca', 'Biblioteca'], ['emu', 'Emuladores'], ['midia', 'Mídia'], ['loja', 'Loja']];
 /** Aba Emuladores só aparece com jogos de console (ROMs) ou com o RetroArch instalado. */
@@ -213,6 +214,7 @@ export function openSearch() {
 export async function toggleGuide() {
   if (S.scr !== 'shell') return;
   if (topOv()?.kind === 'guide') return closeGuide();
+  (window as unknown as { __guideT0?: number }).__guideT0 = performance.now();
   void pushOv('guide', {});
 }
 
@@ -237,12 +239,17 @@ export function editProfile(id: string | null, opts: { first?: boolean } = {}) {
   return pushOv('profile', { id, ...opts });
 }
 
-export async function powerAction(a: 'off' | 'restart') {
-  const ok = await askConfirm({ title: a === 'off' ? 'Desligar o console?' : 'Reiniciar o console?', sub: S.game ? `${S.game.title} será fechado.` : 'Salve o que estiver fazendo.', yes: a === 'off' ? 'Desligar' : 'Reiniciar', danger: true });
+export async function powerAction(a: 'off' | 'restart' | 'suspend', ask = true) {
+  const ok = !ask ? true : a === 'suspend'
+    ? await askConfirm({ title: 'Suspender o console?', sub: S.game ? `${S.game.title} continua de onde parou quando você voltar.` : 'Ele acorda ao apertar o botão do controle ou do aparelho.', yes: 'Suspender' })
+    : await askConfirm({ title: a === 'off' ? 'Desligar o console?' : 'Reiniciar o console?', sub: S.game ? `${S.game.title} será fechado.` : 'Salve o que estiver fazendo.', yes: a === 'off' ? 'Desligar' : 'Reiniciar', danger: true });
   if (!ok) return;
   try {
     const r = await api.power(a);
-    if (r.simulated) {
+    if (r.simulated && a === 'suspend') {
+      closeAllOv();
+      toast('Suspenso (simulação)', 'No aparelho de verdade a tela apagaria agora', 'moon');
+    } else if (r.simulated) {
       closeAllOv();
       setS({ session: null, scr: a === 'off' ? 'standby' : 'boot' });
       void loadProfiles();
@@ -371,6 +378,15 @@ export const ACT: Record<string, Fn> = {
   },
   bt(a) {
     document.dispatchEvent(new CustomEvent('nexus:bt', { detail: a }));
+  },
+  pw(a) {
+    document.dispatchEvent(new CustomEvent('nexus:pw', { detail: a }));
+  },
+  stg(a) {
+    document.dispatchEvent(new CustomEvent('nexus:stg', { detail: a }));
+  },
+  ntf(a) {
+    document.dispatchEvent(new CustomEvent('nexus:ntf', { detail: a }));
   },
   drive(a) {
     document.dispatchEvent(new CustomEvent('nexus:drive', { detail: a }));
@@ -663,6 +679,28 @@ export const ACT: Record<string, Fn> = {
   },
   restart() {
     void powerAction('restart');
+  },
+  suspend() {
+    void powerAction('suspend');
+  },
+  /** Central rápida: Wi-Fi e Bluetooth liga/desliga (o Core atualiza o estado e a barra pelo status.changed). */
+  async quick(a) {
+    const st = status();
+    try {
+      if (a === 'wifi') {
+        const on = !st?.net.wifiEnabled;
+        await api.wifiEnable(on);
+        toast(on ? 'Wi-Fi ligado' : 'Wi-Fi desligado', '', 'wifi');
+      } else if (a === 'bt') {
+        const on = !st?.bt.powered;
+        await api.btPower(on);
+        toast(on ? 'Bluetooth ligado' : 'Bluetooth desligado', '', 'bt');
+      }
+      sfx('select');
+      await api.statusRefresh();
+    } catch (e) {
+      fail(e);
+    }
   },
   /** Tela "o Nexus encontrou um problema" (Core fora do ar): ações fixas executadas pelo Electron. */
   async fault(a: string) {

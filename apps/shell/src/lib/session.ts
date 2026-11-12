@@ -2,9 +2,10 @@ import { reconcile } from 'solid-js/store';
 import { E, RpcError } from '@nexus/protocol';
 import type { AppUpdate, Item, SessionInfo } from '@nexus/protocol';
 import { api, client } from './api';
-import { applyPrefs, askPin, closeAllOv, fail, findItem, fx, isKid, me, ovs, popOv, removeLib, S, setS, setMode, toast, upsertLib, topOv, askConfirm, guarded, hasOv, pushOv, closeOv } from './state';
+import { applyPrefs, askPin, closeAllOv, fail, findItem, fx, isKid, me, ovs, popOv, removeLib, S, setS, setMode, toast, upsertLib, topOv, askConfirm, guarded, hasOv, pushOv, closeOv, askChoice } from './state';
 import { sfx } from '@nexus/ui';
 import { fmtPlaytime } from './format';
+import { loadStatus, startStatus } from './status';
 
 export async function loadProfiles() {
   const [p, par] = await Promise.all([api.profiles(), api.parental()]);
@@ -41,6 +42,9 @@ export async function enterShell(info: SessionInfo) {
   setS({ tab: 'home', scr: 'shell', dockId: null, bgId: null, libFilter: 'todos', shopCat: 'inicio', emuSys: null, mediaShow: null });
   void api.emuStatus().then((st) => setS('emuReady', !!st.retroarch)).catch(() => {});
   void loadAppUpdates();
+  startStatus();
+  void api.notificationSettings().then((s) => setS('notifSilence', s.silenceInGame)).catch(() => {});
+  void loadStatus();
   sfx('profile');
   queueMicrotask(() => requestAnimationFrame(() => document.dispatchEvent(new CustomEvent('nexus:focus-home'))));
   const g = new Date().getHours();
@@ -171,8 +175,10 @@ export function startEvents() {
   });
   client.on('notification.added', (n) => {
     if (isKid()) return;
-    setS('notifs', (l) => [n, ...l].slice(0, 30));
+    setS('notifs', (l) => [n, ...l.filter((x) => x.id !== n.id)].slice(0, 30));
     setS('unread', true);
+    // "silenciar durante jogos": com jogo aberto só os importantes (alert) aparecem; o resto espera no sino
+    if (S.game && S.notifSilence && n.kind !== 'alert') return;
     toast(n.title, n.body, n.kind === 'alert' ? 'info' : n.kind);
   });
   client.on('parental.warning', (p: { minutes: number }) => toast(`Faltam ${p.minutes} minutos`, 'O tempo de jogo de hoje está acabando', 'clock'));
@@ -188,6 +194,35 @@ export function startEvents() {
       yes: 'Aceitar e instalar',
       no: 'Cancelar',
     }).then((ok) => api.eulaAnswer(ok).catch(() => {}));
+  });
+  // Saída de emergência: Guia (ou Select+Start) segurado por 3 s com um jogo aberto. O Core já trouxe a Central para a
+  // frente; aqui só pergunta. Fechar à força mata o jogo inteiro (progresso não salvo se perde).
+  client.on('input.emergency', (p: { title: string }) => {
+    if (!S.game || hasOv('confirm')) return;
+    void import('./actions').then(async (m) => {
+      const ok = await askConfirm({
+        title: 'Fechar o jogo agora?',
+        sub: `${p.title || 'O jogo'} será encerrado à força e o que não foi salvo se perde. Use só se ele travou.`,
+        yes: 'Fechar jogo',
+        no: 'Continuar',
+        danger: true,
+        safe: true,
+      });
+      if (ok) {
+        if (topOv()?.kind === 'guide') popOv(undefined, true);
+        setS('frame', null);
+        await m.closeGame(true);
+      } else if (topOv()?.kind === 'guide') m.closeGuide();
+    });
+  });
+  // Botão físico de energia (preferência "Perguntar"): escolhe entre suspender e desligar; Voltar não faz nada.
+  client.on('power.button', () => {
+    if (S.scr === 'standby' || hasOv('confirm')) return;
+    void import('./actions').then(async (m) => {
+      const c = await askChoice({ title: 'Botão de energia', sub: S.game ? `${S.game.title} continua aberto se você suspender.` : 'O que fazer agora?', yes: 'Suspender', no: 'Desligar' });
+      if (c === true) await m.powerAction('suspend', false);
+      else if (c === false) await m.powerAction('off', false);
+    });
   });
   client.on('remote.devices', (p) => {
     if (S.pairing) setS('pairing', 'devices', reconcile(p.devices, { key: 'id' }));
@@ -206,6 +241,7 @@ export function startEvents() {
         else m.ACT.guide('');
         return;
       }
+      (window as unknown as { __guideT0?: number }).__guideT0 = performance.now();
       setS('frame', p?.frame ?? null);
       if (topOv()?.kind !== 'guide') m.ACT.guide('');
     });

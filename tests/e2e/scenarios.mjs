@@ -1433,3 +1433,402 @@ scenarios.recuperacao = async () => {
     await core.stop();
   }
 };
+
+// A1: barra de status — rede, Bluetooth, controle com bateria e volume vêm do Core (um evento `status.changed`);
+// alertas só quando há problema (disco < 10 %, bateria <= 20 %, sem rede).
+scenarios.statusbar = async () => {
+  const core = await startCore({ demo: true, env: { NEXUS_FAKE_DISK: '5000000000:100000000000' } });
+  fs.mkdirSync(`${core.dir}/fake-bt`, { recursive: true });
+  fs.writeFileSync(`${core.dir}/fake-bt/paired`, '11:22:33:44:55:01\n');
+  fs.writeFileSync(`${core.dir}/fake-bt/conn`, '11:22:33:44:55:01\n');
+  fs.writeFileSync(`${core.dir}/fake-net`, 'Casa Nexus\n');
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await ui.until(`()=>!!document.querySelector('#sstat [data-k=st-net][title*="82%"]')`, 'Wi-Fi com o sinal (82%) na barra');
+    check(await ui.has('#sstat [data-k=st-bt]'), 'Bluetooth ligado aparece');
+    check(/76%/.test(await ui.text('#sstat [data-k=st-pad]')), 'controle conectado com a bateria (76%)');
+    check(await ui.has('#sstat [data-k=st-vol][title="Volume 50%"]'), 'volume do sistema (50%)');
+    check(/Pouco espaço \(5% livre\)/.test(await ui.text('#sstat .salert')), 'alerta de disco com menos de 10 %');
+    check((await ui.count('#sstat .f')) === 0, 'a barra de status não pega foco');
+    await ui.screens('a1-status');
+    // bateria do controle em 15 %: o alerta aparece sem recarregar nada (evento do Core)
+    fs.writeFileSync(`${core.dir}/fake-bt/battery`, '15\n');
+    await ui.until(`()=>/Xbox Wireless Controller com pouca bateria \\(15%\\)/.test(document.querySelector('#sstat .salert')?.textContent||'')`, 'alerta de bateria baixa', 9000);
+    check(/\+1/.test(await ui.text('#sstat .salert')), 'mostra quantos alertas há além do primeiro');
+    check(await ui.has('#sstat [data-k=st-pad].bad'), 'bateria baixa em destaque');
+    // cai a rede
+    fs.writeFileSync(`${core.dir}/fake-net`, '');
+    await ui.until(`()=>/Sem conexão com a rede/.test(document.querySelector('#sstat .salert')?.textContent||'')`, 'alerta de rede', 9000);
+    check(await ui.has('#sstat [data-k=st-net].bad'), 'rede em destaque quando cai');
+    const st = await core.rpc('status.get');
+    check(st.alerts.length === 3 && st.audio.available, 'status.get devolve o mesmo estado');
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};
+
+// A2: Central rápida — saída de som, brilho (com backlight falso), Wi-Fi e Bluetooth liga/desliga e suspender,
+// só com o teclado/controle. Mede quanto demora para a Central aparecer.
+scenarios.central = async () => {
+  const core = await startCore({ demo: true });
+  const BL = `${core.dir}/backlight/intel_backlight`;
+  fs.mkdirSync(BL, { recursive: true });
+  fs.writeFileSync(`${BL}/max_brightness`, '1000\n');
+  fs.writeFileSync(`${BL}/brightness`, '800\n');
+  fs.writeFileSync(`${core.dir}/fake-net`, 'Casa Nexus\n');
+  const rd = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim() : '');
+  const toast = (re) => `()=>[...document.querySelectorAll('.toast')].some(t=>${re}.test(t.textContent))`;
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await ui.until(`()=>!!document.querySelector('#sstat [data-k=st-net]')`, 'estado carregado');
+    await ui.key('Tab');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=guide] [data-k=g-bright]')`, 'Central com brilho (há backlight)');
+    const ms = await ui.ev(`window.__guideMs`);
+    check(typeof ms === 'number' && ms < 1500, `Central abriu em ${ms} ms (menos de 1,5 s)`);
+    // saída de som: ←/→ troca (Áudio interno → TV pelo HDMI)
+    await ui.until(`()=>/Áudio interno/.test(document.querySelector('[data-k=g-out]')?.textContent||'')`, 'saída atual na Central');
+    await goTo(ui, 'g-out', 'g-out');
+    await ui.key('ArrowRight');
+    await waitNode(() => rd(`${core.dir}/fake-audio/default`) === '54', 'saída trocada para a TV (HDMI)', 5000);
+    await ui.until(`()=>/TV Samsung/.test(document.querySelector('[data-k=g-out]')?.textContent||'')`, 'Central mostra a nova saída');
+    await ui.until(toast('/Saída de som/'), 'aviso da nova saída');
+    // brilho 80 → 70
+    await goTo(ui, 'g-bright', 'g-bright');
+    check(/80/.test(await ui.text('[data-k=g-bright]')), 'brilho atual (80)');
+    await ui.key('ArrowLeft');
+    await ui.key('ArrowLeft');
+    await waitNode(() => rd(`${BL}/brightness`) === '700', 'brilho 70 gravado pelo Core (logind simulado)', 5000);
+    check(/SetBrightness ssu backlight intel_backlight 700/.test(rd(`${core.dir}/busctl.log`)), 'pedido ao logind com o dispositivo certo');
+    // Wi-Fi desliga e liga
+    await goTo(ui, 'g-wifi', 'g-wifi');
+    await ui.key('Enter');
+    await waitNode(() => rd(`${core.dir}/fake-net.radio`) === 'off', 'Wi-Fi desligado no NetworkManager', 5000);
+    await ui.until(`()=>document.querySelector('[data-k=g-wifi] .sw')?.getAttribute('aria-checked')==='false'`, 'chave do Wi-Fi desligada (estado vem do Core)', 9000);
+    await ui.key('Enter');
+    await waitNode(() => rd(`${core.dir}/fake-net.radio`) === 'on', 'Wi-Fi ligado de novo', 5000);
+    // Bluetooth
+    await goTo(ui, 'g-bt', 'g-bt');
+    check((await ui.ev(`document.querySelector('[data-k=g-bt] .sw')?.getAttribute('aria-checked')`)) === 'true', 'Bluetooth ligado na Central');
+    await ui.key('Enter');
+    await waitNode(() => rd(`${core.dir}/fake-bt/power`) === 'no', 'Bluetooth desligado no BlueZ', 5000);
+    await ui.until(`()=>document.querySelector('[data-k=g-bt] .sw')?.getAttribute('aria-checked')==='false'`, 'chave do Bluetooth desligada', 9000);
+    await ui.screens('a2-central');
+    // suspender: confirmação e, em desenvolvimento, só simula
+    await goTo(ui, 'g-suspend', 'suspender');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação de suspender');
+    await ui.key('Escape');
+    await ui.until(`()=>!document.querySelector('#ovs [data-kind=confirm]')`, 'B cancela');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação de novo');
+    await ui.key('Enter');
+    await ui.until(toast('/Suspenso/'), 'suspensão simulada');
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};
+
+// assina os eventos do Core (como faz o nexus-overlay) e guarda os que chegarem
+async function listenEvents(core) {
+  const net = await import('node:net');
+  const got = [];
+  const s = net.createConnection(core.sock);
+  let buf = '';
+  s.on('error', () => {});
+  s.on('data', (d) => {
+    buf += d;
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i);
+      buf = buf.slice(i + 1);
+      try { const m = JSON.parse(line); if (m.method) got.push(m); } catch { /* resposta */ }
+    }
+  });
+  s.write('{"jsonrpc":"2.0","id":1,"method":"hello","params":{}}\n');
+  return { got, close: () => s.destroy() };
+}
+
+// A3: overlay no jogo — Central com bateria do controle e a dica da saída de emergência; segurar Guia (ou Select+Start)
+// por 3 s pede para fechar o jogo à força (aqui 0,7 s: NEXUS_EMERGENCY_MS). Soltar antes não faz nada.
+scenarios.emergencia = async () => {
+  const core = await startCore({ demo: true, env: { NEXUS_EMERGENCY_MS: '700' } });
+  fs.mkdirSync(`${core.dir}/fake-bt`, { recursive: true });
+  fs.writeFileSync(`${core.dir}/fake-bt/paired`, '11:22:33:44:55:01\n');
+  fs.writeFileSync(`${core.dir}/fake-bt/conn`, '11:22:33:44:55:01\n');
+  fs.writeFileSync(`${core.dir}/fake-bt/battery`, '15\n');
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=launch] .dot')`, 'jogo em execução', 6000);
+    check((await core.rpc('game.current'))?.state === 'running', 'Core com jogo aberto');
+    // Central por cima do jogo: bateria do controle e a dica da saída de emergência
+    await core.rpc('guide.press');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=guide] [data-k=g-pad]')`, 'Central sobre o jogo com o controle');
+    check(/Bateria 15%.*carregue logo/.test(await ui.text('[data-k=g-pad]')), 'bateria baixa do controle na Central');
+    check(/Segure o botão Guia/.test(await ui.text('[data-k=g-emerg]')), 'dica da saída de emergência');
+    await ui.screens('a3-jogo');
+    await core.rpc('guide.press'); // fecha a Central
+    await ui.until(`()=>!document.querySelector('#ovs [data-kind=guide]')`, 'Central fechada');
+    // soltou antes do tempo: nada acontece
+    await core.rpc('guide.hold', { down: true });
+    await ui.wait(250);
+    await core.rpc('guide.hold', { down: false });
+    await ui.wait(1000);
+    check(!(await ui.has('#ovs [data-kind=confirm]')), 'soltar antes de 3 s não pergunta nada');
+    // segurou: pergunta; "Continuar jogando" mantém o jogo
+    await core.rpc('guide.hold', { down: true });
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'pergunta se quer fechar o jogo');
+    check(/Fechar o jogo agora/.test(await ui.text('#ovs [data-kind=confirm]')), 'texto da confirmação');
+    await ui.screens('a3-emergencia');
+    await core.rpc('guide.hold', { down: false });
+    check((await ui.focusInfo())?.a?.startsWith('no'), 'o foco começa em "Continuar"');
+    await ui.key('Enter');
+    await ui.until(`()=>!document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação fechada');
+    await ui.wait(400);
+    check((await core.rpc('game.current'))?.state === 'running', 'continuar mantém o jogo aberto');
+    // segurou de novo e confirmou: o jogo fecha à força
+    await core.rpc('guide.hold', { down: true });
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'pergunta de novo');
+    await core.rpc('guide.hold', { down: false });
+    await ui.focusOn((f) => f.a.startsWith('yes'), 6);
+    await ui.key('Enter');
+    for (let i = 0; i < 60; i++) {
+      if ((await core.rpc('game.current')) === null) break;
+      await ui.wait(150);
+    }
+    check((await core.rpc('game.current')) === null, 'jogo fechado à força pelo Core');
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};
+
+// A4: notificações — avisos novos (disco cheio, bateria do controle, controle que desconecta) sem repetir, fila curta
+// (no máximo 3 na tela) e "silenciar durante jogos" (só os importantes passam por cima do jogo: evento game.toast).
+scenarios.notificacoes = async () => {
+  const core = await startCore({ demo: true, env: { NEXUS_FAKE_DISK: '5000000000:100000000000' } });
+  fs.mkdirSync(`${core.dir}/fake-bt`, { recursive: true });
+  fs.writeFileSync(`${core.dir}/fake-bt/paired`, '11:22:33:44:55:01\n');
+  fs.writeFileSync(`${core.dir}/fake-bt/conn`, '11:22:33:44:55:01\n');
+  fs.writeFileSync(`${core.dir}/fake-bt/battery`, '15\n');
+  fs.writeFileSync(`${core.dir}/fake-net`, 'Casa Nexus\n');
+  const ev = await listenEvents(core);
+  const toasts = `()=>[...document.querySelectorAll('.toast')].map(t=>t.textContent)`;
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    const titles = async () => (await core.rpc('notifications.list')).map((n) => n.title);
+    await waitNode(() => ev.got.some((m) => m.method === 'notification.added' && /Pouco espaço/.test(m.params.title)), 'aviso de disco cheio', 9000);
+    const t1 = await titles();
+    check(t1.includes('Pouco espaço no disco') && t1.includes('Bateria do controle baixa'), 'avisos de disco e de bateria do controle no sino');
+    await ui.wait(5000); // o Core relê a cada 2 s: o mesmo problema não vira aviso de novo
+    check((await titles()).filter((t) => t === 'Pouco espaço no disco').length === 1, 'aviso repetido não acumula');
+    // controle some: aviso
+    fs.writeFileSync(`${core.dir}/fake-bt/conn`, '');
+    await waitNode(() => ev.got.some((m) => m.method === 'notification.added' && m.params.title === 'Controle desconectado'), 'aviso de controle desconectado', 9000);
+    // fila curta: 6 avisos seguidos, no máximo 3 na tela
+    for (let i = 0; i < 6; i++) await core.rpc('notifications.test', { important: false });
+    await ui.wait(400);
+    const n = (await ui.ev(`(${toasts})().length`));
+    check(n <= 3 && n >= 1, `no máximo 3 avisos ao mesmo tempo na tela (${n})`);
+    // Ajustes → Notificações
+    await openSettingsCat(ui, 'notif', 'Notificações');
+    await ui.key('ArrowRight');
+    await goTo(ui, 'nt-silence', 'silenciar durante jogos');
+    check((await ui.ev(`document.querySelector('[data-k=nt-silence] .sw')?.getAttribute('aria-checked')`)) === 'true', 'silenciar vem ligado');
+    await ui.screens('a4-notificacoes');
+    // fecha os Ajustes e abre um jogo
+    for (let i = 0; i < 3 && (await ui.count('#ovs>*')) > 0; i++) await ui.key('Escape', { wait: 300 });
+    await ui.until(`()=>document.querySelectorAll('#ovs>*').length===0`, 'ajustes fechados');
+    await ui.until(`()=>document.querySelectorAll('.toast:not(.out)').length===0`, 'avisos sumiram', 6000);
+    await core.rpc('item.launch', { id: 'demo:g1' });
+    await waitNode(() => true, 'jogo aberto');
+    const mark = ev.got.length;
+    await core.rpc('notifications.test', { important: false });
+    await ui.wait(700);
+    check(!ev.got.slice(mark).some((m) => m.method === 'game.toast'), 'silenciado: aviso comum não vai por cima do jogo');
+    check(!(await ui.ev(`(${toasts})().some(t=>/Aviso de teste/.test(t))`)), 'silenciado: a Shell também não faz barulho nem mostra');
+    await core.rpc('notifications.test', { important: true });
+    await waitNode(() => ev.got.slice(mark).some((m) => m.method === 'game.toast' && /importante/.test(m.params.title)), 'aviso importante passa por cima do jogo', 4000);
+    // desliga o silêncio: o aviso comum passa a aparecer
+    await core.rpc('notifications.set', { silenceInGame: false });
+    await ui.until(`()=>true`, 'pref');
+    const mark2 = ev.got.length;
+    await core.rpc('notifications.test', { important: false });
+    await waitNode(() => ev.got.slice(mark2).some((m) => m.method === 'game.toast' && /Aviso de teste/.test(m.params.title)), 'sem silêncio: aviso comum passa por cima do jogo', 4000);
+    ev.close();
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};
+
+// B10: Energia — temporizadores de tela/suspensão (swayidle falso, desligado durante jogos), botão físico de energia
+// (Perguntar / Suspender) e estado do autologin (lido de uma pasta /etc falsa).
+scenarios.energia = async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-pw-'));
+  fs.mkdirSync(`${dir}/etc/gdm3`, { recursive: true });
+  fs.writeFileSync(`${dir}/etc/gdm3/custom.conf`, '[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=lia\n');
+  const LOG = `${dir}/idle.log`;
+  const core = await startCore({ demo: true, env: { NEXUS_SWAYIDLE: `${ROOT}/tests/e2e/fake/swayidle`, NEXUS_FAKE_IDLE_LOG: LOG, NEXUS_ETC_DIR: `${dir}/etc` } });
+  const rd = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '');
+  const alive = () => { const p = rd(`${LOG}.pid`).trim(); return !!p && fs.existsSync(`/proc/${p}`); };
+  const ev = await listenEvents(core);
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await waitNode(() => /-w timeout 900 /.test(rd(LOG)) && alive(), 'swayidle iniciado com 15 min para apagar a tela (padrão)', 8000);
+    await openSettingsCat(ui, 'energia', 'Energia');
+    await ui.key('ArrowRight');
+    await ui.until(`()=>/ativado.*\\(gdm\\)/.test(document.querySelector('[data-k=pw-auto]')?.textContent||'')`, 'autologin ativado lido do /etc');
+    await goTo(ui, 'pw-screen', 'apagar a tela');
+    check(/15 min/.test(await ui.text('[data-k=pw-screen]')), 'apagar a tela: 15 min');
+    await ui.key('ArrowLeft');
+    check(/10 min/.test(await ui.text('[data-k=pw-screen]')), '← muda para 10 min');
+    await waitNode(() => /-w timeout 600 /.test(rd(LOG)), 'Core reiniciou o swayidle com 10 min', 8000);
+    await goTo(ui, 'pw-suspend', 'suspender após');
+    check(/Nunca/.test(await ui.text('[data-k=pw-suspend]')), 'suspender: nunca por padrão');
+    await ui.key('ArrowRight');
+    await ui.key('ArrowRight');
+    check(/30 min/.test(await ui.text('[data-k=pw-suspend]')), '→ → muda para 30 min');
+    await waitNode(() => /timeout 1800 systemctl suspend/.test(rd(LOG)), 'swayidle com suspensão em 30 min', 8000);
+    await ui.screens('b10-energia');
+    // botão físico: "Perguntar" abre a escolha; Voltar não faz nada
+    await core.rpc('power.button_press');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'escolha do botão de energia');
+    check(/Botão de energia/.test(await ui.text('#ovs [data-kind=confirm]')), 'título da escolha');
+    await ui.key('Escape');
+    await ui.until(`()=>!document.querySelector('#ovs [data-kind=confirm]')`, 'Voltar fecha sem agir');
+    check(!ev.got.some((m) => m.method === 'system.power'), 'nada foi suspenso nem desligado');
+    // botão = Suspender: age direto
+    await goTo(ui, 'pw-key', 'botão de energia');
+    await ui.key('ArrowRight');
+    check(/Suspender/.test(await ui.text('[data-k=pw-key]')), 'botão passa a suspender');
+    await core.rpc('power.button_press');
+    await waitNode(() => ev.got.some((m) => m.method === 'system.power' && m.params.action === 'suspend'), 'botão suspende direto', 4000);
+    // jogo aberto: o temporizador some (controle não conta como atividade) e volta ao fechar
+    await core.rpc('item.launch', { id: 'demo:g1' });
+    await waitNode(() => !alive(), 'swayidle parado durante o jogo', 8000);
+    await core.rpc('game.close', { force: true });
+    await waitNode(() => alive(), 'swayidle volta depois do jogo', 12000);
+    ev.close();
+  } finally {
+    ui.close();
+    await core.stop();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+};
+
+// B9: Armazenamento — uso do disco por categoria, limpar cache, disco USB (abrir, pasta de ROMs, ejetar com segurança,
+// formatar com confirmação dupla) com lsblk/udisksctl/busctl falsos; só com o controle.
+scenarios.armazenamento = async () => {
+  const core = await startCore({ demo: true });
+  const U = `${core.dir}/fake-usb`;
+  fs.mkdirSync(U, { recursive: true });
+  fs.mkdirSync(`${core.dir}/cache/art`, { recursive: true });
+  fs.writeFileSync(`${core.dir}/cache/art/capa.png`, Buffer.alloc(200000));
+  const rd = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '');
+  const toast = (re) => `()=>[...document.querySelectorAll('.toast')].some(t=>${re}.test(t.textContent))`;
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await openSettingsCat(ui, 'armaz', 'Armazenamento');
+    await ui.until(`()=>/livres de/.test(document.querySelector('[data-k=st-total]')?.textContent||'')`, 'uso do disco calculado');
+    check(/Capas e cache/.test(await ui.text('[data-k=st-cat-cache]')) && /\d/.test(await ui.text('[data-k=st-cat-cache]')), 'categoria Capas e cache com tamanho');
+    check(await ui.has('[data-k=st-cat-steam]') && await ui.has('[data-k=st-cat-roms]') && await ui.has('[data-k=st-cat-other]'), 'Steam, ROMs e Sistema listados');
+    check(await ui.has('[data-k=st-nousb]'), 'sem disco USB: mensagem de vazio');
+    check(await ui.has('[data-k=dr-login]') || await ui.has('[data-k=dr-none]') || await ui.has('[data-k=dr-ok]'), 'painel do Google Drive continua na mesma categoria');
+    // espeta o pendrive: aparece sozinho (o disco do sistema nunca aparece)
+    fs.writeFileSync(`${U}/present`, '1');
+    await ui.key('ArrowRight');
+    await goTo(ui, 'st-rescan', 'procurar discos');
+    await ui.key('Enter');
+    await ui.until(`()=>/JOGOS/.test(document.querySelector('[data-k=st-usb-0]')?.textContent||'')`, 'pendrive JOGOS listado');
+    check((await ui.count('[data-k^=st-usb-][data-k$=-eject]')) === 1, 'só um disco (o do sistema não entra)');
+    check(/ainda não aberto/.test(await ui.text('[data-k=st-usb-0]')), 'ainda não aberto');
+    await ui.screens('b9-armazenamento');
+    // abrir
+    await goTo(ui, 'st-usb-0-mount', 'abrir o disco');
+    await ui.key('Enter');
+    await ui.until(`()=>/· aberto/.test(document.querySelector('[data-k=st-usb-0]')?.textContent||'')`, 'disco aberto');
+    check(fs.existsSync(`${U}/mnt`), 'udisks montou');
+    // usar como pasta de ROMs
+    await goTo(ui, 'st-usb-0-roms', 'usar como pasta de ROMs');
+    await ui.key('Enter');
+    await ui.until(toast('/Pasta de ROMs ligada/'), 'pasta de ROMs ligada');
+    check(fs.existsSync(`${U}/mnt/ROMs/nes`) && fs.existsSync(`${U}/mnt/ROMs/snes`), 'Core criou ROMs/<console> no disco');
+    await ui.until(`()=>/pasta de ROMs/.test(document.querySelector('[data-k=st-usb-0]')?.textContent||'')`, 'disco marcado como pasta de ROMs');
+    // limpar cache
+    await goTo(ui, 'st-clean', 'limpar cache');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação de limpar');
+    await ui.key('Enter');
+    await ui.until(toast('/Cache limpo/'), 'cache limpo');
+    check(!fs.existsSync(`${core.dir}/cache/art/capa.png`), 'capas apagadas do cache');
+    // ejetar: ocupado explica; livre ejeta
+    fs.writeFileSync(`${U}/busy`, '1');
+    await goTo(ui, 'st-usb-0-eject', 'ejetar');
+    await ui.key('Enter');
+    await ui.until(toast('/ainda está usando/'), 'disco ocupado: mensagem clara');
+    check(fs.existsSync(`${U}/present`), 'ocupado não foi desligado');
+    fs.rmSync(`${U}/busy`);
+    await ui.until(`()=>!document.querySelector('.toast')`, 'avisos sumiram', 6000);
+    await ui.key('Enter');
+    await ui.until(toast('/Pode tirar o disco/'), 'ejetado com segurança');
+    check(/power-off/.test(rd(`${U}/udisks.log`)) && !fs.existsSync(`${U}/present`), 'Core desmontou e desligou o disco (power-off)');
+    check(!(await core.rpc('storage.devices')).devices.some((d) => d.isRoms), 'pasta de ROMs do disco ejetado saiu da lista');
+    await ui.until(`()=>!!document.querySelector('[data-k=st-nousb]')`, 'lista de discos vazia de novo', 9000);
+    // formatar: confirmação dupla
+    fs.writeFileSync(`${U}/present`, '1');
+    fs.writeFileSync(`${U}/mounted`, `${U}/mnt\n`);
+    fs.mkdirSync(`${U}/mnt`, { recursive: true });
+    fs.writeFileSync(`${U}/mnt/arquivo.txt`, 'meus dados');
+    await goTo(ui, 'st-rescan', 'procurar discos');
+    await ui.key('Enter');
+    await ui.until(`()=>!!document.querySelector('[data-k=st-usb-0-format]')`, 'disco de volta');
+    await goTo(ui, 'st-usb-0-format', 'formatar');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'primeira confirmação');
+    check(/Formatar “JOGOS”/.test(await ui.text('#ovs [data-kind=confirm]')), 'texto da 1ª confirmação');
+    check((await ui.focusInfo())?.a?.startsWith('no'), 'foco começa em Cancelar (seguro)');
+    await ui.key('Escape');
+    await ui.until(`()=>!document.querySelector('#ovs [data-kind=confirm]')`, 'Voltar cancela');
+    check(fs.existsSync(`${U}/mnt/arquivo.txt`), 'cancelar não apagou nada');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'abre de novo');
+    await ui.focusOn((f) => f.a.startsWith('yes'), 6);
+    await ui.key('Enter'); // continuar
+    await ui.until(`()=>/Tipo do disco/.test(document.querySelector('#ovs [data-kind=confirm]')?.textContent||'')`, 'escolha do tipo');
+    await ui.key('Enter'); // exFAT (foco em "exFAT")
+    await ui.until(`()=>/Apagar tudo em/.test(document.querySelector('#ovs [data-kind=confirm]')?.textContent||'')`, '2ª confirmação (última chance)');
+    await ui.focusOn((f) => f.a.startsWith('yes'), 6);
+    await ui.key('Enter');
+    // com PIN dos responsáveis definido o Core pede; sem PIN segue
+    await sleep(500);
+    if (await ui.has('#ovs [data-kind=pin]')) await ui.typePin('1234');
+    await waitNode(() => /Format sa\{sv\} exfat 1 label s NEXUS/.test(rd(`${core.dir}/busctl.log`)), 'udisks2 recebeu Format exfat NEXUS', 8000);
+    check(!fs.existsSync(`${U}/mnt/arquivo.txt`), 'disco formatado (dados apagados)');
+    await ui.until(toast('/Disco formatado/'), 'aviso de disco formatado');
+    check(ui.errors().length === 0, `sem erros de JavaScript${ui.errors().length ? ': ' + ui.errors().join(' | ') : ''}`);
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};

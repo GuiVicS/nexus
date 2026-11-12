@@ -12,6 +12,12 @@ polkit.addRule(function (action, subject) {
     "org.freedesktop.timedate1.set-timezone",
     "org.freedesktop.timedate1.set-ntp",
     "org.freedesktop.locale1.set-keyboard",
+    // discos USB (Ajustes → Armazenamento): abrir, ejetar e formatar volumes removíveis
+    "org.freedesktop.udisks2.filesystem-mount",
+    "org.freedesktop.udisks2.filesystem-unmount-others",
+    "org.freedesktop.udisks2.eject-media",
+    "org.freedesktop.udisks2.power-off-drive",
+    "org.freedesktop.udisks2.modify-device",
   ];
   if (ok.indexOf(action.id) >= 0) return polkit.Result.YES;
   return polkit.Result.NOT_HANDLED;

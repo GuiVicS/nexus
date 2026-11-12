@@ -8,6 +8,8 @@ import { effectivePrice, fmtBytes, money, norm, priceNum } from '../lib/format';
 import { Avatar, Icon, Switch, Tile, appBg, Bar } from './ui';
 import { sfx } from '@nexus/ui';
 import { audio, loadAudio } from '../lib/audio';
+import { bright, loadBrightness } from '../lib/brightness';
+import { loadStatus, status } from '../lib/status';
 
 export const [clock, setClock] = createSignal('--:--');
 const tickClock = () => setClock(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
@@ -206,14 +208,26 @@ export function Search() {
 
 // ---------- Central de controle ----------
 export function Guide() {
-  onMount(() => void loadAudio());
+  onMount(() => {
+    void loadAudio();
+    void loadBrightness();
+    void loadStatus();
+    // quanto demorou da tecla Guia até a Central aparecer (Core + quadro do jogo + desenho)
+    const t0 = (window as unknown as { __guideT0?: number }).__guideT0;
+    if (t0) requestAnimationFrame(() => {
+      const ms = Math.round(performance.now() - t0);
+      (window as unknown as { __guideMs?: number }).__guideMs = ms;
+      console.debug(`[central] ${ms} ms até aparecer`);
+    });
+  });
+  const outName = () => audio()?.sinks.find((s) => s.default)?.name ?? '';
   const game = () => (S.game ? findItem(S.game.itemId) : undefined);
   const prof = () => me()!;
   const sw = (k: 'sfx' | 'reduce', l: string) => (
     <div class="row2 f" data-r="20" data-a={`tog:${k}`} data-verb="Alternar"><div class="tx">{l}</div><Switch on={prefs()[k]} /></div>
   );
   const row = (a: string, ic: string, t: string, s?: string, v?: string) => (
-    <div class="row2 f" data-r="20" data-a={a} data-verb={v ?? 'Selecionar'}><Icon n={ic} /><div><div class="tx">{t}</div><Show when={s}><small>{s}</small></Show></div></div>
+    <div class="row2 f" data-k={`g-${a}`} data-r="20" data-a={a} data-verb={v ?? 'Selecionar'}><Icon n={ic} /><div><div class="tx">{t}</div><Show when={s}><small>{s}</small></Show></div></div>
   );
   return (
     <>
@@ -227,16 +241,37 @@ export function Guide() {
           <div><b>{prof().name}</b><small>{isKid() ? (S.session?.remainingMin !== null && S.session?.remainingMin !== undefined ? `Perfil infantil · ${S.session.remainingMin} min restantes` : 'Perfil infantil') : S.hello?.demo ? 'Online · modo demonstração' : 'Online'}</small></div>
           <span class="t">{clock()}</span>
         </div>
+        <Show when={(status()?.bt.connected ?? []).some((d) => d.kind === 'controle')}>
+          <h3>Controles</h3>
+          <For each={(status()?.bt.connected ?? []).filter((d) => d.kind === 'controle')}>
+            {(d) => (
+              <div class="row2 info" data-k="g-pad"><Icon n="pad" /><div><div class="tx">{d.name}</div><small class={d.battery != null && d.battery <= 20 ? 'low' : ''}>{d.battery != null ? `Bateria ${d.battery}%${d.battery <= 20 ? ' · carregue logo' : ''}` : 'Conectado'}</small></div></div>
+            )}
+          </For>
+        </Show>
         <Show when={S.game}>
           <h3>Agora</h3>
           {row('resume', 'play', `Retomar ${S.game!.title}`, S.game!.state === 'closing' ? 'Fechando…' : game()?.kind === 'app' ? 'Aberto' : 'Em execução', 'Retomar')}
           {row('exitgame', 'home', 'Ir ao Início', `${game()?.kind === 'app' ? 'O app' : 'O jogo'} continua aberto em segundo plano`, 'Abrir')}
           {row('closegame', 'power', `Fechar ${game()?.kind === 'app' ? 'app' : 'jogo'}`, game()?.kind === 'app' ? 'Volta ao Nexus' : 'O progresso é salvo pelo próprio jogo', 'Fechar')}
+          <div class="row2 info" data-k="g-emerg"><Icon n="info" /><div><small>Travou? Segure o botão Guia (ou Select + Start) por 3 segundos para fechar à força.</small></div></div>
         </Show>
         <h3>Atalhos</h3>
         {/* volume de verdade do sistema (jogos e apps), não só dos sons da interface */}
         <Show when={audio()?.available} fallback={<div class="row2 info"><Icon n="vol" /><div><div class="tx">Som</div><small>{audio() ? 'Indisponível' : 'Carregando…'}</small></div></div>}>
           <div class="row2 f slider" data-k="g-vol" data-r="20" data-slider="sysvol" data-a="audio:mute" data-verb="Mudo"><Icon n={audio()!.muted ? 'x' : 'vol'} /><div class="tr"><i style={{ width: `${audio()!.muted ? 0 : audio()!.volume}%` }} /></div><span class="v">{audio()!.muted ? 'mudo' : audio()!.volume}</span></div>
+        </Show>
+        <Show when={(audio()?.sinks.length ?? 0) > 1}>
+          <div class="row2 f" data-k="g-out" data-r="20" data-cyc="gout" data-a="cyc:gout" data-verb="Trocar"><Icon n="tv" /><div><div class="tx">Saída de som</div><small>{outName()}</small></div><div class="cv"><Icon n="left" /><Icon n="right" /></div></div>
+        </Show>
+        <Show when={bright()?.available}>
+          <div class="row2 f slider" data-k="g-bright" data-r="20" data-slider="brightness" data-a="noop" data-verb="Ajustar"><Icon n="sun" /><div class="tr"><i style={{ width: `${bright()!.percent}%` }} /></div><span class="v">{bright()!.percent}</span></div>
+        </Show>
+        <Show when={!isKid() && status()?.net.hasWifi}>
+          <div class="row2 f" data-k="g-wifi" data-r="20" data-a="quick:wifi" data-verb="Alternar"><Icon n="wifi" /><div><div class="tx">Wi-Fi</div></div><Switch on={!!status()?.net.wifiEnabled} /></div>
+        </Show>
+        <Show when={!isKid() && status()?.bt.available}>
+          <div class="row2 f" data-k="g-bt" data-r="20" data-a="quick:bt" data-verb="Alternar"><Icon n="bt" /><div><div class="tx">Bluetooth</div></div><Switch on={!!status()?.bt.powered} /></div>
         </Show>
         {sw('sfx', 'Sons')}
         {sw('reduce', 'Reduzir animações')}
@@ -245,6 +280,7 @@ export function Guide() {
         <h3>Perfil e energia</h3>
         {row('switch', 'user', 'Trocar perfil')}
         <Show when={!isKid()}>
+          {row('suspend', 'moon', 'Suspender', 'O console dorme; o jogo aberto continua de onde parou', 'Suspender')}
           {row('restart', 'refresh', 'Reiniciar')}
           {row('off', 'power', 'Desligar')}
         </Show>
@@ -397,7 +433,7 @@ export function TimeUp() {
 }
 
 // ---------- Confirmação ----------
-export function Confirm(p: { title: string; sub?: string; yes?: string; no?: string; danger?: boolean; countdown?: number; oid: number }) {
+export function Confirm(p: { title: string; sub?: string; yes?: string; no?: string; danger?: boolean; safe?: boolean; countdown?: number; oid: number }) {
   // contagem regressiva (ex.: nova resolução): sem resposta, vale o "não" quando chega a zero
   const [left, setLeft] = createSignal(p.countdown ?? 0);
   onMount(() => {
@@ -420,8 +456,8 @@ export function Confirm(p: { title: string; sub?: string; yes?: string; no?: str
         <Show when={p.sub}><p class="sub">{p.sub}</p></Show>
         <Show when={p.countdown}><p class="cdown" data-k="cdown">Volta sozinho em <b>{Math.max(0, left())}</b> s</p></Show>
         <div class="lacts" style={{ 'justify-content': 'flex-start', 'margin-top': '10px' }}>
-          <div class="btn f" data-autofocus data-r="p" data-pad="8" data-a={`yes:${p.oid}`} data-verb="Confirmar" style={p.danger ? { color: 'var(--danger)' } : {}}>{p.yes ?? 'Confirmar'}</div>
-          <div class="btn f" data-r="p" data-pad="8" data-a={`no:${p.oid}`} data-verb="Cancelar">{p.no ?? 'Cancelar'}</div>
+          <div class="btn f" data-autofocus={p.safe ? undefined : ''} data-r="p" data-pad="8" data-a={`yes:${p.oid}`} data-verb="Confirmar" style={p.danger ? { color: 'var(--danger)' } : {}}>{p.yes ?? 'Confirmar'}</div>
+          <div class="btn f" data-autofocus={p.safe ? '' : undefined} data-r="p" data-pad="8" data-a={`no:${p.oid}`} data-verb="Cancelar">{p.no ?? 'Cancelar'}</div>
         </div>
       </div>
     </>

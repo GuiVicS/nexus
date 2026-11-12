@@ -124,6 +124,13 @@ pub fn status() -> Value {
     })
 }
 
+/// Volume e mudo da saída padrão (uma chamada leve, para a barra de status). `None` sem PipeWire.
+pub fn quick() -> Option<(u8, bool)> {
+    let o = wpctl(&["get-volume", "@DEFAULT_AUDIO_SINK@"]).ok()?;
+    let v = o.split_whitespace().nth(1)?.parse::<f32>().ok()?;
+    Some(((v * 100.0).round().clamp(0.0, 150.0) as u8, o.contains("MUTED")))
+}
+
 /// Alvo: id numérico de um nó, ou a saída/entrada padrão.
 fn target(id: Option<u32>, source: bool) -> String {
     match id {

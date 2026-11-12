@@ -6,7 +6,7 @@ import type { AudioStatus } from '@nexus/protocol';
 import { sfx } from '@nexus/ui';
 import { api, client } from './api';
 import { cycHandlers } from './actions';
-import { fail } from './state';
+import { fail, toast } from './state';
 
 const [audio, setAudio] = createSignal<AudioStatus | null>(null);
 export { audio };
@@ -59,6 +59,15 @@ export function micVolStep(delta: number) {
 
 cycHandlers.set('sysvol', (d) => sysVolStep(d * 5));
 cycHandlers.set('micvol', (d) => micVolStep(d * 5));
+/** Central rápida: ←/→ troca a saída de som (TV, analógica, fone Bluetooth…). */
+cycHandlers.set('gout', (d) => {
+  const a = audio();
+  if (!a?.available || a.sinks.length < 2) return;
+  const i = Math.max(0, a.sinks.findIndex((s) => s.default));
+  const n = a.sinks[(i + d + a.sinks.length) % a.sinks.length];
+  sfx('tab');
+  void audioSet({ default: n.id }).then(() => toast('Saída de som', n.name, 'vol'));
+});
 client.on('audio.changed', (p: { volume: number; muted: boolean }) => {
   if (Date.now() - lastLocal < 800) return;
   setAudio((a) => (a ? { ...a, volume: p.volume, muted: p.muted } : a));

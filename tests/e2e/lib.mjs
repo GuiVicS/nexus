@@ -29,7 +29,10 @@ export async function startCore({ demo = false, env = {}, args = [], dir: given,
     // rede, relógio e teclado falsos: os cenários nunca mexem no sistema de verdade
     NEXUS_NMCLI: `${ROOT}/tests/e2e/fake/nmcli`, NEXUS_FAKE_NET: `${dir}/fake-net`, NEXUS_TIMEDATECTL: `${ROOT}/tests/e2e/fake/timedatectl`, NEXUS_FAKE_TZ: `${dir}/fake-tz`, NEXUS_LOCALECTL: 'true', NEXUS_SWAYMSG: `${ROOT}/tests/e2e/fake/swaymsg`, NEXUS_FAKE_DISPLAY: `${dir}/fake-display`, NEXUS_DISPLAY_CONFIRM_SECS: '5', NEXUS_WPCTL: `${ROOT}/tests/e2e/fake/wpctl`, NEXUS_FAKE_AUDIO: `${dir}/fake-audio`, NEXUS_PWPLAY: `${ROOT}/tests/e2e/fake/pw-play`, NEXUS_BLUETOOTHCTL: `${ROOT}/tests/e2e/fake/bluetoothctl`, NEXUS_FAKE_BT: `${dir}/fake-bt`, NEXUS_BT_SYSFS: `${ROOT}/tests/e2e/fake/sysfs-bt`,
     // atualizações, SSH e recuperação falsos (Fase 3): systemctl/dpkg/apt/curl/ip/ssh-keygen nunca tocam no sistema
-    NEXUS_SYSTEMCTL: `${ROOT}/tests/e2e/fake/systemctl`, NEXUS_FAKE_SYS: `${dir}/fake-sys`, NEXUS_SYS_OUT: `${dir}/fake-sys/out`, NEXUS_DPKGQ: `${ROOT}/tests/e2e/fake/dpkg-query`, NEXUS_APT: `${ROOT}/tests/e2e/fake/apt`, NEXUS_CURL: `${ROOT}/tests/e2e/fake/curl`, NEXUS_IP: `${ROOT}/tests/e2e/fake/ip`, NEXUS_SSHKEYGEN: `${ROOT}/tests/e2e/fake/ssh-keygen`, NEXUS_SSHD_CONFIG: `${dir}/fake-sys/sshd_config`, NEXUS_FORCE_DESKTOP: `${dir}/fake-sys/force-desktop`, NEXUS_REBOOT_REQUIRED: `${dir}/fake-sys/reboot-required`, NEXUS_JOURNALCTL: 'true', NEXUS_VCGENCMD: 'false', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    NEXUS_SYSTEMCTL: `${ROOT}/tests/e2e/fake/systemctl`, NEXUS_FAKE_SYS: `${dir}/fake-sys`, NEXUS_SYS_OUT: `${dir}/fake-sys/out`, NEXUS_DPKGQ: `${ROOT}/tests/e2e/fake/dpkg-query`, NEXUS_APT: `${ROOT}/tests/e2e/fake/apt`, NEXUS_CURL: `${ROOT}/tests/e2e/fake/curl`, NEXUS_IP: `${ROOT}/tests/e2e/fake/ip`, NEXUS_SSHKEYGEN: `${ROOT}/tests/e2e/fake/ssh-keygen`, NEXUS_SSHD_CONFIG: `${dir}/fake-sys/sshd_config`, NEXUS_FORCE_DESKTOP: `${dir}/fake-sys/force-desktop`, NEXUS_REBOOT_REQUIRED: `${dir}/fake-sys/reboot-required`, NEXUS_JOURNALCTL: 'true', NEXUS_VCGENCMD: 'false',
+    // Fase 2: disco, brilho, USB e barra de status falsos
+    NEXUS_FAKE_DISK: '60000000000:100000000000', NEXUS_BUSCTL: `${ROOT}/tests/e2e/fake/busctl`, NEXUS_BACKLIGHT_DIR: `${dir}/backlight`, NEXUS_FAKE_BUSCTL_LOG: `${dir}/busctl.log`, NEXUS_LSBLK: `${ROOT}/tests/e2e/fake/lsblk`, NEXUS_UDISKSCTL: `${ROOT}/tests/e2e/fake/udisksctl`, NEXUS_FAKE_USB: `${dir}/fake-usb`, NEXUS_STATUS_SECS: '2',
+    ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
   let log = '';
   p.stdout.on('data', (d) => (log += d));
   p.stderr.on('data', (d) => (log += d));
@@ -60,11 +63,15 @@ export function rpc(sock, method, params = {}) {
     s.on('error', reject);
     s.on('data', (d) => {
       buf += d;
-      const i = buf.indexOf('\n');
-      if (i >= 0) {
+      let i;
+      // o Core também empurra eventos (status.changed…) nesta conexão: só vale a linha com a resposta (tem id)
+      while ((i = buf.indexOf('\n')) >= 0) {
         const m = JSON.parse(buf.slice(0, i));
+        buf = buf.slice(i + 1);
+        if (m.id === undefined) continue;
         s.end();
         m.error ? reject(Object.assign(new Error(m.error.message), m.error)) : resolve(m.result);
+        return;
       }
     });
     s.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) + '\n');

@@ -1,0 +1,9 @@
+#!/bin/sh
+# busctl falso para os cenários de UI. Brilho: logind SetBrightness grava em $NEXUS_BACKLIGHT_DIR/<nome>/brightness e
+# guarda o pedido em $NEXUS_FAKE_BUSCTL_LOG. Discos (udisks2): registra a chamada e responde como o udisks.
+echo "$*" >> "${NEXUS_FAKE_BUSCTL_LOG:-/tmp/nexus-fake-busctl.log}"
+case "$*" in
+  *SetBrightness*) echo "$9" > "$NEXUS_BACKLIGHT_DIR/$8/brightness" ;;
+  *Format*) [ -n "$NEXUS_FAKE_USB" ] && { echo "$7" > "$NEXUS_FAKE_USB/fs"; rm -rf "$NEXUS_FAKE_USB/mnt"; } ;;
+  *) echo "busctl falso: não sei responder a: $*" >&2; exit 2 ;;
+esac

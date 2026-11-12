@@ -18,8 +18,10 @@ pub mod hardware;
 pub mod inputmap;
 pub mod audio;
 pub mod bluetooth;
+pub mod brightness;
 pub mod locale;
 pub mod net;
+pub mod power;
 pub mod procs;
 pub mod providers;
 pub mod remote;
@@ -28,6 +30,8 @@ pub mod roms;
 pub mod sshd;
 pub mod sysops;
 pub mod updates;
+pub mod status;
+pub mod storage;
 pub mod sysnet;
 pub mod rpc;
 pub mod util;
@@ -79,6 +83,11 @@ pub async fn run(cfg: config::Config) -> anyhow::Result<Running> {
     core.adopt_running_game(); // perfil restaurado + jogo aberto antes de reiniciar
     tokio::spawn(core::library_loop(core.clone()));
     tokio::spawn(appupdates::update_loop(core.clone()));
+    status::spawn(core.clone());
+    power::spawn_idle(core.clone());
+    if !core.cfg.dev {
+        power::watch_key(core.clone());
+    }
     if guide_watch {
         guide::spawn(core.clone());
     }

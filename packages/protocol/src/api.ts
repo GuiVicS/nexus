@@ -52,6 +52,20 @@ export interface NetTest { connectivity: string; online: boolean; dns: boolean; 
 export interface AudioNode { id: number; name: string; node: string; kind: 'hdmi' | 'analogica' | 'bluetooth' | 'usb'; default: boolean; volume: number; muted: boolean }
 export interface DriveStatus { available: boolean; connected: boolean; mounted: boolean; folder: string; loggingIn: boolean; cacheBytes: number; cacheGb: number; about?: { total?: number; used?: number; free?: number } | null }
 export interface AudioStatus { available: boolean; error?: string; volume: number; muted: boolean; sinks: AudioNode[]; sources: AudioNode[]; mic: { id: number; volume: number; muted: boolean } | null }
+export interface StatusAlert { id: string; icon: string; text: string }
+export interface StatusSnapshot {
+  net: { available: boolean; kind: 'wifi' | 'cabo' | 'none'; wifiEnabled?: boolean; hasWifi?: boolean; name?: string | null; signal?: number | null; online: boolean; connectivity?: string };
+  bt: { available: boolean; powered: boolean; connected: { mac: string; name: string; kind: string; battery: number | null }[] };
+  audio: { available: boolean; volume: number; muted: boolean };
+  disk: { freeBytes: number; totalBytes: number; freePct: number };
+  alerts: StatusAlert[];
+}
+export interface PowerStatus {
+  screenMin: number; suspendMin: number; key: 'ask' | 'suspend' | 'off' | 'nothing'; idleAvailable: boolean;
+  autologin: { enabled: boolean; dm: string }; screenOpts: number[]; suspendOpts: number[];
+}
+export interface StorageUsage { total: number; free: number; used: number; cats: { id: string; label: string; bytes: number }[] }
+export interface UsbDisk { dev: string; disk: string; label: string; mount: string | null; size: number; fs: string; free?: number; total?: number; isRoms: boolean }
 export interface DisplayMode { width: number; height: number; refresh: number }
 export interface DisplayOutput { name: string; label: string; width: number | null; height: number | null; refresh: number | null; modes: DisplayMode[]; scale: number; transform: string; vrr: boolean | null; hdr: boolean | null }
 export interface DisplayStatus { available: boolean; outputs: DisplayOutput[]; margin: number; pending?: number | null; confirmSecs?: number }
@@ -120,6 +134,22 @@ export function createApi(c: RpcClient) {
     driveDisconnect: (a: Auth = {}) => call<{ ok: true }>('drive.disconnect', { ...a }, 30000),
     driveMount: (a: Auth = {}) => call<{ ok: true }>('drive.mount', { ...a }, 30000),
     driveCache: (gb: number, a: Auth = {}) => call<{ ok: true; gb: number }>('drive.cache', { gb, ...a }, 30000),
+    notificationSettings: () => call<{ silenceInGame: boolean }>('notifications.settings'),
+    notificationSet: (p: { silenceInGame?: boolean } & Auth) => call<{ silenceInGame: boolean }>('notifications.set', p),
+    notificationTest: (important: boolean, a: Auth = {}) => call<{ ok: true }>('notifications.test', { important, ...a }),
+    powerStatus: () => call<PowerStatus>('power.status'),
+    powerSet: (p: { screenMin?: number; suspendMin?: number; key?: string } & Auth) => call<PowerStatus>('power.set', p),
+    storageUsage: () => call<StorageUsage>('storage.usage', {}, 60000),
+    storageDevices: () => call<{ devices: UsbDisk[] }>('storage.devices', {}, 15000),
+    storageMount: (dev: string) => call<{ path: string }>('storage.mount', { dev }, 40000),
+    storageEject: (dev: string) => call<{ ok: true }>('storage.eject', { dev }, 70000),
+    storageRoms: (dev: string, on: boolean) => call<{ path: string; on: boolean }>('storage.roms', { dev, on }, 40000),
+    storageClean: () => call<{ freed: number }>('storage.clean', {}, 60000),
+    storageFormat: (p: { dev: string; fs: 'exfat' | 'ext4'; label: string } & Auth) => call<{ ok: true }>('storage.format', p, 15 * 60000),
+    status: () => call<StatusSnapshot>('status.get'),
+    statusRefresh: () => call<{ ok: true }>('status.refresh'),
+    brightnessStatus: () => call<{ available: boolean; percent: number }>('brightness.status'),
+    brightnessSet: (percent: number) => call<{ available: boolean; percent: number }>('brightness.set', { percent }),
     audioStatus: () => call<AudioStatus>('audio.status'),
     audioSet: (p: { id?: number; source?: boolean; volume?: number; muted?: boolean; default?: number }) => call<AudioStatus>('audio.set', p),
     audioTest: (id?: number) => call<{ ok: true }>('audio.test', id === undefined ? {} : { id }, 10000),

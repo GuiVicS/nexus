@@ -48,7 +48,11 @@ pub fn tier(mem_mb: u64, gpu: &str) -> (&'static str, &'static str) {
     }
 }
 
-fn disk(path: &Path) -> (u64, u64) {
+/// (livre, total) do disco dos dados. `NEXUS_FAKE_DISK=<livre>:<total>` (bytes) simula nos testes.
+pub fn disk(path: &Path) -> (u64, u64) {
+    if let Some((f, t)) = std::env::var("NEXUS_FAKE_DISK").ok().and_then(|v| v.split_once(':').map(|(a, b)| (a.parse().unwrap_or(0), b.parse().unwrap_or(0)))) {
+        return (f, t);
+    }
     let Ok(c) = std::ffi::CString::new(path.to_string_lossy().as_bytes()) else { return (0, 0) };
     unsafe {
         let mut s: libc::statvfs = std::mem::zeroed();

@@ -87,7 +87,7 @@ Section: games
 Priority: optional
 Architecture: $ARCH
 Installed-Size: $SIZE
-Depends: sway, xwayland, systemd, dbus, libgtk-3-0, libnss3, libasound2t64 | libasound2, grim, python3-gi, gir1.2-gtk-3.0, gir1.2-gtklayershell-0.1, unzip, bluez, curl, ca-certificates, rclone, fuse3, mpv
+Depends: sway, xwayland, systemd, dbus, libgtk-3-0, libnss3, libasound2t64 | libasound2, grim, python3-gi, gir1.2-gtk-3.0, gir1.2-gtklayershell-0.1, unzip, bluez, curl, ca-certificates, rclone, fuse3, mpv, swayidle, udisks2
 Recommends: $RECS
 Maintainer: Nexus <contato@stellarprint.com.br>
 Description: Interface de console (TV + controle) para jogos no Linux

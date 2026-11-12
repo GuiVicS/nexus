@@ -17,6 +17,7 @@ import { Hub } from './Hub';
 import { Confirm, Fault, Guide, Launch, Notifs, Search, Sheet, TimeUp, clock } from './Overlays';
 import { PinPad, TextEntry } from './Entry';
 import { Settings } from './Settings';
+import { StatusBar } from './Status';
 import { AppEditor, AppPicker, FilePicker } from './Apps';
 import { PadEditor, PadMapper } from './Pads';
 import { Boot, Onboarding, ProfileEditor, ProfilePicker, Standby } from './Profiles';
@@ -45,7 +46,7 @@ function OvBody(p: { o: Ov }) {
       <Match when={o.kind === 'roms'}><Roms oid={o.id} /></Match>
       <Match when={o.kind === 'fault'}><Fault /></Match>
       <Match when={o.kind === 'filepick'}><FilePicker title={o.props.title} oid={o.id} /></Match>
-      <Match when={o.kind === 'confirm'}><Confirm title={o.props.title} sub={o.props.sub} yes={o.props.yes} no={o.props.no} danger={o.props.danger} countdown={o.props.countdown} oid={o.id} /></Match>
+      <Match when={o.kind === 'confirm'}><Confirm title={o.props.title} sub={o.props.sub} yes={o.props.yes} no={o.props.no} danger={o.props.danger} safe={o.props.safe} countdown={o.props.countdown} oid={o.id} /></Match>
       <Match when={o.kind === 'margin'}><MarginWizard /></Match>
       <Match when={o.kind === 'padtest'}><PadTest oid={o.id} /></Match>
     </Switch>
@@ -136,6 +137,7 @@ function Bar() {
         </For>
       </nav>
       <div id="sys">
+        <StatusBar />
         <Show when={isKid() && S.session?.remainingMin !== null && S.session?.remainingMin !== undefined}>
           <div class="np timepill"><Icon n="clock" /><span>{S.session!.remainingMin} min</span></div>
         </Show>

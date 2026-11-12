@@ -1,0 +1,5 @@
+#!/bin/sh
+# swayidle falso: guarda os argumentos (uma linha por execução) e o pid em $NEXUS_FAKE_IDLE_LOG e fica esperando.
+echo "$*" >> "$NEXUS_FAKE_IDLE_LOG"
+echo $$ > "$NEXUS_FAKE_IDLE_LOG.pid"
+exec sleep 1000

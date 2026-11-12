@@ -31,6 +31,9 @@ pub struct Core {
     pub game: Mutex<Option<crate::game::ActiveGame>>,
     pub notifs: Mutex<Vec<Notification>>,
     pub next_notif: AtomicU64,
+    /// último estado da barra de status (`status.rs`) e aviso para reler já
+    pub status: Mutex<Value>,
+    pub status_kick: tokio::sync::Notify,
     pub compositor: Box<dyn Compositor>,
     pub hub: Hub,
     /// instalações pedidas cujo progresso ainda não apareceu no provedor (id -> quando)
@@ -87,6 +90,8 @@ impl Core {
             game: Mutex::new(None),
             notifs: Mutex::new(vec![]),
             next_notif: AtomicU64::new(1),
+            status: Mutex::new(Value::Null),
+            status_kick: tokio::sync::Notify::new(),
             hub,
             pending: Mutex::new(Default::default()),
             kick: tokio::sync::Notify::new(),
@@ -99,6 +104,7 @@ impl Core {
         if core.demo.is_some() {
             core.seed_demo()?;
         }
+        crate::storage::load_extra(&core.db);
         core.restore_session();
         Ok(core)
     }
@@ -117,6 +123,13 @@ impl Core {
     }
 
     pub fn notify(&self, kind: &str, title: &str, body: &str, action: Option<&str>) {
+        // não acumula repetidas: o mesmo aviso nos últimos 2 minutos não entra de novo
+        {
+            let v = self.notifs.lock().unwrap_or_else(|e| e.into_inner());
+            if v.iter().any(|x| x.title == title && x.body == body && now_unix().saturating_sub(x.ts) < 120) {
+                return;
+            }
+        }
         let n = Notification { id: self.next_notif.fetch_add(1, Ordering::Relaxed), kind: kind.into(), title: title.into(), body: body.into(), action: action.map(String::from), ts: now_unix() };
         {
             let mut v = self.notifs.lock().unwrap_or_else(|e| e.into_inner());
@@ -124,6 +137,21 @@ impl Core {
             v.truncate(30);
         }
         self.emit("notification.added", serde_json::to_value(&n).unwrap());
+        // Jogo na frente: a Shell está escondida, então o aviso vai para a capa do Nexus por cima do jogo
+        // (`nexus-overlay`). Com "silenciar durante jogos" (padrão), só os importantes (`alert`) passam.
+        if self.game_in_front() && (kind == "alert" || !self.silence_in_game()) {
+            self.emit("game.toast", json!({ "title": title, "body": body, "secs": 6 }));
+        }
+    }
+
+    /// "Silenciar durante jogos" (Ajustes → Notificações): ligado por padrão.
+    pub fn silence_in_game(&self) -> bool {
+        self.db.kv_get("notif_silence_game").map_or(true, |v| v != "0")
+    }
+
+    /// Há jogo/app aberto e ele está na tela (no sway: o espaço de jogos visível; fora dele, basta existir).
+    pub fn game_in_front(&self) -> bool {
+        self.game_info().is_some() && (self.compositor.name() != "sway" || compositor::games_visible())
     }
 
     /// Mostra a Steam a pedido do usuário (login em modo TV, compra). Enquanto durar, janelas novas dela também

@@ -697,6 +697,12 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             core.guide_open.store(false, std::sync::atomic::Ordering::SeqCst);
             Ok(json!({ "ok": true }))
         }
+        "guide.hold" => {
+            // celular (e testes): o mesmo que segurar o Guia — `down` aperta, `down: false` solta
+            let down = v.get("down").and_then(|d| d.as_bool()).unwrap_or(true);
+            crate::guide::hold(core, &tokio::runtime::Handle::current(), down);
+            Ok(json!({ "ok": true }))
+        }
         "guide.press" => {
             crate::guide::pressed(core);
             Ok(json!({ "ok": true }))
@@ -789,6 +795,161 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
         }
         "notifications.clear" => {
             core.notifs.lock().unwrap().clear();
+            Ok(json!({ "ok": true }))
+        }
+
+        // ---------- armazenamento (disco, USB, cache) ----------
+        "storage.usage" | "storage.devices" | "storage.mount" | "storage.eject" | "storage.roms" | "storage.clean" | "storage.format" => {
+            // formatar pede o PIN dos responsáveis sempre que houver um; o resto é de adultos
+            sys_access(core, &v, method == "storage.format")?;
+            let fail = |e: String| RpcError::new(E_FAILED, &e);
+            match method {
+                "storage.usage" => {
+                    let (d, c, r) = (core.cfg.data_dir.clone(), core.cfg.cache_dir.clone(), crate::providers::emu::roms_dir());
+                    let steam = core.steam.as_ref().and_then(|s| s.root());
+                    Ok(blocking(move || crate::storage::usage(&d, &c, steam, &r)).await?)
+                }
+                "storage.devices" => Ok(json!({ "devices": blocking(crate::storage::devices).await? })),
+                "storage.mount" => {
+                    let dev = s(&v, "dev")?;
+                    let p = blocking(move || crate::storage::mount(&dev)).await?.map_err(fail)?;
+                    Ok(json!({ "path": p }))
+                }
+                "storage.eject" => {
+                    let dev = s(&v, "dev")?;
+                    if core.game_info().is_some() {
+                        return Err(RpcError::new(E_BUSY, "Feche o jogo antes de ejetar o disco"));
+                    }
+                    // some da lista de ROMs antes (o disco pode ser a pasta de jogos)
+                    let d2 = dev.clone();
+                    let m = blocking(move || crate::storage::devices().into_iter().find(|x| x["dev"].as_str() == Some(&d2)).and_then(|x| x["mount"].as_str().map(String::from))).await?;
+                    blocking({ let dev = dev.clone(); move || crate::storage::eject(&dev) }).await?.map_err(fail)?;
+                    if let Some(m) = m {
+                        let _ = crate::storage::set_roms(&core.db, &m, false);
+                    }
+                    core.refresh_library().await;
+                    Ok(json!({ "ok": true }))
+                }
+                "storage.roms" => {
+                    let dev = s(&v, "dev")?;
+                    let on = v.get("on").and_then(|b| b.as_bool()).unwrap_or(true);
+                    let db = core.db.clone();
+                    let root = blocking(move || -> Result<std::path::PathBuf, String> {
+                        let mount = crate::storage::mount(&dev)?;
+                        crate::storage::set_roms(&db, &mount, on)
+                    })
+                    .await?
+                    .map_err(fail)?;
+                    core.refresh_library().await;
+                    Ok(json!({ "path": root, "on": on }))
+                }
+                "storage.clean" => {
+                    let c = core.cfg.cache_dir.clone();
+                    let freed = blocking(move || crate::storage::clean_cache(&c)).await?;
+                    Ok(json!({ "freed": freed }))
+                }
+                _ => {
+                    if core.game_info().is_some() {
+                        return Err(RpcError::new(E_BUSY, "Feche o jogo antes de formatar o disco"));
+                    }
+                    let (dev, fs, label) = (s(&v, "dev")?, s(&v, "fs")?, s(&v, "label")?);
+                    let db = core.db.clone();
+                    blocking(move || -> Result<(), String> {
+                        if let Some(m) = crate::storage::devices().into_iter().find(|x| x["dev"].as_str() == Some(&dev)).and_then(|x| x["mount"].as_str().map(String::from)) {
+                            let _ = crate::storage::set_roms(&db, &m, false);
+                        }
+                        crate::storage::format(&dev, &fs, &label)
+                    })
+                    .await?
+                    .map_err(fail)?;
+                    core.refresh_library().await;
+                    Ok(json!({ "ok": true }))
+                }
+            }
+        }
+
+        // ---------- energia ----------
+        "power.status" => {
+            need_session(core)?;
+            let db = core.db.clone();
+            Ok(blocking(move || crate::power::status(&db)).await?)
+        }
+        "power.set" => {
+            sys_access(core, &v, false)?;
+            let pick = |k: &str, opts: &[u32]| -> Result<Option<u32>, RpcError> {
+                match v.get(k).and_then(|x| x.as_u64()) {
+                    None => Ok(None),
+                    Some(n) if opts.contains(&(n as u32)) => Ok(Some(n as u32)),
+                    Some(_) => Err(RpcError::invalid(&format!("valor inválido em '{k}'"))),
+                }
+            };
+            if let Some(n) = pick("screenMin", &crate::power::SCREEN_OPTS)? {
+                core.db.kv_set("power_screen_min", &n.to_string())?;
+            }
+            if let Some(n) = pick("suspendMin", &crate::power::SUSPEND_OPTS)? {
+                core.db.kv_set("power_suspend_min", &n.to_string())?;
+            }
+            if let Some(k) = os(&v, "key") {
+                if !crate::power::KEYS.contains(&k.as_str()) {
+                    return Err(RpcError::invalid("ação do botão inválida"));
+                }
+                core.db.kv_set("power_key", &k)?;
+            }
+            let db = core.db.clone();
+            Ok(blocking(move || crate::power::status(&db)).await?)
+        }
+        "power.button_press" => {
+            // só em desenvolvimento/testes: simula o botão físico
+            if !core.cfg.dev {
+                return Err(RpcError::new(E_FORBIDDEN, "Indisponível"));
+            }
+            crate::power::button_pressed(core);
+            Ok(json!({ "ok": true }))
+        }
+
+        // ---------- preferências de notificação ----------
+        "notifications.settings" => {
+            need_session(core)?;
+            Ok(json!({ "silenceInGame": core.silence_in_game() }))
+        }
+        "notifications.set" => {
+            sys_access(core, &v, false)?;
+            if let Some(b) = v.get("silenceInGame").and_then(|x| x.as_bool()) {
+                core.db.kv_set("notif_silence_game", if b { "1" } else { "0" })?;
+            }
+            Ok(json!({ "silenceInGame": core.silence_in_game() }))
+        }
+        "notifications.test" => {
+            sys_access(core, &v, false)?;
+            // aviso de teste: `important` simula um alerta (passa por cima do jogo mesmo silenciado)
+            let important = v.get("important").and_then(|x| x.as_bool()).unwrap_or(false);
+            core.notify(if important { "alert" } else { "bell" }, if important { "Aviso importante de teste" } else { "Aviso de teste" }, &format!("Aviso número {}", core.next_notif.load(std::sync::atomic::Ordering::Relaxed)), None);
+            Ok(json!({ "ok": true }))
+        }
+
+        // ---------- barra de status ----------
+        "status.get" => {
+            need_session(core)?;
+            let cur = core.status.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            if !cur.is_null() {
+                return Ok(cur);
+            }
+            let dir = core.cfg.data_dir.clone();
+            Ok(blocking(move || crate::status::snapshot(&dir)).await?)
+        }
+        // brilho: do dia a dia, qualquer perfil (a Central rápida só mostra se a tela tem backlight)
+        "brightness.status" => {
+            need_session(core)?;
+            Ok(blocking(crate::brightness::status).await?)
+        }
+        "brightness.set" => {
+            need_session(core)?;
+            let pct = v.get("percent").and_then(|x| x.as_u64()).ok_or_else(|| RpcError::invalid("falta 'percent'"))?.min(100) as u8;
+            blocking(move || crate::brightness::set(pct)).await?.map_err(|e| RpcError::new(E_FAILED, &e))?;
+            Ok(blocking(crate::brightness::status).await?)
+        }
+        "status.refresh" => {
+            core.status_kick.notify_one();
             Ok(json!({ "ok": true }))
         }
 

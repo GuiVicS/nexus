@@ -1,5 +1,5 @@
 import type { GameSession, Item, Notification, Profile, RemoteDevice, SessionInfo } from './generated';
-import type { AppUpdate } from './api';
+import type { AppUpdate, StatusSnapshot } from './api';
 
 /** Eventos enviados pelo Core (notificações JSON-RPC) */
 export interface Events {
@@ -22,7 +22,10 @@ export interface Events {
   'remote.scroll': { v: number };
   'remote.key': { key: string; mods: string[] };
   'remote.text': { back: number; text: string };
-  'input.guide': { frame?: number | null; toggle?: boolean; close?: boolean };
+  'input.guide': { frame?: number | null; toggle?: boolean; close?: boolean; ms?: number };
+  'power.button': { game: string | null };
+  'input.emergency': { title: string };
+  'game.toast': { title: string; body: string; secs?: number };
   'steam.ui': { open: boolean };
   'steam.dialog': { open: boolean; title?: string };
   'steam.eula': { itemId: string; title: string };
@@ -30,6 +33,7 @@ export interface Events {
   'roms.received': { name: string; size: number };
   'apps.updates': AppUpdate[];
   'apps.job': { id: string; op: 'update' | 'restore'; state: 'running' | 'done' | 'failed'; error?: string | null };
+  'status.changed': StatusSnapshot;
   'system.power': { action: string; simulated: boolean };
 }
 

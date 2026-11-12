@@ -529,3 +529,111 @@ Pedido: rclone instalado com o app, login na instalação ou depois, pasta próp
 **Suíte da Fase 3 (B), 2026-11-12:** `cargo test -p nexus-core` 98 unitários + 17 e2e do Core ok; `tsc` da Shell e do protocolo limpos;
 todos os 19 cenários de UI (`node tests/e2e/run.mjs`), incluindo os novos `controles`, `atualizacoes`, `ssh`, `sobre`, `recuperacao`, 0 falhas.
 Sobre a memória da Shell com as telas abertas: não medida nesta rodada (sem a sessão real à disposição).
+### A1 — barra de status (2026-11-12) ✅
+
+- **Core `status.rs`:** uma tarefa consulta rede (`sysnet`), Bluetooth (`bluetooth`, com bateria dos controles), volume/mudo
+  (`wpctl get-volume`, leve) e disco, a cada 15 s (`NEXUS_STATUS_SECS`), e só emite `status.changed` quando algo muda.
+  RPC `status.get` (estado atual) e `status.refresh` (relê já). A Shell não faz mais consultas periódicas para isso.
+- **Alertas (só com problema):** sem internet / sem conexão, controle com bateria ≤ 20 %, disco com menos de 10 % livre.
+  Fone com bateria baixa não alerta (só controle).
+- **Shell:** `components/Status.tsx` + `lib/status.ts`. No canto da barra superior: Wi-Fi/cabo (sinal no `title`),
+  Bluetooth, cada controle conectado com a bateria, volume/mudo e o primeiro alerta (+N quando há mais). Nada recebe foco
+  (não atrapalha a navegação). Some na tela "em execução" do jogo.
+- **Disco simulado:** `NEXUS_FAKE_DISK=<livre>:<total>` (bytes); a suíte de UI fixa 60 % livre para os alertas não aparecerem
+  por causa do disco da VM (que está com ~9 % livres).
+- **Testes:** unidade (alertas, rede ausente, disco) e cenário `statusbar` (rede + controle com bateria 76 % → 15 % + queda da
+  rede, tudo por evento, sem foco na barra). Captura `a1-status` 1080p/720p.
+- **Falta:** esconder também durante vídeo (a aba Mídia/mpv é de outro agente: basta a Shell esconder `#sstat` quando o
+  player estiver aberto); perfil já aparece pelo avatar da barra.
+
+### A2 — Central rápida completa (2026-11-12) ✅
+
+- **Novos atalhos na Central** (Guia / Tab): **Saída de som** (←/→ troca TV/analógica/fone, com aviso), **Brilho** (slider, só
+  quando a tela tem backlight), **Wi-Fi** e **Bluetooth** liga/desliga (adultos; o estado vem do Core pelo `status.changed`,
+  então a chave só muda quando o serviço de fato mudou) e **Suspender** (confirmação; `systemctl suspend` pelo logind).
+- **Brilho no Core (`brightness.rs`):** lê `/sys/class/backlight` (o de mais passos), grava pelo **logind**
+  (`busctl … Session.SetBrightness`, sem root) e, se recusar, direto no sysfs. Mínimo de 5 % (nunca tela preta). RPC
+  `brightness.status` / `brightness.set`; qualquer perfil mexe. TV/monitor HDMI não têm backlight: o controle não aparece.
+- **Tempo para abrir sobre o jogo:** o Core mede o quadro (`grim`, no máximo 1,5 s) + Shell na frente e registra no log
+  ("menu rápido sobre o jogo: … ms"; vai no evento `input.guide.ms`); a Shell mede o desenho (`window.__guideMs`).
+  Na VM, sem jogo de verdade, o desenho leva ~3–30 ms. **Não medido com jogo real em tela cheia** (VM sem GPU/sessão real).
+- **Testes:** unidade (conversão de brilho) e cenário `central` com `busctl` falso (grava o brilho), backlight falso, `nmcli`
+  (`radio wifi on/off`) e `bluetoothctl` falsos. Captura `a2-central` 1080p/720p.
+- **Falta:** brilho não foi testado com backlight real (VM sem); o polkit padrão deixa a sessão ativa chamar
+  `SetBrightness` e `suspend`, mas não foi confirmado num PC de verdade.
+
+### A3 — overlay no jogo (2026-11-12) ✅ (com uma parte sem teste de tela)
+
+- **Central sobre o jogo** (já abria com Guia/Select+Start/F1/Super, com o quadro do jogo ao fundo): ganhou a seção
+  **Controles** (cada controle conectado com a bateria; ≤ 20 % em vermelho, "carregue logo") e a dica da saída de emergência.
+  O volume do sistema já estava lá (A2/B3).
+- **Saída de emergência:** segurar **Guia** (ou **Select+Start**) por 3 s (`NEXUS_EMERGENCY_MS`) com jogo aberto. O Core
+  (`guide.rs`) conta o tempo no leitor evdev (soltar antes cancela), traz a Central para a frente e emite
+  `input.emergency`; a Shell pergunta **"Fechar o jogo agora?"** (foco começa em "Continuar", novo `safe` do `askConfirm`)
+  e, no "sim", `game.close` com `force` (SIGKILL no escopo inteiro do jogo). RPC `guide.hold {down}` faz o mesmo (celular/testes).
+- **Aviso por cima do jogo:** `Core::notify` agora emite `game.toast` quando há jogo na frente (no sway, só com o espaço
+  do jogo visível). O `nexus-overlay` (Python/GTK layer-shell) ganhou uma janela de aviso no canto superior direito, que não
+  pega teclado nem mouse. Regra "silenciar durante jogos" no A4.
+- **Testes:** cenário `emergencia` (Central sobre o jogo com bateria 15 %, soltar antes de 3 s não pergunta, "Continuar" mantém
+  o jogo, confirmar fecha pelo Core). Captura `a3-jogo`, `a3-emergencia`.
+- **Não testado:** o aviso GTK (`game.toast` → `nexus-overlay`) só foi checado com `py_compile` (a sessão sway real não pode ser
+  reiniciada aqui) e o evento é conferido no cenário `notificacoes` (A4); a retenção real de 3 s no botão Guia precisa de
+  controle físico (`/dev/uinput` não existe na VM).
+
+### A4 — notificações (2026-11-12) ✅
+
+- **Fila curta:** no máximo 3 avisos na tela e o mesmo aviso não se repete enquanto o primeiro aparece (`toast()`); o Core
+  (`notify`) não deixa o mesmo título+texto entrar duas vezes em 2 minutos.
+- **Avisos novos** (Core, `status.rs`, só na transição, não a cada leitura): **disco com < 10 %**, **bateria do controle ≤ 20 %**
+  e **controle desconectado** (Bluetooth ainda ligado). "Erro ao abrir jogo" já existia. Alertas de tipo `alert` são os "importantes".
+- **Silenciar durante jogos** (Ajustes → **Notificações**, ligado por padrão; RPC `notifications.settings/set/test`): com jogo
+  aberto só os importantes aparecem (a Shell não mostra nem toca som; o Core emite `game.toast` para o overlay do A3); o resto
+  fica no sino. Há botões de aviso de teste (comum e importante) e "Limpar notificações".
+- **Testes:** unidade (transições de alerta) e cenário `notificacoes` (disco/bateria/desconexão sem repetir, 6 avisos → máx. 3 na
+  tela, silêncio por cima do jogo conferido pelo evento `game.toast`). Captura `a4-notificacoes`.
+- **Não testado:** o desenho do aviso por cima do jogo (GTK, ver A3).
+
+### B10 — Energia (2026-11-12) ✅
+
+- Ajustes → **Energia** (adultos): suspender / reiniciar / desligar (com confirmação); **apagar a tela após** (nunca, 5, 10, 15 —
+  padrão —, 30 min) e **suspender após** (nunca — padrão —, 15, 30, 60, 120 min); **botão de energia** (Perguntar — padrão —,
+  Suspender, Desligar, Nada); estado de **"abrir direto no Nexus"** (autologin lido de gdm/sddm/lightdm/greetd; só leitura,
+  desligar é do B15).
+- **Core `power.rs`:**
+  - Inatividade: o Core mantém um `swayidle` (`output * power off/on` e `systemctl suspend`) conforme as preferências e o
+    **desliga enquanto há jogo aberto** (o controle analógico não conta como atividade para o sway; senão a tela apagaria no meio
+    da partida). Reavalia a cada 2 s; só em sessão sway.
+  - Botão físico: o Core lê o botão (evdev, `KEY_POWER` do "Power Button") e segura um *inhibitor* `handle-power-key` do logind
+    **só depois de abrir o dispositivo** (se não conseguir ler o botão, o logind continua no comando). "Perguntar" abre na Shell a
+    escolha Suspender/Desligar; Voltar não faz nada.
+  - RPC `power.status`, `power.set` (valida os valores), `power.button_press` (só em `--dev`, para testes).
+- Dependências do `.deb`: `swayidle` e `udisks2` (este para o B9).
+- **Testes:** unidade (argumentos do swayidle, autologin) e cenário `energia` com `swayidle` falso (15 → 10 min, suspensão em
+  30 min, parado durante jogo e de volta depois), botão "Perguntar" e "Suspender" e `/etc` falso. Captura `b10-energia`.
+- **Não testado:** `swayidle`/logind/botão de energia reais (a VM não tem `swayidle` instalado nem `/dev/uinput`, e a sessão sway
+  não pode ser reiniciada). Falta: `HandlePowerKey`/`HandleLidSwitch` em `logind.conf` (exigiria root; o inhibitor cobre o botão).
+
+### B9 — Armazenamento: disco e discos USB (2026-11-12) ✅
+
+- Ajustes → **Armazenamento** (mesma categoria do Google Drive, que continua logo abaixo, sem mudança): 
+  - **Uso do disco** por categoria (jogos da Steam, ROMs, capas/cache do Nexus, sistema e outros) com barras, calculado pelo
+    Core (`du`, "Calculando…" enquanto isso). O alerta de pouco espaço já vinha do A1/A4.
+  - **Limpar cache e temporários** (confirmação): apaga capas, ícones e logs; nunca o cache do Google Drive, jogos ou saves.
+  - **Discos USB** (lista atualiza sozinha a cada 6 s): só removíveis (o disco do sistema, loops e criptografados não entram).
+    Por disco: **Abrir** (udisksctl mount), **Usar como pasta de ROMs** (liga/desliga; cria `ROMs/<console>` no disco e os jogos
+    entram nos Emuladores sem reiniciar), **Ejetar com segurança** (desmonta todos os volumes e `power-off`; recusa com jogo
+    aberto e explica "disco ocupado") e **Formatar…**.
+  - **Formatar:** confirmação (foco em "Cancelar") → escolha exFAT/ext4 → segunda confirmação ("última chance") → **PIN dos
+    responsáveis** (o Core exige sempre que houver PIN) → udisks2 `Block.Format` (`busctl`). Rótulo fixo "NEXUS"; recusa com jogo aberto.
+- **Core `storage.rs`:** RPC `storage.usage/devices/mount/eject/roms/clean/format`. Dispositivo validado contra a lista de
+  removíveis (`/dev/<alnum>`), argv fixo, rótulo e tipo validados. Programas trocáveis: `NEXUS_LSBLK`, `NEXUS_UDISKSCTL`,
+  `NEXUS_BUSCTL`. Pastas de ROMs extras ficam no banco (`roms_extra`) e entram em `providers/emu.rs` (`scan` e `all_roots`).
+- **Testes:** unidade (parser do lsblk, validações, limpeza que preserva o cache do Drive) e cenário `armazenamento` com
+  `lsblk`/`udisksctl`/`busctl` falsos: uso, vazio, espetar, abrir, ROMs, limpar cache, ejetar ocupado/livre, formatar com
+  confirmação dupla; o cenário `drive` continua passando. Capas `b9-armazenamento` 1080p/720p.
+- **Não testado:** disco USB e udisks2 reais (VM sem USB; o `Format` exige `exfatprogs`/`e2fsprogs` e a regra padrão do polkit
+  para `modify-device` em disco removível da sessão ativa) e jogos de verdade vindos do pendrive (o `scan` com a pasta extra
+  não tem teste de biblioteca; o código só soma a raiz à lista que já era varrida).
+
+- **Nota de teste (A1):** como o Core agora empurra `status.changed` em toda conexão, o `rpc()` de `tests/e2e/lib.mjs` passou a ignorar linhas sem `id` (eventos) e esperar a resposta; antes pegava a primeira linha.
+- **Suíte completa da Fase 2 (agente A):** Core 99 unidade + 17 e2e, tsc limpo, 21 cenários de UI sem falhas (`primeiro_uso` e `celular` repetidos depois do ajuste do `rpc()` e de compilar `apps/remote`).

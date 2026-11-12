@@ -57,6 +57,8 @@ interface State {
   steam: SteamAccount | null;
   grant: { token: string; at: number } | null;
   launchHint: string;
+  /** "Silenciar durante jogos" (Ajustes → Notificações) */
+  notifSilence: boolean;
   /** ROM do Google Drive baixando antes de abrir */
   fetch: { id: string; done: number; total: number } | null;
 }
@@ -97,6 +99,7 @@ export const [S, setS] = createStore<State>({
   grant: null,
   launchHint: '',
   fetch: null,
+  notifSilence: true,
 });
 
 export const prefs = (): Prefs => S.session?.prefs ?? DEFAULT_PREFS;
@@ -121,8 +124,10 @@ export interface Toast { id: number; title: string; sub: string; icon: string; o
 export const [toasts, setToasts] = createSignal<Toast[]>([]);
 let toastId = 0;
 export function toast(title: string, sub = '', icon = 'info') {
+  // fila curta: no máximo 3 na tela e o mesmo aviso não se repete enquanto o primeiro ainda aparece
+  if (toasts().some((x) => !x.out && x.title === title && x.sub === sub)) return;
   const t: Toast = { id: ++toastId, title, sub, icon, out: false };
-  setToasts((l) => [...l.slice(-3), t]);
+  setToasts((l) => [...l.slice(-2), t]);
   sfx('notify');
   setTimeout(() => setToasts((l) => l.map((x) => (x.id === t.id ? { ...x, out: true } : x))), 3200);
   setTimeout(() => setToasts((l) => l.filter((x) => x.id !== t.id)), 3600);
@@ -214,7 +219,8 @@ export function replaceTop(kind: OvKind, props: Record<string, any>) {
 // ---------- PIN e texto ----------
 export const askPin = (o: { title: string; sub?: string; confirm?: boolean }) => pushOv<string | null>('pin', o).then((v) => v ?? null);
 export const askText = (o: { title: string; sub?: string; value?: string; max?: number; kind?: 'name' | 'key' | 'secret' | 'ip' }) => pushOv<string | null>('text', o).then((v) => (v === undefined ? null : v));
-export const askConfirm = (o: { title: string; sub?: string; yes?: string; no?: string; danger?: boolean }) => pushOv<boolean>('confirm', o).then((v) => !!v);
+/** `safe`: o foco começa em "não" (ações que não dá para desfazer, pedidas sem querer). */
+export const askConfirm = (o: { title: string; sub?: string; yes?: string; no?: string; danger?: boolean; safe?: boolean }) => pushOv<boolean>('confirm', o).then((v) => !!v);
 /** Duas opções de verdade (sim/não) + Voltar: true, false ou null (voltou sem escolher). */
 export const askChoice = (o: { title: string; sub?: string; yes: string; no: string; danger?: boolean; countdown?: number }) => pushOv<boolean | null>('confirm', o).then((v) => (v === true || v === false ? v : null));
 
