@@ -160,3 +160,22 @@ atualizar só com apt numa máquina limpa"), que depende do repositório publica
 - **Mudança de comportamento:** NVIDIA deixou de bloquear a instalação (antes: "não validada"); agora é aviso. A
   sessão já usava `sway --unsupported-gpu` e cai para pixman se o sway falhar.
 - **Validado só na VM** (detectou `virtual (vmwgfx)`). AMD, Intel e NVIDIA reais: a validar em hardware.
+
+### Item 8 — segurança do acesso remoto (2026-11-12)
+
+Modelo de ameaça e controles em `SECURITY.md`. Mudanças no Remote (`:8787`):
+
+| Controle | Antes | Agora |
+|---|---|---|
+| Validade do token | nunca vencia | vence após 7 dias sem uso; uso renova; QR vencido é trocado ao abrir o pareamento |
+| Rede de origem | qualquer IP | só loopback, privadas, link-local e CGNAT/Tailscale (403 para IP público) |
+| `Origin` | ignorado | precisa ser a própria página (403 para outro site) |
+| Conexões | sem limite antes do pareamento | 16 simultâneas (503), 20 s para parear, 240 msg/s, quadro ≤ 16 KB |
+| Tentativas erradas | 8/min por IP | igual, e a tabela de IPs não cresce sem limite |
+
+- **TLS:** avaliado e adiado (certificado autoassinado assusta no celular; válido exige domínio). Risco aceito e
+  descrito no `SECURITY.md`.
+- **Testes:** 3 unitários novos + e2e `remote_rejects_wrong_origin_expired_token_and_floods` (origem errada 403,
+  mesma origem ok, 17ª conexão recusada, token vencido 403 com aviso e novo QR funcionando).
+- **Verificado no Core real** da sessão (10.0.2.15:8787): página 200, hello 200, origem errada 403, mesma origem
+  200, `/roms` 200, token errado 403. Instalações antigas não perdem o pareamento (prazo começa na atualização).

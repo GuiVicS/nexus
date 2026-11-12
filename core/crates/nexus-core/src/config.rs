@@ -15,6 +15,8 @@ pub struct Config {
     /// HTTP na rede local: apenas o Remote (celular)
     pub remote_bind: SocketAddr,
     pub remote_host: Option<String>,
+    /// o código do QR expira depois desse tempo sem uso (o celular pareado renova a cada conexão)
+    pub remote_token_ttl: std::time::Duration,
     pub remote_dir: Option<PathBuf>,
     pub shell_dir: Option<PathBuf>,
     pub demo: bool,
@@ -73,6 +75,7 @@ impl Config {
             dev_http: env("NEXUS_DEV_HTTP").and_then(|s| s.parse().ok()),
             remote_bind: env("NEXUS_REMOTE_BIND").and_then(|s| s.parse().ok()).unwrap_or_else(|| "0.0.0.0:8787".parse().unwrap()),
             remote_host: env("NEXUS_REMOTE_HOST"),
+            remote_token_ttl: std::time::Duration::from_secs(env("NEXUS_REMOTE_TOKEN_TTL").and_then(|s| s.parse().ok()).unwrap_or(7 * 24 * 3600)),
             remote_dir: env("NEXUS_REMOTE_DIR").map(PathBuf::from).or_else(|| Some(PathBuf::from("/usr/share/nexus/remote")).filter(|p| p.is_dir())),
             shell_dir: env("NEXUS_SHELL_DIR").map(PathBuf::from),
             demo: env("NEXUS_DEMO").is_some_and(|v| v == "1"),
@@ -128,6 +131,7 @@ impl Config {
             dev_http: Some("127.0.0.1:0".parse().unwrap()),
             remote_bind: "127.0.0.1:0".parse().unwrap(),
             remote_host: Some("127.0.0.1".into()),
+            remote_token_ttl: std::time::Duration::from_secs(7 * 24 * 3600),
             remote_dir: None,
             shell_dir: None,
             demo: false,

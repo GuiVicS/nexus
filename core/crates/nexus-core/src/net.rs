@@ -173,10 +173,21 @@ async fn remote_ws(State(core): State<Arc<Core>>, ConnectInfo(addr): ConnectInfo
     if let Err(e) = core.hub.token_ok(addr.ip(), q.get("t").map(String::as_str).unwrap_or("")) {
         return (StatusCode::FORBIDDEN, e).into_response();
     }
-    ws.max_message_size(16 * 1024).on_upgrade(move |s| remote_conn(core, s))
+    if core.hub.conns.load(std::sync::atomic::Ordering::SeqCst) >= remote::MAX_CONNS {
+        return (StatusCode::SERVICE_UNAVAILABLE, "Conexões demais").into_response();
+    }
+    ws.max_message_size(16 * 1024).max_frame_size(16 * 1024).on_upgrade(move |s| remote_conn(core, s))
 }
 
 async fn remote_conn(core: Arc<Core>, mut socket: WebSocket) {
+    let core2 = core.clone();
+    let Some(_slot) = core2.hub.slot() else {
+        let _ = socket.send(Message::Close(None)).await;
+        return;
+    };
+    let opened = std::time::Instant::now();
+    // até 240 mensagens/s por conexão (o celular manda ~60/s); o excesso é descartado
+    let (mut budget, mut window) = (240u32, std::time::Instant::now());
     let mut dev: Option<nexus_protocol::RemoteDevice> = None;
     let mut pad = PadState::default();
     let mut tick = tokio::time::interval(Duration::from_secs(2));
@@ -186,6 +197,11 @@ async fn remote_conn(core: Arc<Core>, mut socket: WebSocket) {
             m = socket.recv() => {
                 let Some(Ok(m)) = m else { break };
                 let Message::Text(t) = m else { if matches!(m, Message::Close(_)) { break } else { continue } };
+                if window.elapsed() >= Duration::from_secs(1) {
+                    (budget, window) = (240, std::time::Instant::now());
+                }
+                if budget == 0 { continue }
+                budget -= 1;
                 let Ok(msg) = serde_json::from_str::<Value>(t.as_str()) else { continue };
                 match (msg.get("t").and_then(|t| t.as_str()), &dev) {
                     (Some("ping"), _) => { let _ = socket.send(send(json!({ "t": "pong" }))).await; }
@@ -207,6 +223,9 @@ async fn remote_conn(core: Arc<Core>, mut socket: WebSocket) {
                 }
             }
             _ = tick.tick() => {
+                if dev.is_none() && opened.elapsed() > Duration::from_secs(20) {
+                    break; // conectou e não entrou: libera a vaga
+                }
                 if let Some(d) = &dev {
                     if !core.hub.is_joined(&d.id) {
                         let _ = socket.send(send(json!({ "t": "kicked" }))).await;
@@ -241,6 +260,8 @@ async fn roms_upload(State(core): State<Arc<Core>>, ConnectInfo(addr): ConnectIn
     if let Err(e) = core.hub.token_ok(addr.ip(), q.get("t").map(String::as_str).unwrap_or("")) {
         return err(StatusCode::FORBIDDEN, e);
     }
+    let core2 = core.clone();
+    let Some(_slot) = core2.hub.slot() else { return err(StatusCode::SERVICE_UNAVAILABLE, "Conexões demais. Tente de novo em instantes.") };
     let (tmp, dest) = match crate::roms::upload_target(q.get("system").map(String::as_str).unwrap_or(""), q.get("name").map(String::as_str).unwrap_or("")) {
         Ok(t) => t,
         Err(e) => return err(StatusCode::BAD_REQUEST, &e),
@@ -279,6 +300,21 @@ async fn roms_upload(State(core): State<Arc<Core>>, ConnectInfo(addr): ConnectIn
     axum::Json(json!({ "ok": true, "name": name, "size": total })).into_response()
 }
 
+/// Porta de entrada do Remote: só rede local e só a própria página (Origin) — vale para todas as rotas.
+async fn remote_guard(ConnectInfo(addr): ConnectInfo<SocketAddr>, req: axum::extract::Request, next: axum::middleware::Next) -> Response {
+    if !remote::local_peer(addr.ip()) && std::env::var("NEXUS_REMOTE_ANY_NET").as_deref() != Ok("1") {
+        tracing::warn!("Remote: recusado {} (fora da rede local)", addr.ip());
+        return (StatusCode::FORBIDDEN, "Somente na rede local").into_response();
+    }
+    let h = req.headers();
+    let s = |n: header::HeaderName| h.get(n).and_then(|v| v.to_str().ok());
+    if !remote::origin_ok(s(header::ORIGIN), s(header::HOST)) {
+        tracing::warn!("Remote: recusada origem {:?} de {}", s(header::ORIGIN), addr.ip());
+        return (StatusCode::FORBIDDEN, "Origem não permitida").into_response();
+    }
+    next.run(req).await
+}
+
 pub fn remote_router(core: Arc<Core>) -> Router {
     let mut r = Router::new()
         .route("/remote/hello", get(remote_hello))
@@ -288,7 +324,7 @@ pub fn remote_router(core: Arc<Core>) -> Router {
     if let Some(dir) = core.cfg.remote_dir.clone() {
         r = r.fallback_service(ServeDir::new(&dir).not_found_service(ServeFile::new(dir.join("index.html"))));
     }
-    r.with_state(core)
+    r.layer(axum::middleware::from_fn(remote_guard)).with_state(core)
 }
 
 pub async fn start(core: Arc<Core>) -> anyhow::Result<Started> {

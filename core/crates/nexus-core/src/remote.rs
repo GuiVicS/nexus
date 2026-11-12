@@ -9,7 +9,7 @@ use nexus_protocol::{RemoteDevice, RemotePairing};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, SocketAddr};
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::atomic::{AtomicU16, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
@@ -23,6 +23,51 @@ pub struct Hub {
     pub sink: Arc<dyn InputSink>,
     devices: Mutex<Vec<RemoteDevice>>,
     fails: Mutex<HashMap<IpAddr, (u32, Instant)>>,
+    ttl: Duration,
+    /// conexões abertas (WebSocket + envios) — limite contra esgotar o Core
+    pub conns: AtomicUsize,
+}
+
+/// Conexões simultâneas no Remote (6 aparelhos + páginas abertas + envios).
+pub const MAX_CONNS: usize = 16;
+
+/// Segura uma vaga de conexão; libera ao sair de escopo.
+pub struct ConnSlot<'a>(&'a AtomicUsize);
+impl Drop for ConnSlot<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+/// O Remote só atende a rede local: loopback, faixas privadas, link-local e CGNAT/Tailscale (100.64/10).
+/// Um aparelho com IP público direto (sem roteador) não fica exposto à internet.
+pub fn local_peer(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v) => {
+            let o = v.octets();
+            v.is_loopback() || v.is_private() || v.is_link_local() || (o[0] == 100 && (o[1] & 0xc0) == 64)
+        }
+        IpAddr::V6(v) => {
+            if let Some(m) = v.to_ipv4_mapped() {
+                return local_peer(IpAddr::V4(m));
+            }
+            let s = v.segments()[0];
+            v.is_loopback() || (s & 0xfe00) == 0xfc00 || (s & 0xffc0) == 0xfe80
+        }
+    }
+}
+
+/// Navegadores mandam `Origin` em WebSocket e POST: tem que ser a própria página do Remote (mesmo host:porta).
+/// Sem `Origin` (app nativo, curl) vale só o token.
+pub fn origin_ok(origin: Option<&str>, host: Option<&str>) -> bool {
+    let Some(o) = origin else { return true };
+    let Some(h) = host else { return false };
+    let rest = o.strip_prefix("http://").or_else(|| o.strip_prefix("https://"));
+    rest.is_some_and(|r| r.trim_end_matches('/').eq_ignore_ascii_case(h))
 }
 
 pub fn qr_svg(data: &str) -> String {
@@ -88,9 +133,12 @@ impl Hub {
         } else {
             Arc::new(Unavailable)
         };
-        let hub = Hub { db, events, host: cfg.remote_host.clone(), bind: cfg.remote_bind, port: AtomicU16::new(cfg.remote_bind.port()), sink, devices: Mutex::new(vec![]), fails: Mutex::new(HashMap::new()) };
+        let hub = Hub { db, events, host: cfg.remote_host.clone(), bind: cfg.remote_bind, port: AtomicU16::new(cfg.remote_bind.port()), sink, devices: Mutex::new(vec![]), fails: Mutex::new(HashMap::new()), ttl: cfg.remote_token_ttl, conns: AtomicUsize::new(0) };
         if hub.db.kv_get("remote_token").is_none() {
             hub.rotate_token();
+        } else if hub.db.kv_get("remote_token_at").is_none() {
+            // instalação anterior à validade: conta a partir de agora (não derruba quem já pareou)
+            let _ = hub.db.kv_set("remote_token_at", &now_secs().to_string());
         }
         hub
     }
@@ -109,6 +157,7 @@ impl Hub {
 
     pub fn rotate_token(&self) {
         let _ = self.db.kv_set("remote_token", &util::random_hex(24));
+        let _ = self.db.kv_set("remote_token_at", &now_secs().to_string());
         let ids: Vec<String> = self.devices.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|d| d.id.clone()).collect();
         for id in ids {
             self.disconnect(&id);
@@ -120,7 +169,27 @@ impl Hub {
         format!("http://{host}:{}/?t={}", self.port.load(Ordering::SeqCst), self.token())
     }
 
+    /// O código passou do prazo sem uso?
+    pub fn token_expired(&self) -> bool {
+        let at = self.db.kv_get("remote_token_at").and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+        now_secs().saturating_sub(at) > self.ttl.as_secs()
+    }
+
+    /// Reserva uma vaga de conexão (None = cheio).
+    pub fn slot(&self) -> Option<ConnSlot<'_>> {
+        let n = self.conns.fetch_add(1, Ordering::SeqCst);
+        if n >= MAX_CONNS {
+            self.conns.fetch_sub(1, Ordering::SeqCst);
+            return None;
+        }
+        Some(ConnSlot(&self.conns))
+    }
+
     pub fn pairing(&self) -> RemotePairing {
+        // a tela de pareamento nunca mostra um QR vencido
+        if self.token_expired() {
+            self.rotate_token();
+        }
         let url = self.url();
         RemotePairing { qr_svg: qr_svg(&url), url, devices: self.devices.lock().unwrap_or_else(|e| e.into_inner()).clone(), uinput: self.sink.available() }
     }
@@ -136,10 +205,20 @@ impl Hub {
             let tok = self.token();
             tok.len() == t.len() && tok.bytes().zip(t.bytes()).fold(0u8, |a, (x, y)| a | (x ^ y)) == 0
         };
-        if good {
+        if good && self.token_expired() {
+            Err("O código expirou. No Nexus, abra Controle pelo celular e escaneie o QR code de novo.")
+        } else if good {
             f.remove(&ip);
+            // uso renova o prazo (grava no máximo a cada minuto)
+            let at = self.db.kv_get("remote_token_at").and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+            if now_secs().saturating_sub(at) > 60 {
+                let _ = self.db.kv_set("remote_token_at", &now_secs().to_string());
+            }
             Ok(())
         } else {
+            if f.len() > 512 {
+                f.retain(|_, (_, at)| at.elapsed() < Duration::from_secs(60));
+            }
             let e = f.entry(ip).or_insert((0, Instant::now()));
             if e.1.elapsed() > Duration::from_secs(60) {
                 *e = (0, Instant::now());
@@ -298,6 +377,44 @@ mod tests {
         assert!(h.token_ok(ip, &h.token()).unwrap_err().contains("Muitas"), "bloqueado mesmo com token certo");
         let other: IpAddr = "10.0.0.6".parse().unwrap();
         assert!(h.token_ok(other, &h.token()).is_ok());
+    }
+
+    #[test]
+    fn token_expires_without_use_and_pairing_renews_it() {
+        let mut h = hub();
+        h.ttl = Duration::from_secs(10);
+        let ip: IpAddr = "192.168.0.5".parse().unwrap();
+        assert!(h.token_ok(ip, &h.token()).is_ok());
+        h.db.kv_set("remote_token_at", &(now_secs() - 11).to_string()).unwrap();
+        let old = h.token();
+        assert!(h.token_ok(ip, &old).unwrap_err().contains("expirou"));
+        let p = h.pairing();
+        assert!(!p.url.ends_with(&old), "QR novo");
+        assert!(h.token_ok(ip, &h.token()).is_ok());
+    }
+
+    #[test]
+    fn only_local_networks_and_same_origin() {
+        for ok in ["127.0.0.1", "192.168.1.20", "10.0.0.3", "172.20.1.1", "169.254.3.3", "100.101.102.103", "::1", "fe80::1", "fd00::5", "::ffff:192.168.0.2"] {
+            assert!(local_peer(ok.parse().unwrap()), "{ok}");
+        }
+        for bad in ["8.8.8.8", "200.1.2.3", "172.32.0.1", "100.128.0.1", "2001:4860::8888", "::ffff:8.8.8.8"] {
+            assert!(!local_peer(bad.parse().unwrap()), "{bad}");
+        }
+        assert!(origin_ok(None, Some("192.168.0.9:8787")));
+        assert!(origin_ok(Some("http://192.168.0.9:8787"), Some("192.168.0.9:8787")));
+        assert!(!origin_ok(Some("http://evil.example"), Some("192.168.0.9:8787")));
+        assert!(!origin_ok(Some("http://192.168.0.9:8787.evil.example"), Some("192.168.0.9:8787")));
+        assert!(!origin_ok(Some("null"), Some("192.168.0.9:8787")));
+    }
+
+    #[test]
+    fn connection_slots_are_limited_and_released() {
+        let h = hub();
+        let held: Vec<_> = (0..MAX_CONNS).map(|_| h.slot().unwrap()).collect();
+        assert!(h.slot().is_none());
+        drop(held);
+        assert!(h.slot().is_some());
     }
 
     #[test]

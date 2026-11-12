@@ -530,6 +530,61 @@ async fn remote_pairing_websocket_to_shell_events() {
 }
 
 #[tokio::test]
+async fn remote_rejects_wrong_origin_expired_token_and_floods() {
+    use futures_util::StreamExt;
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+    let d = tempfile::tempdir().unwrap();
+    let (r, mut c) = boot(d.path(), |cfg| cfg.remote_token_ttl = Duration::from_secs(1)).await;
+    first_adult(&mut c).await;
+    let url = c.ok("remote.pairing", json!({})).await["url"].as_str().unwrap().to_string();
+    let token = url.split("t=").nth(1).unwrap().to_string();
+    let addr = r.started.remote_addr.unwrap();
+    let ws_req = |origin: Option<&str>, t: &str| {
+        let mut q = format!("ws://{addr}/remote/ws?t={t}").into_client_request().unwrap();
+        if let Some(o) = origin {
+            q.headers_mut().insert("origin", o.parse().unwrap());
+        }
+        q
+    };
+    // Origin de outro site (página maliciosa na rede tentando usar o token): recusado
+    match tokio_tungstenite::connect_async(ws_req(Some("http://evil.example"), &token)).await {
+        Err(tokio_tungstenite::tungstenite::Error::Http(resp)) => assert_eq!(resp.status().as_u16(), 403),
+        other => panic!("origem errada aceita: {:?}", other.map(|_| ())),
+    }
+    // a própria página do Remote: aceito
+    let (ok, _) = tokio_tungstenite::connect_async(ws_req(Some(&format!("http://{addr}")), &token)).await.expect("mesma origem");
+    drop(ok);
+    // conexões demais: as 16 vagas ocupadas → a próxima é recusada
+    let mut held = vec![];
+    for _ in 0..16 {
+        held.push(tokio_tungstenite::connect_async(ws_req(None, &token)).await.unwrap().0);
+    }
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let refused = match tokio_tungstenite::connect_async(ws_req(None, &token)).await {
+        Err(tokio_tungstenite::tungstenite::Error::Http(resp)) => resp.status().as_u16() == 503,
+        Ok((mut ws, _)) => matches!(tokio::time::timeout(Duration::from_secs(2), ws.next()).await, Ok(None | Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_))) | Some(Err(_)))),
+        Err(_) => true,
+    };
+    assert!(refused, "17ª conexão aceita");
+    drop(held);
+    // código vencido (prazo de 1 s sem uso): recusado com aviso; a tela de pareamento gera outro, que funciona
+    tokio::time::sleep(Duration::from_millis(2200)).await;
+    let get = move |t: String| {
+        tokio::task::spawn_blocking(move || {
+            let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).build().into();
+            let mut r = agent.get(&format!("http://{addr}/remote/hello?t={t}")).call().unwrap();
+            (r.status().as_u16(), r.body_mut().read_to_string().unwrap_or_default())
+        })
+    };
+    let (st, body) = get(token.clone()).await.unwrap();
+    assert_eq!(st, 403);
+    assert!(body.contains("expirou"), "{body}");
+    let fresh = c.ok("remote.pairing", json!({})).await["url"].as_str().unwrap().split("t=").nth(1).unwrap().to_string();
+    assert_ne!(fresh, token);
+    assert_eq!(get(fresh).await.unwrap().0, 200);
+}
+
+#[tokio::test]
 async fn unix_socket_is_private() {
     use std::os::unix::fs::PermissionsExt;
     let d = tempfile::tempdir().unwrap();
