@@ -1,0 +1,3 @@
+#!/bin/sh
+# "navegador" do login do Google nos testes: só fica aberto
+exec sleep 120

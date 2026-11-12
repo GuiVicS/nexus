@@ -55,6 +55,8 @@ interface State {
   steam: SteamAccount | null;
   grant: { token: string; at: number } | null;
   launchHint: string;
+  /** ROM do Google Drive baixando antes de abrir */
+  fetch: { id: string; done: number; total: number } | null;
 }
 
 export const [S, setS] = createStore<State>({
@@ -91,6 +93,7 @@ export const [S, setS] = createStore<State>({
   steam: null,
   grant: null,
   launchHint: '',
+  fetch: null,
 });
 
 export const prefs = (): Prefs => S.session?.prefs ?? DEFAULT_PREFS;

@@ -7,6 +7,7 @@ import { fmtBytes, ratingLabel } from '../lib/format';
 import { Avatar, Icon, Switch } from './ui';
 import { PadsSection } from './Pads';
 import { AudioPanel, BtPanel, DisplayPanel, LocalePanel, NetPanel } from './System';
+import { DrivePanel } from './Drive';
 import { sfx } from '@nexus/ui';
 
 interface Cat { id: string; label: string; icon: string; adult?: boolean }
@@ -15,6 +16,7 @@ const CATS: Cat[] = [
   { id: 'bt', label: 'Bluetooth', icon: 'bt', adult: true },
   { id: 'audio', label: 'Áudio', icon: 'vol' },
   { id: 'tela', label: 'Tela e vídeo', icon: 'tv', adult: true },
+  { id: 'armaz', label: 'Armazenamento', icon: 'cloud', adult: true },
   { id: 'som', label: 'Aparência', icon: 'sun' },
   { id: 'acess', label: 'Acessibilidade', icon: 'access' },
   { id: 'ctrl', label: 'Controles', icon: 'pad' },
@@ -333,6 +335,7 @@ export function Settings() {
         <Show when={S.setCat === 'bt' && !isKid()}><Pane title="Bluetooth"><BtPanel /></Pane></Show>
         <Show when={S.setCat === 'audio'}><Pane title="Áudio"><AudioPanel /></Pane></Show>
         <Show when={S.setCat === 'tela' && !isKid()}><Pane title="Tela e vídeo"><DisplayPanel /></Pane></Show>
+        <Show when={S.setCat === 'armaz' && !isKid()}><Pane title="Armazenamento · Google Drive"><DrivePanel /></Pane></Show>
         <Show when={S.setCat === 'hora' && !isKid()}><Pane title="Idioma e hora"><LocalePanel /></Pane></Show>
         <Show when={S.setCat === 'som'}><PaneSom /></Show>
         <Show when={S.setCat === 'acess'}><PaneAcess /></Show>

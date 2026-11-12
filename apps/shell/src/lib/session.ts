@@ -132,6 +132,7 @@ export function startEvents() {
     setS('launchHint', '');
     setS('game', p.session);
   });
+  client.on('drive.fetch', (p: { id: string; done: number; total: number }) => setS('fetch', p.done >= p.total ? null : p));
   client.on('game.waiting', (p: { hint: string }) => setS('launchHint', p.hint));
   client.on('game.started', (p) => {
     setS('game', p.session);
@@ -142,11 +143,13 @@ export function startEvents() {
     setS('game', null);
     setS('launchHint', '');
     for (const o of [...ovs()].reverse()) if (o.kind === 'launch') popOv(undefined, true);
+    if (p.itemId.startsWith('drive:')) return; // janela do login do Google Drive: o painel avisa o resultado
     toast(`${title} foi encerrado`, p.playSec >= 60 ? fmtPlaytime(p.playSec) : 'Progresso salvo', 'check');
     if (S.session) void api.items([p.itemId]).then(upsertLib).catch(() => {});
     queueMicrotask(() => requestAnimationFrame(() => fx.f?.ensure()));
   });
   client.on('game.failed', (p: { reason: string }) => {
+    setS('fetch', null);
     for (const o of [...ovs()].reverse()) if (o.kind === 'launch') popOv(undefined, true);
     toast('Não foi possível abrir', p.reason, 'info');
     sfx('deny');

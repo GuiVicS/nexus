@@ -1,0 +1,15 @@
+#!/bin/sh
+# rclone para os testes: "authorize" finge o login do Google (endereço + token depois de 1 s); o resto vai para o
+# rclone de verdade ($NEXUS_REAL_RCLONE) com a config do teste ($NEXUS_FAKE_RCLONE_CONF: remoto "fakedrive" = pasta local).
+if [ "$1" = authorize ]; then
+  echo 'NOTICE: Please go to the following link: http://127.0.0.1:53682/auth?state=teste' >&2
+  echo 'NOTICE: Waiting for code...' >&2
+  sleep 1
+  echo 'Paste the following into your remote machine --->'
+  echo '{"access_token":"ya29.teste","token_type":"Bearer","refresh_token":"1//t","expiry":"2030-01-01T00:00:00Z"}'
+  echo '<---End paste'
+  exit 0
+fi
+skip=0
+for a; do shift; if [ $skip = 1 ]; then set -- "$@" "$NEXUS_FAKE_RCLONE_CONF"; skip=0; elif [ "$a" = --config ]; then set -- "$@" "$a"; skip=1; else set -- "$@" "$a"; fi; done
+exec "$NEXUS_REAL_RCLONE" "$@"

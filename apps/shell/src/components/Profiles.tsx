@@ -1,3 +1,4 @@
+import { DrivePanel } from './Drive';
 import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, onMount, Show, Switch } from 'solid-js';
 import { E, RpcError } from '@nexus/protocol';
 import type { Profile, SteamAccount } from '@nexus/protocol';
@@ -61,16 +62,16 @@ export function ProfilePicker() {
 }
 
 // ---------- Primeiro uso (A7) ----------
-// Etapas: boas-vindas → idioma/fuso/teclado → rede → controle → perfil → PIN → jogos (ROMs) → celular → Steam →
+// Etapas: boas-vindas → idioma/fuso/teclado → rede → controle → perfil → PIN → jogos (ROMs) → celular → Google Drive → Steam →
 // pronto. Tudo só com o controle: ↑↓ entre opções, A escolhe, B volta uma etapa. Rede, controle, jogos, celular e
 // Steam têm "Pular". Antes do perfil o Core libera rede/relógio/controle sem sessão (primeiro uso); depois do perfil
 // o assistente já entra na sessão dele para as etapas seguintes.
-type Step = 'welcome' | 'locale' | 'net' | 'pad' | 'profile' | 'pin' | 'roms' | 'phone' | 'steam' | 'done';
+type Step = 'welcome' | 'locale' | 'net' | 'pad' | 'profile' | 'pin' | 'roms' | 'phone' | 'drive' | 'steam' | 'done';
 
 export function Onboarding() {
   const hw = () => S.hw;
   const steamStep = () => hw()?.architecture === 'x86_64';
-  const steps = (): Step[] => ['welcome', 'locale', 'net', 'pad', 'profile', 'pin', 'roms', 'phone', ...(steamStep() ? (['steam'] as Step[]) : []), 'done'];
+  const steps = (): Step[] => ['welcome', 'locale', 'net', 'pad', 'profile', 'pin', 'roms', 'phone', 'drive', ...(steamStep() ? (['steam'] as Step[]) : []), 'done'];
   const [i, setI] = createSignal(0);
   const step = () => steps()[i()];
   const [created, setCreated] = createSignal<Profile | null>(null);
@@ -182,6 +183,13 @@ export function Onboarding() {
             <PhonePairing />
           </Show>
           <Foot skip />
+        </Match>
+        <Match when={step() === 'drive'}>
+          <Head icon="cloud" title="Google Drive" sub="Opcional. Guarde jogos (ROMs) no seu Drive e jogue na TV sem ocupar espaço. O Nexus usa só a pasta “Nexus” (e a cria se não existir). Para digitar a senha, use o teclado do celular." />
+          <Show when={inSession()} fallback={<small>Disponível depois, em Ajustes → Armazenamento.</small>}>
+            <div class="opane"><DrivePanel wizard onDone={next} /></div>
+          </Show>
+          <Show when={!inSession()}><Foot skip /></Show>
         </Match>
         <Match when={step() === 'steam'}>
           <Head icon="download" title="Steam" sub="Os jogos da Steam aparecem na Biblioteca do Nexus. Entre com sua conta (o login mostra um QR code para o app Steam do celular)." />

@@ -50,6 +50,7 @@ export interface NetStatus {
 export interface WifiNet { ssid: string; signal: number; secure: boolean; security: string; active: boolean; known: boolean }
 export interface NetTest { connectivity: string; online: boolean; dns: boolean; latencyMs: number | null; elapsedMs: number }
 export interface AudioNode { id: number; name: string; node: string; kind: 'hdmi' | 'analogica' | 'bluetooth' | 'usb'; default: boolean; volume: number; muted: boolean }
+export interface DriveStatus { available: boolean; connected: boolean; mounted: boolean; folder: string; loggingIn: boolean; cacheBytes: number; cacheGb: number; about?: { total?: number; used?: number; free?: number } | null }
 export interface AudioStatus { available: boolean; error?: string; volume: number; muted: boolean; sinks: AudioNode[]; sources: AudioNode[]; mic: { id: number; volume: number; muted: boolean } | null }
 export interface DisplayMode { width: number; height: number; refresh: number }
 export interface DisplayOutput { name: string; label: string; width: number | null; height: number | null; refresh: number | null; modes: DisplayMode[]; scale: number; transform: string; vrr: boolean | null; hdr: boolean | null }
@@ -91,6 +92,13 @@ export function createApi(c: RpcClient) {
     wifiEnable: (on: boolean, a: Auth = {}) => call<{ ok: true }>('net.wifi_enable', { on, ...a }),
     setIpv4: (p: { connection: string; method: 'auto' | 'manual'; address?: string; gateway?: string; dns?: string[] } & Auth) => call<{ ok: true }>('net.set_ipv4', p, 60000),
     localeStatus: () => call<LocaleStatus>('locale.status'),
+    driveStatus: (about = false) => call<DriveStatus>('drive.status', { about }, 30000),
+    driveLogin: (a: Auth = {}) => call<{ ok: true; url: string }>('drive.login', { ...a }, 30000),
+    driveCancel: () => call<{ ok: true }>('drive.cancel'),
+    driveCancelFetch: () => call<{ ok: true }>('drive.cancel_fetch'),
+    driveDisconnect: (a: Auth = {}) => call<{ ok: true }>('drive.disconnect', { ...a }, 30000),
+    driveMount: (a: Auth = {}) => call<{ ok: true }>('drive.mount', { ...a }, 30000),
+    driveCache: (gb: number, a: Auth = {}) => call<{ ok: true; gb: number }>('drive.cache', { gb, ...a }, 30000),
     audioStatus: () => call<AudioStatus>('audio.status'),
     audioSet: (p: { id?: number; source?: boolean; volume?: number; muted?: boolean; default?: number }) => call<AudioStatus>('audio.set', p),
     audioTest: (id?: number) => call<{ ok: true }>('audio.test', id === undefined ? {} : { id }, 10000),
@@ -144,7 +152,8 @@ export function createApi(c: RpcClient) {
     store: (category: string) => call<Item[]>('store.list', { category }),
     wallet: () => call<{ balance: number; currency: string } | null>('store.wallet'),
     friends: () => call<Friend[]>('social.friends'),
-    launch: (id: string) => call<GameSession>('item.launch', { id }),
+    // ROM do Google Drive baixa antes de abrir: pode levar minutos (progresso em drive.fetch)
+    launch: (id: string) => call<GameSession>('item.launch', { id }, 30 * 60_000),
     install: (id: string) => call<{ ok: true }>('item.install', { id }),
     cancel: (id: string) => call<{ ok: true }>('item.cancel', { id }),
     uninstall: (id: string) => call<{ ok: true }>('item.uninstall', { id }),

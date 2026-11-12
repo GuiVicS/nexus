@@ -221,12 +221,21 @@ impl EmuProvider {
                 let _ = std::fs::write(readme, t);
             }
         }
-        EmuProvider { roots: vec![root], index: Mutex::new(HashMap::new()) }
+        let mut roots = vec![root];
+        // ROMs no Google Drive (pasta montada pelo rclone; vazia enquanto não conectado)
+        if let Some(r) = crate::drive::roms_root() {
+            roots.push(r);
+        }
+        EmuProvider { roots, index: Mutex::new(HashMap::new()) }
     }
 
     fn scan(&self) -> Vec<(String, usize, PathBuf)> {
         let mut out = vec![];
         for root in &self.roots {
+            // a nuvem só é lida montada (senão é uma pasta vazia, ou uma montagem caída que travaria a leitura)
+            if crate::drive::is_cloud(root) && !crate::drive::mounted() {
+                continue;
+            }
             for (si, s) in SYSTEMS.iter().enumerate() {
                 let dir = root.join(s.dir);
                 let mut stack = vec![(dir, 0)];
@@ -280,6 +289,10 @@ impl Provider for EmuProvider {
             it.state = ItemState::Installed;
             it.art = ArtFlags { cover: true, hero: false, icon: false };
             it.tags = vec!["lib".into(), "emu".into(), format!("sys:{}", s.dir)];
+            if crate::drive::is_cloud(&path) {
+                it.tags.push("cloud".into());
+                it.subtitle = format!("{} · Google Drive", s.name);
+            }
             it.hue = s.hue;
             it.size_bytes = std::fs::metadata(&path).ok().map(|m| m.len());
             items.push(it);
@@ -309,6 +322,15 @@ impl Provider for EmuProvider {
         }
         if !extra.is_empty() {
             argv.push(format!("--appendconfig={}", extra.join("|")));
+        }
+        if crate::drive::is_cloud(&rom) {
+            // ROM no Drive: baixa inteira para o cache antes (o emulador lê do disco, sem travar no meio do jogo)
+            let (r2, id2) = (rom.clone(), id.to_string());
+            tokio::task::spawn_blocking(move || {
+                crate::drive::prefetch(&r2, &|done, total| crate::drive::emit("drive.fetch", serde_json::json!({ "id": id2, "done": done, "total": total })))
+            })
+            .await?
+            .map_err(ProviderError::Msg)?;
         }
         argv.push(rom.display().to_string());
         Ok(LaunchPlan { argv, env: vec![], cwd: None, tracker: Tracker::Process })

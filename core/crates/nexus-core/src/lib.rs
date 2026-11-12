@@ -6,6 +6,7 @@ pub mod compositor;
 pub mod config;
 pub mod controllers;
 pub mod display;
+pub mod drive;
 pub mod core;
 pub mod customart;
 pub mod db;
@@ -50,6 +51,24 @@ pub async fn run(cfg: config::Config) -> anyhow::Result<Running> {
         // resolução/escala/rotação confirmadas pelo usuário em cada tela
         let db = core.db.clone();
         std::thread::spawn(move || display::restore(&db));
+    }
+    {
+        let c = core.clone();
+        drive::set_emitter(Box::new(move |m, v| c.emit(m, v)));
+    }
+    if drive::connected() && drive::available() {
+        // Google Drive já conectado: monta em segundo plano e relê a biblioteca (ROMs da nuvem)
+        let c = core.clone();
+        tokio::spawn(async move {
+            let gb = drive::cache_gb(&c.db);
+            match tokio::task::spawn_blocking(move || drive::mount(gb)).await {
+                Ok(Ok(())) => {
+                    c.refresh_library().await;
+                }
+                Ok(Err(e)) => tracing::warn!("google drive: {e}"),
+                Err(_) => {}
+            }
+        });
     }
     let started = net::start(core.clone()).await?;
     core.adopt_running_game(); // perfil restaurado + jogo aberto antes de reiniciar

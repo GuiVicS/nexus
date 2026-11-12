@@ -399,3 +399,19 @@ Pedido do usuário: "quando chegar no final da página, deve travar; só voltar 
 - **Limites:** por http na rede local o Chrome do Android não roda o `sw.js` nem oferece "Instalar"; o atalho pela tela inicial funciona. No iOS funciona normalmente. O app fica preso ao IP da TV; a porta (8787) é fixa. Se o IP mudar, escaneie o QR de novo.
 - **Testes:** cenário `celular` com 4 checagens novas (manifesto, código guardado, botão, instruções). A Core entrega manifesto, `sw.js` e ícones com o tipo certo.
 - `tests/e2e/cdp.mjs`: o perfil do Chromium agora é temporário e apagado ao fechar, matando o grupo de processos inteiro. Antes sobravam cerca de 60–90 MB por execução em `/tmp/cdp-*`; acumulou 4,6 GB e encheu o `/tmp`.
+
+### Google Drive como armazenamento na nuvem — parte 1 (2026-11-12) ✅
+Pedido: rclone instalado com o app, login na instalação ou depois, pasta própria no Drive (procura e, se não existir, cria), ROMs e depois mídia sem baixar.
+- **Dependência:** `rclone` e `fuse3` em `Depends` do `.deb` (apt, 1.60, decisão do usuário).
+- **Core `drive.rs`:**
+  - Login: `rclone authorize drive`; a Core abre o endereço local numa janela de navegador na TV (item escondido `drive:login`, `providers/drive.rs`, perfil de navegador apagado a cada login) e a fecha ao terminar. Fechar a janela pelo menu rápido cancela o login.
+  - Token em `<dados>/rclone.conf` (600), só do Nexus.
+  - Pasta `Nexus` na raiz (procura; senão cria) com `ROMs/<console>`, `Filmes`, `Séries`, `Músicas`, `Saves`.
+  - `rclone mount` com `--vfs-cache-mode full` (limite ajustável 5–200 GB, padrão 20), montagem amarrada à vida da Core (`PR_SET_PDEATHSIG`); remonta ao iniciar.
+  - ROMs da nuvem entram nos Emuladores com a marca de nuvem e "· Google Drive"; antes de abrir, o arquivo é baixado inteiro com progresso (`drive.fetch`) e pode ser cancelado.
+  - RPCs `drive.status/login/cancel/disconnect/mount/cache/cancel_fetch` (adulto; criança com PIN). A janela de login não conta como tempo de jogo.
+- **Shell:** Ajustes → Armazenamento (`components/Drive.tsx`), etapa "Google Drive" no primeiro uso (depois do celular, que vira teclado; sempre dá para pular, inclusive sem rclone) e barra "Baixando do Google Drive · N %" na tela de Abrindo….
+- **Viabilidade (resposta ao usuário):** cartucho ✅ (baixa em segundos); CD (PS1 etc.) 🟡 só baixando antes; DVD (PS2/GC/Wii) ❌ da nuvem; filmes/músicas pelo mpv ✅ (parte 2).
+- **Testes:** `tests/drive.rs` com o rclone de verdade e um remoto `alias` local (login simulado → pasta criada → FUSE → ROM na biblioteca → download prévio → sair); `NEXUS_TEST_RCLONE=<rclone>` liga o teste. Cenário de UI `drive` (só controle) e `primeiro_uso` com a etapa nova. 15/15 cenários, Core 88 + e2e ok.
+- **Memória:** `rclone mount` com `GOGC=50` e buffer de 8 MB fica em ~67 MB (era ~88 MB com o padrão), medido lendo 50 MB. Só roda com o Drive conectado.
+- **Falta (parte 2):** aba Mídia com mpv; login por QR no celular (precisa de projeto no Google Cloud do usuário). Não testado com conta Google real (eu não faço login por você).

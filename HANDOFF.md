@@ -186,6 +186,8 @@ Sempre que possível, conferir também na sessão real da VM.
 | B4 Tela e vídeo | 6db0878 | `display.rs` (sway): resolução/Hz/escala/rotação com confirmação de 15 s feita pelo Core, VRR, HDR (se houver), margem + assistente |
 | Navegação | (este commit) | Zonas no foco (`data-zone`): ↑/↓ travam no fim da página; só ←/→ trocam de coluna; volta à categoria atual e ao último item |
 | Upload de ROMs | 67285d7 | Página responsiva, com versão de PC (arrastar e soltar) |
+| Controle PWA | a4df496 | Manifesto, ícones, código guardado no celular, botão "Instalar na tela inicial" |
+| Google Drive (1/2) | (este commit) | `drive.rs` (rclone): login na TV, pasta `Nexus`, montagem com cache, ROMs da nuvem nos Emuladores, etapa no primeiro uso. Falta: aba Mídia (mpv), login por QR no celular |
 
 ### Fase 2 — próxima (nesta ordem)
 1. **A1 Barra de status:**
@@ -356,7 +358,8 @@ Saídas de emergência: Ctrl+Alt+F3 (terminal; na VirtualBox Right-Ctrl+F3), `su
 
 ## 10. Próximos passos sugeridos (prioridade)
 
-0. **Telas de sistema:** seguir as fases da §4b (próxima: fase 2, começando pelo A1).
+0. **Google Drive, parte 2 (pedido do usuário, antes das fases):** aba "Mídia" (filmes, séries e músicas de `Nexus/Filmes|Séries|Músicas` pelo `mpv` em tela cheia, com o menu rápido por cima; `mpv` entra em `Depends`). Depois, login por QR no celular: o usuário cria um projeto no Google Cloud e passa o ID do cliente + página no GitHub Pages que repassa o código (PKCE) para a TV. Decisões já tomadas: login na TV agora (cliente do rclone), rclone do apt (1.60), Drive antes das fases.
+1. **Telas de sistema:** seguir as fases da §4b (próxima: fase 2, começando pelo A1).
 
 1. **Fechar o ciclo no aparelho do usuário:** confirmar a sessão (`session.log`), abrir um jogo Steam real, ajustar o que aparecer. Tudo o resto depende disso.
 2. **Testar num Raspberry Pi real** (pacote arm64 só validado com QEMU): sessão, GPU V3D, RAM, emuladores leves, Chromium com DRM.

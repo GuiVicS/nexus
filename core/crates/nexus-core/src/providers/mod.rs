@@ -4,6 +4,7 @@ use nexus_protocol::Item;
 use std::path::PathBuf;
 
 pub mod demo;
+pub mod drive;
 pub mod emu;
 pub mod native;
 pub mod steam;

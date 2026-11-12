@@ -4,7 +4,7 @@ import { api, artUrl } from '../lib/api';
 import { ACT, THEME_LABEL, hubTab } from '../lib/actions';
 import { textSink } from '../lib/actions';
 import { closeOv, fail, findItem, guarded, hasGrant, isInstalled, isKid, me, popOv, prefs, S, setS, toast, replaceTop, topOv } from '../lib/state';
-import { effectivePrice, money, norm, priceNum } from '../lib/format';
+import { effectivePrice, fmtBytes, money, norm, priceNum } from '../lib/format';
 import { Avatar, Icon, Switch, Tile, appBg, Bar } from './ui';
 import { sfx } from '@nexus/ui';
 import { audio, loadAudio } from '../lib/audio';
@@ -291,8 +291,20 @@ export function Launch(p: { id: string }) {
             <h2 class={i().kind === 'game' && i().logo ? `lg-${i().logo}` : ''}>{i().title}</h2>
             <Show when={running()} fallback={
               <>
-                <div class="bar indet"><i /></div>
-                <p><span class="spin" />{closing() ? 'Fechando…' : 'Abrindo…'}</p>
+                <Show when={S.fetch?.id === i().id ? S.fetch : null} fallback={
+                  <>
+                    <div class="bar indet"><i /></div>
+                    <p><span class="spin" />{closing() ? 'Fechando…' : 'Abrindo…'}</p>
+                  </>
+                }>
+                  {(f) => (
+                    <>
+                      <div class="bar"><i style={{ width: `${f().total ? (100 * f().done) / f().total : 0}%` }} /></div>
+                      <p><Icon n="cloud" /> Baixando do Google Drive · {Math.floor(f().total ? (100 * f().done) / f().total : 0)}% · {fmtBytes(f().done)} de {fmtBytes(f().total)}</p>
+                      <p class="lnote">Só na primeira vez: depois o jogo abre direto da TV</p>
+                    </>
+                  )}
+                </Show>
                 <Show when={S.launchHint}><p class="lnote">{S.launchHint}</p></Show>
                 <div class="lacts">
                   <div class="btn f" data-autofocus data-r="p" data-pad="8" data-a="closegame" data-verb="Cancelar"><Icon n="x" /> Cancelar</div>

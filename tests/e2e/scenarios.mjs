@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { check, openUi, rpc, sleep, startCore, ROOT } from './lib.mjs';
 
 export const scenarios = {};
@@ -273,6 +274,12 @@ scenarios.primeiro_uso = () =>
     await ui.until(`()=>document.querySelector('.onbqr svg')`, 'QR code do celular');
     await ui.screens('a7-celular');
     await to('onb-skip');
+    await ui.key('Enter');
+    // Google Drive (opcional): sem rclone aqui, o painel diz indisponível e deixa seguir
+    await ui.until(h1('Google Drive'), 'etapa do Google Drive');
+    await ui.until(`()=>!!document.querySelector('[data-k=dr-skip]')`, 'opção de pular o Drive');
+    await ui.screens('a7-drive');
+    await to('dr-skip');
     await ui.key('Enter');
     if (await ui.ev(`document.querySelector('.onb h1')?.textContent==='Steam'`)) {
       await ui.until(`()=>/Steam não instalada|Entrar na Steam|Conectado como/.test(document.querySelector('.onb .opane')?.textContent||'')`, 'estado da Steam');
@@ -941,5 +948,55 @@ scenarios.navegacao = async () => {
   } finally {
     ui.close();
     await core.stop();
+  }
+};
+
+// Google Drive: Ajustes → Armazenamento → Entrar (janela do Google simulada) → pasta "Nexus" criada → montado →
+// ROM da nuvem nos Emuladores → Sair da conta. Usa o rclone de verdade com um remoto local (precisa de FUSE).
+const realRclone = () => [process.env.NEXUS_TEST_RCLONE, `${os.homedir()}/.local/opt/rclone/root/usr/bin/rclone`, '/usr/bin/rclone'].find((p) => p && fs.existsSync(p));
+scenarios.drive = async () => {
+  const real = realRclone();
+  if (!real) return void console.log('  (pulado: rclone não encontrado)');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-drv-'));
+  const cloud = `${tmp}/cloud`;
+  fs.mkdirSync(cloud);
+  fs.writeFileSync(`${tmp}/fake.conf`, `[fakedrive]\ntype = alias\nremote = ${cloud}\n`);
+  const core = await startCore({ demo: true, env: { NEXUS_RCLONE: `${ROOT}/tests/e2e/fake/rclone`, NEXUS_REAL_RCLONE: real, NEXUS_FAKE_RCLONE_CONF: `${tmp}/fake.conf`, NEXUS_DRIVE_REMOTE: 'fakedrive', NEXUS_BROWSER: `${ROOT}/tests/e2e/fake/browser` } });
+  const toast = (re) => `()=>[...document.querySelectorAll('.toast')].some(t=>${re}.test(t.textContent))`;
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await openSettingsCat(ui, 'armaz', 'Armazenamento');
+    await ui.until(`()=>!!document.querySelector('[data-k=dr-login]')`, 'botão Entrar no Google Drive');
+    await ui.screens('drive-entrar');
+    await ui.key('ArrowRight');
+    await goTo(ui, 'dr-login', 'Entrar no Google Drive');
+    await ui.key('Enter');
+    await waitNode(async () => (await core.rpc('game.current'))?.itemId === 'drive:login', 'janela do login do Google aberta como app', 8000);
+    await ui.until(toast('/Pasta “Nexus” criada/'), 'aviso: pasta Nexus criada no Drive', 20000);
+    check(fs.existsSync(`${cloud}/Nexus`), 'pasta Nexus criada na raiz do Drive');
+    await waitNode(async () => (await core.rpc('game.current')) === null, 'janela do login fechou sozinha', 8000);
+    await ui.until(`()=>/Google Drive conectado/.test(document.querySelector('[data-k=dr-ok]')?.textContent||'')`, 'painel mostra conectado', 10000);
+    await ui.until(`()=>/Pasta “Nexus”/.test(document.querySelector('[data-k=dr-ok]')?.textContent||'')`, 'montado (pasta Nexus)', 10000);
+    await ui.screens('drive-conectado');
+    // espaço para jogos baixados: ← → muda o limite
+    await goTo(ui, 'dr-cache', 'espaço para jogos baixados');
+    await ui.key('ArrowRight');
+    await waitNode(async () => (await core.rpc('drive.status')).cacheGb === 50, 'limite do cache 20 → 50 GB', 8000);
+    // sair da conta
+    await goTo(ui, 'dr-logout', 'Sair da conta');
+    await ui.key('Enter');
+    await ui.until(`()=>!!document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação de sair');
+    await ui.key('Enter');
+    await ui.until(`()=>!!document.querySelector('[data-k=dr-login]')`, 'voltou ao botão Entrar', 10000);
+    check(!fs.existsSync(`${core.dir}/data/rclone.conf`), 'token apagado');
+    check(fs.existsSync(`${cloud}/Nexus`), 'arquivos continuam no Drive');
+    check(ui.errors().length === 0, `sem erros de JavaScript${ui.errors().length ? ': ' + ui.errors().join(' | ') : ''}`);
+  } finally {
+    ui.close();
+    await core.stop();
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
 };

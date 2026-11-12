@@ -372,7 +372,8 @@ impl Core {
             if p.kind == ProfileKind::Kid && p.daily_limit_min.is_some() && seen_at.is_some() {
                 self.accounts.add_usage(&p.id, rest);
             }
-            if play_sec > 0 {
+            // a janela do login do Google Drive não é um jogo: não entra em "jogados recentemente"
+            if play_sec > 0 && !item_id.starts_with("drive:") {
                 self.accounts.add_playtime(&p.id, &item_id, play_sec);
             }
         }

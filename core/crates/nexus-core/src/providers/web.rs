@@ -58,6 +58,10 @@ pub enum BrowserKind {
 
 /// Navegador para os apps web. Chrome/Chromium primeiro (tocam Netflix/Prime com DRM Widevine e têm modo --app).
 pub fn find_browser() -> Option<(PathBuf, BrowserKind)> {
+    if let Some(b) = std::env::var_os("NEXUS_BROWSER").map(PathBuf::from) {
+        let kind = if b.to_string_lossy().contains("firefox") { BrowserKind::Firefox } else { BrowserKind::Chromium };
+        return Some((b, kind));
+    }
     let path = std::env::var_os("PATH").unwrap_or_default();
     let dirs: Vec<PathBuf> = std::env::split_paths(&path).chain([PathBuf::from("/usr/bin"), PathBuf::from("/snap/bin"), PathBuf::from("/usr/local/bin")]).collect();
     for (name, kind) in [

@@ -139,14 +139,20 @@ export async function launch(id: string, resume = false) {
     return void toast('Já há algo em execução', `${S.game.title} — feche antes de abrir outro`, 'info');
   }
   if (it && !isInstalled(it)) return void openHub(id);
+  // ROM do Google Drive: a tela de Abrindo… já aparece enquanto ela baixa (progresso em S.fetch)
+  const cloud = !!it?.tags.includes('cloud');
+  if (cloud && !hasOv('launch')) void pushOv('launch', { id });
   try {
     const gs = await api.launch(id);
     setS('game', gs);
     sfx('launch');
     for (const o of ovs()) if (o.kind === 'sheet' || o.kind === 'hub') popOv(undefined, true);
-    void pushOv('launch', { id });
+    if (!hasOv('launch')) void pushOv('launch', { id });
   } catch (e) {
+    setS('fetch', null);
+    if (cloud) for (const o of [...ovs()].reverse()) if (o.kind === 'launch') popOv(undefined, true);
     if (e instanceof RpcError && e.code === E.LIMIT) return void showTimeUp();
+    if (cloud && String((e as Error).message).includes('cancelado')) return;
     fail(e);
   }
   void resume;
@@ -161,6 +167,11 @@ export async function resumeGame() {
 }
 
 export async function closeGame(force = false) {
+  if (S.fetch && !S.game) {
+    // ainda baixando da nuvem: cancela o download (a abertura falha com "Download cancelado")
+    void api.driveCancelFetch().catch(() => {});
+    return;
+  }
   try {
     await api.closeGame(force);
   } catch (e) {
@@ -355,6 +366,9 @@ export const ACT: Record<string, Fn> = {
   },
   bt(a) {
     document.dispatchEvent(new CustomEvent('nexus:bt', { detail: a }));
+  },
+  drive(a) {
+    document.dispatchEvent(new CustomEvent('nexus:drive', { detail: a }));
   },
   audio(a) {
     document.dispatchEvent(new CustomEvent('nexus:audio', { detail: a }));

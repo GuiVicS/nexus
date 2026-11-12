@@ -879,6 +879,92 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             }
         }
         // ---------- tela e vídeo (sway) ----------
+        "drive.cancel_fetch" => {
+            need_session(core)?;
+            crate::drive::cancel_fetch();
+            Ok(json!({ "ok": true }))
+        }
+        "drive.status" | "drive.login" | "drive.cancel" | "drive.disconnect" | "drive.mount" | "drive.cache" => {
+            // Google Drive (rclone): conta da casa, só adultos (criança com o PIN)
+            let p = need_session(core)?;
+            let fail = |e: String| RpcError::new(E_FAILED, &e);
+            if method != "drive.status" && p.kind == ProfileKind::Kid {
+                parental(core, &v)?;
+            }
+            match method {
+                "drive.status" => {
+                    let db = core.db.clone();
+                    let about = v.get("about").and_then(|b| b.as_bool()).unwrap_or(false);
+                    blocking(move || crate::drive::status(&db, about)).await
+                }
+                "drive.login" => {
+                    if !blocking(crate::drive::available).await? {
+                        return Err(fail("O rclone não está instalado (sudo apt install rclone)".into()));
+                    }
+                    if core.game_info().is_some() {
+                        return Err(fail("Feche o jogo ou app aberto antes de entrar no Google Drive".into()));
+                    }
+                    let rt = tokio::runtime::Handle::current();
+                    let c = core.clone();
+                    let url = blocking(move || {
+                        crate::drive::login_start(move |r| {
+                            rt.spawn(async move { drive_logged_in(c, r).await });
+                        })
+                    })
+                    .await?
+                    .map_err(fail)?;
+                    if let Err(e) = core.launch_item("drive:login").await {
+                        crate::drive::login_cancel();
+                        return Err(fail(format!("Não foi possível abrir a janela de login: {e:?}")));
+                    }
+                    // fechou a janela (menu rápido → Fechar) sem terminar: cancela o login
+                    let c = core.clone();
+                    tokio::spawn(async move {
+                        loop {
+                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                            if crate::drive::login_url().is_none() {
+                                break;
+                            }
+                            if c.game_info().map(|g| g.item_id != "drive:login").unwrap_or(true) {
+                                crate::drive::login_cancel();
+                                break;
+                            }
+                        }
+                    });
+                    Ok(json!({ "ok": true, "url": url }))
+                }
+                "drive.cancel" => {
+                    crate::drive::login_cancel();
+                    Ok(json!({ "ok": true }))
+                }
+                "drive.disconnect" => {
+                    blocking(crate::drive::disconnect).await?;
+                    core.refresh_library().await;
+                    core.emit("drive.changed", json!({ "connected": false }));
+                    Ok(json!({ "ok": true }))
+                }
+                "drive.mount" => {
+                    let gb = crate::drive::cache_gb(&core.db);
+                    blocking(move || crate::drive::mount(gb)).await?.map_err(fail)?;
+                    core.refresh_library().await;
+                    Ok(json!({ "ok": true }))
+                }
+                _ => {
+                    // limite do cache local em GB (2–500); vale na próxima montagem
+                    let gb = v.get("gb").and_then(|g| g.as_u64()).filter(|g| (2..=500).contains(g)).ok_or_else(|| RpcError::invalid("gb entre 2 e 500"))?;
+                    core.db.kv_set("drive_cache_gb", &gb.to_string()).map_err(|e| fail(e.to_string()))?;
+                    if crate::drive::mounted() {
+                        blocking(move || {
+                            crate::drive::unmount();
+                            crate::drive::mount(gb)
+                        })
+                        .await?
+                        .map_err(fail)?;
+                    }
+                    Ok(json!({ "ok": true, "gb": gb }))
+                }
+            }
+        }
         "display.status" => {
             let db = core.db.clone();
             Ok(blocking(move || crate::display::status(&db)).await?)
@@ -1089,4 +1175,31 @@ fn steam_confirm_install(c: Arc<Core>, st: Arc<crate::providers::steam::SteamPro
     std::thread::sleep(Duration::from_millis(400));
     cover(false);
     c.kick.notify_one();
+}
+
+/// Fim do login do Google Drive: procura/cria a pasta `Nexus`, monta, relê a biblioteca e fecha a janela do login.
+async fn drive_logged_in(core: Arc<Core>, r: Result<(), String>) {
+    let res = match r {
+        Ok(()) => {
+            let gb = crate::drive::cache_gb(&core.db);
+            tokio::task::spawn_blocking(move || {
+                let created = crate::drive::ensure_folder()?;
+                crate::drive::mount(gb)?;
+                Ok::<bool, String>(created)
+            })
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()))
+        }
+        Err(e) => Err(e),
+    };
+    if core.game_info().map(|g| g.item_id == "drive:login").unwrap_or(false) {
+        core.close_game(false).await;
+    }
+    match res {
+        Ok(created) => {
+            core.refresh_library().await;
+            core.emit("drive.changed", json!({ "connected": true, "created": created, "folder": crate::drive::FOLDER }));
+        }
+        Err(e) => core.emit("drive.changed", json!({ "connected": crate::drive::connected(), "error": e })),
+    }
 }
