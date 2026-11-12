@@ -8,6 +8,9 @@ até a janela da Steam por baixo. Ninguém vê a Steam.
 
 (Os botões flutuantes "☰ Nexus / ✕ Sair" das versões anteriores saíram: o menu rápido abre com o botão Guia,
 Select+Start, F1 ou a tecla Super — como num console.)
+
+Também mostra o aviso curto por cima do jogo (`game.toast` do Core: bateria do controle baixa, disco cheio, erro…),
+no canto superior direito, sem pegar teclado nem mouse e sem tirar o jogo da tela.
 """
 import ctypes
 import json
@@ -31,6 +34,9 @@ window.cover { background: #0b1012; }
 .cover .title { color: #f3faf9; font-size: 34px; font-weight: 700; }
 .cover .sub { color: rgba(243,250,249,.62); font-size: 18px; }
 .cover .brand { color: #2bd4bd; font-size: 15px; font-weight: 700; letter-spacing: 6px; }
+window.toast { background: rgba(18,27,30,.94); border-radius: 22px; border: 2px solid rgba(43,212,189,.55); }
+.toast .t { color: #f3faf9; font-size: 26px; font-weight: 700; }
+.toast .b { color: rgba(243,250,249,.72); font-size: 20px; }
 """
 
 
@@ -56,6 +62,57 @@ def click_through(win):
         return True
     except (OSError, AttributeError, ValueError, TypeError):
         return False
+
+
+class Toast:
+    """Aviso curto no canto, por cima do jogo (camada de sobreposição, sem foco de teclado, cliques atravessam)."""
+
+    def __init__(self):
+        self.win = Gtk.Window()
+        self.win.get_style_context().add_class("toast")
+        GtkLayerShell.init_for_window(self.win)
+        GtkLayerShell.set_namespace(self.win, "nexus-toast")
+        GtkLayerShell.set_layer(self.win, GtkLayerShell.Layer.OVERLAY)
+        GtkLayerShell.set_anchor(self.win, GtkLayerShell.Edge.TOP, True)
+        GtkLayerShell.set_anchor(self.win, GtkLayerShell.Edge.RIGHT, True)
+        GtkLayerShell.set_margin(self.win, GtkLayerShell.Edge.TOP, 48)
+        GtkLayerShell.set_margin(self.win, GtkLayerShell.Edge.RIGHT, 48)
+        GtkLayerShell.set_exclusive_zone(self.win, -1)
+        GtkLayerShell.set_keyboard_mode(self.win, GtkLayerShell.KeyboardMode.NONE)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        box.set_border_width(22)
+        self.title = Gtk.Label(xalign=0)
+        self.title.get_style_context().add_class("t")
+        self.body = Gtk.Label(xalign=0)
+        self.body.get_style_context().add_class("b")
+        self.body.set_line_wrap(True)
+        self.body.set_max_width_chars(44)
+        box.pack_start(self.title, False, False, 0)
+        box.pack_start(self.body, False, False, 0)
+        self.win.add(box)
+        self.win.connect("map-event", lambda *_: click_through(self.win))
+        self.until = 0.0
+        GLib.timeout_add(500, self.tick)
+
+    def show(self, title, body, secs):
+        self.title.set_text(title or "")
+        self.body.set_text(body or "")
+        self.body.set_visible(bool(body))
+        self.until = time.time() + max(2.0, min(float(secs or 5), 15.0))
+        self.win.show_all()
+        self.body.set_visible(bool(body))
+        click_through(self.win)
+        return False
+
+    def hide(self):
+        self.until = 0.0
+        self.win.hide()
+        return False
+
+    def tick(self):
+        if self.until and time.time() > self.until:
+            self.hide()
+        return True
 
 
 class Cover:
@@ -91,6 +148,7 @@ class Cover:
         self.win.add(box)
         self.win.connect("map-event", lambda *_: click_through(self.win))
 
+        self.toast = Toast()
         GLib.timeout_add(1000, self.tick)
         threading.Thread(target=self.watch_core, daemon=True).start()
 
@@ -122,7 +180,10 @@ class Cover:
                 s.sendall(b'{"jsonrpc":"2.0","id":1,"method":"hello","params":{}}\n')
                 for line in s.makefile("r"):
                     msg = json.loads(line)
-                    if msg.get("method") == "steam.dialog":
+                    if msg.get("method") == "game.toast":
+                        p = msg.get("params") or {}
+                        GLib.idle_add(self.toast.show, p.get("title") or "", p.get("body") or "", p.get("secs") or 5)
+                    elif msg.get("method") == "steam.dialog":
                         p = msg.get("params") or {}
                         if p.get("open"):
                             GLib.idle_add(self.show, p.get("title") or "")

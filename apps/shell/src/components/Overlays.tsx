@@ -241,11 +241,20 @@ export function Guide() {
           <div><b>{prof().name}</b><small>{isKid() ? (S.session?.remainingMin !== null && S.session?.remainingMin !== undefined ? `Perfil infantil · ${S.session.remainingMin} min restantes` : 'Perfil infantil') : S.hello?.demo ? 'Online · modo demonstração' : 'Online'}</small></div>
           <span class="t">{clock()}</span>
         </div>
+        <Show when={(status()?.bt.connected ?? []).some((d) => d.kind === 'controle')}>
+          <h3>Controles</h3>
+          <For each={(status()?.bt.connected ?? []).filter((d) => d.kind === 'controle')}>
+            {(d) => (
+              <div class="row2 info" data-k="g-pad"><Icon n="pad" /><div><div class="tx">{d.name}</div><small class={d.battery != null && d.battery <= 20 ? 'low' : ''}>{d.battery != null ? `Bateria ${d.battery}%${d.battery <= 20 ? ' · carregue logo' : ''}` : 'Conectado'}</small></div></div>
+            )}
+          </For>
+        </Show>
         <Show when={S.game}>
           <h3>Agora</h3>
           {row('resume', 'play', `Retomar ${S.game!.title}`, S.game!.state === 'closing' ? 'Fechando…' : game()?.kind === 'app' ? 'Aberto' : 'Em execução', 'Retomar')}
           {row('exitgame', 'home', 'Ir ao Início', `${game()?.kind === 'app' ? 'O app' : 'O jogo'} continua aberto em segundo plano`, 'Abrir')}
           {row('closegame', 'power', `Fechar ${game()?.kind === 'app' ? 'app' : 'jogo'}`, game()?.kind === 'app' ? 'Volta ao Nexus' : 'O progresso é salvo pelo próprio jogo', 'Fechar')}
+          <div class="row2 info" data-k="g-emerg"><Icon n="info" /><div><small>Travou? Segure o botão Guia (ou Select + Start) por 3 segundos para fechar à força.</small></div></div>
         </Show>
         <h3>Atalhos</h3>
         {/* volume de verdade do sistema (jogos e apps), não só dos sons da interface */}
@@ -424,7 +433,7 @@ export function TimeUp() {
 }
 
 // ---------- Confirmação ----------
-export function Confirm(p: { title: string; sub?: string; yes?: string; no?: string; danger?: boolean; countdown?: number; oid: number }) {
+export function Confirm(p: { title: string; sub?: string; yes?: string; no?: string; danger?: boolean; safe?: boolean; countdown?: number; oid: number }) {
   // contagem regressiva (ex.: nova resolução): sem resposta, vale o "não" quando chega a zero
   const [left, setLeft] = createSignal(p.countdown ?? 0);
   onMount(() => {
@@ -447,8 +456,8 @@ export function Confirm(p: { title: string; sub?: string; yes?: string; no?: str
         <Show when={p.sub}><p class="sub">{p.sub}</p></Show>
         <Show when={p.countdown}><p class="cdown" data-k="cdown">Volta sozinho em <b>{Math.max(0, left())}</b> s</p></Show>
         <div class="lacts" style={{ 'justify-content': 'flex-start', 'margin-top': '10px' }}>
-          <div class="btn f" data-autofocus data-r="p" data-pad="8" data-a={`yes:${p.oid}`} data-verb="Confirmar" style={p.danger ? { color: 'var(--danger)' } : {}}>{p.yes ?? 'Confirmar'}</div>
-          <div class="btn f" data-r="p" data-pad="8" data-a={`no:${p.oid}`} data-verb="Cancelar">{p.no ?? 'Cancelar'}</div>
+          <div class="btn f" data-autofocus={p.safe ? undefined : ''} data-r="p" data-pad="8" data-a={`yes:${p.oid}`} data-verb="Confirmar" style={p.danger ? { color: 'var(--danger)' } : {}}>{p.yes ?? 'Confirmar'}</div>
+          <div class="btn f" data-autofocus={p.safe ? '' : undefined} data-r="p" data-pad="8" data-a={`no:${p.oid}`} data-verb="Cancelar">{p.no ?? 'Cancelar'}</div>
         </div>
       </div>
     </>

@@ -3,12 +3,46 @@
 use crate::core::Core;
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const BTN_MODE: u16 = 0x13c;
 const BTN_SELECT: u16 = 0x13a;
 const BTN_START: u16 = 0x13b;
+
+/// Quanto tempo segurar Guia (ou Select+Start) para a saída de emergência (`NEXUS_EMERGENCY_MS`, padrão 3 s).
+pub fn hold_ms() -> u64 {
+    std::env::var("NEXUS_EMERGENCY_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(3000)
+}
+
+/// Geração do "segurando": soltar o botão invalida o cronômetro que está esperando.
+static HOLD_GEN: AtomicU64 = AtomicU64::new(0);
+
+/// Guia (ou Select+Start) apertado (`down`) ou solto. Segurar por 3 s com um jogo aberto pede para fechá-lo à força.
+pub fn hold(core: &Arc<Core>, rt: &tokio::runtime::Handle, down: bool) {
+    let gen = HOLD_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    if !down {
+        return;
+    }
+    let core = core.clone();
+    rt.spawn(async move {
+        tokio::time::sleep(Duration::from_millis(hold_ms())).await;
+        if HOLD_GEN.load(Ordering::SeqCst) == gen && core.game_info().is_some() {
+            emergency(&core);
+        }
+    });
+}
+
+/// Saída de emergência: traz o Nexus para a frente (se ainda não estiver) e pede a confirmação na Shell.
+/// Quem fecha o jogo é a Shell, depois do "sim" (`game.close` com `force`, que mata o escopo inteiro).
+pub fn emergency(core: &Core) {
+    if !core.guide_open.load(Ordering::SeqCst) {
+        pressed(core);
+    }
+    let title = core.game_info().map(|g| g.title).unwrap_or_default();
+    core.emit("input.emergency", serde_json::json!({ "title": title }));
+}
 
 pub fn spawn(core: Arc<Core>) {
     let rt = tokio::runtime::Handle::current();
@@ -35,13 +69,21 @@ pub fn spawn(core: Arc<Core>) {
                                 continue;
                             }
                             let down = ev.value() != 0;
+                            let pair_before = sel && start;
                             let fire = match ev.code() {
-                                BTN_MODE => ev.value() == 1,
+                                BTN_MODE => {
+                                    // segurar Guia por 3 s = saída de emergência (ignora o auto-repeat, valor 2)
+                                    if ev.value() == 1 { hold(&core, &rt, true) } else if ev.value() == 0 { hold(&core, &rt, false) }
+                                    ev.value() == 1
+                                }
                                 // Select+Start juntos = Guia (controles sem botão Guia): dispara ao completar o par
                                 BTN_SELECT => { let f = down && !sel && start; sel = down; f }
                                 BTN_START => { let f = down && !start && sel; start = down; f }
                                 _ => false,
                             };
+                            if ev.code() != BTN_MODE && pair_before != (sel && start) {
+                                hold(&core, &rt, sel && start);
+                            }
                             if fire {
                                 let c = core.clone();
                                 rt.spawn(async move { pressed(&c) });

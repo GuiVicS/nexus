@@ -192,6 +192,26 @@ export function startEvents() {
       no: 'Cancelar',
     }).then((ok) => api.eulaAnswer(ok).catch(() => {}));
   });
+  // Saída de emergência: Guia (ou Select+Start) segurado por 3 s com um jogo aberto. O Core já trouxe a Central para a
+  // frente; aqui só pergunta. Fechar à força mata o jogo inteiro (progresso não salvo se perde).
+  client.on('input.emergency', (p: { title: string }) => {
+    if (!S.game || hasOv('confirm')) return;
+    void import('./actions').then(async (m) => {
+      const ok = await askConfirm({
+        title: 'Fechar o jogo agora?',
+        sub: `${p.title || 'O jogo'} será encerrado à força e o que não foi salvo se perde. Use só se ele travou.`,
+        yes: 'Fechar jogo',
+        no: 'Continuar',
+        danger: true,
+        safe: true,
+      });
+      if (ok) {
+        if (topOv()?.kind === 'guide') popOv(undefined, true);
+        setS('frame', null);
+        await m.closeGame(true);
+      } else if (topOv()?.kind === 'guide') m.closeGuide();
+    });
+  });
   client.on('remote.devices', (p) => {
     if (S.pairing) setS('pairing', 'devices', reconcile(p.devices, { key: 'id' }));
   });

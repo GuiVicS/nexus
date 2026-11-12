@@ -128,6 +128,21 @@ impl Core {
             v.truncate(30);
         }
         self.emit("notification.added", serde_json::to_value(&n).unwrap());
+        // Jogo na frente: a Shell está escondida, então o aviso vai para a capa do Nexus por cima do jogo
+        // (`nexus-overlay`). Com "silenciar durante jogos" (padrão), só os importantes (`alert`) passam.
+        if self.game_in_front() && (kind == "alert" || !self.silence_in_game()) {
+            self.emit("game.toast", json!({ "title": title, "body": body, "secs": 6 }));
+        }
+    }
+
+    /// "Silenciar durante jogos" (Ajustes → Notificações): ligado por padrão.
+    pub fn silence_in_game(&self) -> bool {
+        self.db.kv_get("notif_silence_game").map_or(true, |v| v != "0")
+    }
+
+    /// Há jogo/app aberto e ele está na tela (no sway: o espaço de jogos visível; fora dele, basta existir).
+    pub fn game_in_front(&self) -> bool {
+        self.game_info().is_some() && (self.compositor.name() != "sway" || compositor::games_visible())
     }
 
     /// Mostra a Steam a pedido do usuário (login em modo TV, compra). Enquanto durar, janelas novas dela também

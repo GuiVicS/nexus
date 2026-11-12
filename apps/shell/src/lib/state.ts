@@ -211,7 +211,8 @@ export function replaceTop(kind: OvKind, props: Record<string, any>) {
 // ---------- PIN e texto ----------
 export const askPin = (o: { title: string; sub?: string; confirm?: boolean }) => pushOv<string | null>('pin', o).then((v) => v ?? null);
 export const askText = (o: { title: string; sub?: string; value?: string; max?: number; kind?: 'name' | 'key' | 'secret' | 'ip' }) => pushOv<string | null>('text', o).then((v) => (v === undefined ? null : v));
-export const askConfirm = (o: { title: string; sub?: string; yes?: string; no?: string; danger?: boolean }) => pushOv<boolean>('confirm', o).then((v) => !!v);
+/** `safe`: o foco começa em "não" (ações que não dá para desfazer, pedidas sem querer). */
+export const askConfirm = (o: { title: string; sub?: string; yes?: string; no?: string; danger?: boolean; safe?: boolean }) => pushOv<boolean>('confirm', o).then((v) => !!v);
 /** Duas opções de verdade (sim/não) + Voltar: true, false ou null (voltou sem escolher). */
 export const askChoice = (o: { title: string; sub?: string; yes: string; no: string; danger?: boolean; countdown?: number }) => pushOv<boolean | null>('confirm', o).then((v) => (v === true || v === false ? v : null));
 

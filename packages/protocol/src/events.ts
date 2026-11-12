@@ -23,6 +23,8 @@ export interface Events {
   'remote.key': { key: string; mods: string[] };
   'remote.text': { back: number; text: string };
   'input.guide': { frame?: number | null; toggle?: boolean; close?: boolean; ms?: number };
+  'input.emergency': { title: string };
+  'game.toast': { title: string; body: string; secs?: number };
   'steam.ui': { open: boolean };
   'steam.dialog': { open: boolean; title?: string };
   'steam.eula': { itemId: string; title: string };

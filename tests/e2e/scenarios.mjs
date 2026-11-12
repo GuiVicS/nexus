@@ -1102,3 +1102,81 @@ scenarios.central = async () => {
     await core.stop();
   }
 };
+
+// assina os eventos do Core (como faz o nexus-overlay) e guarda os que chegarem
+async function listenEvents(core) {
+  const net = await import('node:net');
+  const got = [];
+  const s = net.createConnection(core.sock);
+  let buf = '';
+  s.on('error', () => {});
+  s.on('data', (d) => {
+    buf += d;
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i);
+      buf = buf.slice(i + 1);
+      try { const m = JSON.parse(line); if (m.method) got.push(m); } catch { /* resposta */ }
+    }
+  });
+  s.write('{"jsonrpc":"2.0","id":1,"method":"hello","params":{}}\n');
+  return { got, close: () => s.destroy() };
+}
+
+// A3: overlay no jogo — Central com bateria do controle e a dica da saída de emergência; segurar Guia (ou Select+Start)
+// por 3 s pede para fechar o jogo à força (aqui 0,7 s: NEXUS_EMERGENCY_MS). Soltar antes não faz nada.
+scenarios.emergencia = async () => {
+  const core = await startCore({ demo: true, env: { NEXUS_EMERGENCY_MS: '700' } });
+  fs.mkdirSync(`${core.dir}/fake-bt`, { recursive: true });
+  fs.writeFileSync(`${core.dir}/fake-bt/paired`, '11:22:33:44:55:01\n');
+  fs.writeFileSync(`${core.dir}/fake-bt/conn`, '11:22:33:44:55:01\n');
+  fs.writeFileSync(`${core.dir}/fake-bt/battery`, '15\n');
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=launch] .dot')`, 'jogo em execução', 6000);
+    check((await core.rpc('game.current'))?.state === 'running', 'Core com jogo aberto');
+    // Central por cima do jogo: bateria do controle e a dica da saída de emergência
+    await core.rpc('guide.press');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=guide] [data-k=g-pad]')`, 'Central sobre o jogo com o controle');
+    check(/Bateria 15%.*carregue logo/.test(await ui.text('[data-k=g-pad]')), 'bateria baixa do controle na Central');
+    check(/Segure o botão Guia/.test(await ui.text('[data-k=g-emerg]')), 'dica da saída de emergência');
+    await ui.screens('a3-jogo');
+    await core.rpc('guide.press'); // fecha a Central
+    await ui.until(`()=>!document.querySelector('#ovs [data-kind=guide]')`, 'Central fechada');
+    // soltou antes do tempo: nada acontece
+    await core.rpc('guide.hold', { down: true });
+    await ui.wait(250);
+    await core.rpc('guide.hold', { down: false });
+    await ui.wait(1000);
+    check(!(await ui.has('#ovs [data-kind=confirm]')), 'soltar antes de 3 s não pergunta nada');
+    // segurou: pergunta; "Continuar jogando" mantém o jogo
+    await core.rpc('guide.hold', { down: true });
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'pergunta se quer fechar o jogo');
+    check(/Fechar o jogo agora/.test(await ui.text('#ovs [data-kind=confirm]')), 'texto da confirmação');
+    await ui.screens('a3-emergencia');
+    await core.rpc('guide.hold', { down: false });
+    check((await ui.focusInfo())?.a?.startsWith('no'), 'o foco começa em "Continuar"');
+    await ui.key('Enter');
+    await ui.until(`()=>!document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação fechada');
+    await ui.wait(400);
+    check((await core.rpc('game.current'))?.state === 'running', 'continuar mantém o jogo aberto');
+    // segurou de novo e confirmou: o jogo fecha à força
+    await core.rpc('guide.hold', { down: true });
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'pergunta de novo');
+    await core.rpc('guide.hold', { down: false });
+    await ui.focusOn((f) => f.a.startsWith('yes'), 6);
+    await ui.key('Enter');
+    for (let i = 0; i < 60; i++) {
+      if ((await core.rpc('game.current')) === null) break;
+      await ui.wait(150);
+    }
+    check((await core.rpc('game.current')) === null, 'jogo fechado à força pelo Core');
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};

@@ -697,6 +697,12 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             core.guide_open.store(false, std::sync::atomic::Ordering::SeqCst);
             Ok(json!({ "ok": true }))
         }
+        "guide.hold" => {
+            // celular (e testes): o mesmo que segurar o Guia — `down` aperta, `down: false` solta
+            let down = v.get("down").and_then(|d| d.as_bool()).unwrap_or(true);
+            crate::guide::hold(core, &tokio::runtime::Handle::current(), down);
+            Ok(json!({ "ok": true }))
+        }
         "guide.press" => {
             crate::guide::pressed(core);
             Ok(json!({ "ok": true }))

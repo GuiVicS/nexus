@@ -448,3 +448,21 @@ Pedido: rclone instalado com o app, login na instalação ou depois, pasta próp
   (`radio wifi on/off`) e `bluetoothctl` falsos. Captura `a2-central` 1080p/720p.
 - **Falta:** brilho não foi testado com backlight real (VM sem); o polkit padrão deixa a sessão ativa chamar
   `SetBrightness` e `suspend`, mas não foi confirmado num PC de verdade.
+
+### A3 — overlay no jogo (2026-11-12) ✅ (com uma parte sem teste de tela)
+
+- **Central sobre o jogo** (já abria com Guia/Select+Start/F1/Super, com o quadro do jogo ao fundo): ganhou a seção
+  **Controles** (cada controle conectado com a bateria; ≤ 20 % em vermelho, "carregue logo") e a dica da saída de emergência.
+  O volume do sistema já estava lá (A2/B3).
+- **Saída de emergência:** segurar **Guia** (ou **Select+Start**) por 3 s (`NEXUS_EMERGENCY_MS`) com jogo aberto. O Core
+  (`guide.rs`) conta o tempo no leitor evdev (soltar antes cancela), traz a Central para a frente e emite
+  `input.emergency`; a Shell pergunta **"Fechar o jogo agora?"** (foco começa em "Continuar", novo `safe` do `askConfirm`)
+  e, no "sim", `game.close` com `force` (SIGKILL no escopo inteiro do jogo). RPC `guide.hold {down}` faz o mesmo (celular/testes).
+- **Aviso por cima do jogo:** `Core::notify` agora emite `game.toast` quando há jogo na frente (no sway, só com o espaço
+  do jogo visível). O `nexus-overlay` (Python/GTK layer-shell) ganhou uma janela de aviso no canto superior direito, que não
+  pega teclado nem mouse. Regra "silenciar durante jogos" no A4.
+- **Testes:** cenário `emergencia` (Central sobre o jogo com bateria 15 %, soltar antes de 3 s não pergunta, "Continuar" mantém
+  o jogo, confirmar fecha pelo Core). Captura `a3-jogo`, `a3-emergencia`.
+- **Não testado:** o aviso GTK (`game.toast` → `nexus-overlay`) só foi checado com `py_compile` (a sessão sway real não pode ser
+  reiniciada aqui) e o evento é conferido no cenário `notificacoes` (A4); a retenção real de 3 s no botão Guia precisa de
+  controle físico (`/dev/uinput` não existe na VM).

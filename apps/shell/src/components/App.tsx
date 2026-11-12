@@ -45,7 +45,7 @@ function OvBody(p: { o: Ov }) {
       <Match when={o.kind === 'roms'}><Roms oid={o.id} /></Match>
       <Match when={o.kind === 'fault'}><Fault /></Match>
       <Match when={o.kind === 'filepick'}><FilePicker title={o.props.title} oid={o.id} /></Match>
-      <Match when={o.kind === 'confirm'}><Confirm title={o.props.title} sub={o.props.sub} yes={o.props.yes} no={o.props.no} danger={o.props.danger} countdown={o.props.countdown} oid={o.id} /></Match>
+      <Match when={o.kind === 'confirm'}><Confirm title={o.props.title} sub={o.props.sub} yes={o.props.yes} no={o.props.no} danger={o.props.danger} safe={o.props.safe} countdown={o.props.countdown} oid={o.id} /></Match>
       <Match when={o.kind === 'margin'}><MarginWizard /></Match>
     </Switch>
   );
