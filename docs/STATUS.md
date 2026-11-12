@@ -85,3 +85,29 @@ revert só apaga o que criou) e plano `slim_and_greetd_on_a_bare_debian`.
 
 A VM de desenvolvimento não é a base oficial (tem GNOME): o número que importa é o da base Debian sem desktop,
 **ainda não medido** (precisa de uma VM/aparelho limpo).
+
+### Item 3 — peso da Shell (2026-11-12)
+
+Shell ociosa no Início (sessão real, VM sem GPU): **146–171 MB (PSS), ~1,1–1,3 % de CPU, 5–7 processos**. Por processo,
+quase toda a CPU é o processo de GPU compondo por software (`--disable-gpu` na VM); o renderizador fica em 0–2 ticks
+em 30 s. Com jogo aberto a Shell fica congelada (item 1): 0 %.
+
+Tentativas medidas e **desfeitas por não terem ganho**:
+- Opções do Chromium (`disable-features` MediaRouter/Translate/…, `renderer-process-limit=1`, `disable-background-networking`,
+  `js-flags=--max-old-space-size=160`…): 146 MB → 146 MB, CPU igual.
+- Laço do controle (`requestAnimationFrame` sempre ligado) só com controle conectado: renderizador 0 → 0–2 ticks/30 s,
+  GPU 31 → 34 ticks: sem diferença mensurável (o Chromium já não desenha quadros sem mudança).
+
+Comparação de motores com a **mesma** interface (`tools/compare-engines.sh`: Core de demonstração, sway headless com
+pixman, mesma tela, 90 s depois de abrir):
+
+| Motor | RAM (PSS) | CPU | Processos | Observação |
+|---|---|---|---|---|
+| Electron 45 (atual) | 171 MB | 19,3 % | 5 | ponte segura com o Core (preload) |
+| Chromium/Chrome `--kiosk --app` | 169 MB | 18,1 % | 11 | precisaria da Shell falando com o Core por WebSocket (exposto em TCP) e de um navegador instalado |
+| WebKitGTK 4.1 (motor do Tauri) | 256 MB | 14,6 % | 3 | inclui ~15 MB do Python do teste; Tauri exigiria reescrever a ponte em Rust |
+
+A CPU alta dos três é do compositor headless sem limite de quadros (na sessão real a mesma Shell fica em ~1 %); serve
+só para comparar entre eles. **Recomendação: manter o Electron.** Nenhuma alternativa ganha em RAM de forma clara
+(Chromium empata, WebKitGTK gasta mais) e todas custam reescrever a ponte. O ganho grande já veio de congelar a Shell
+durante o jogo. Repetir a comparação no Raspberry Pi (com GPU V3D) antes de fechar a questão.
