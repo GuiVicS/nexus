@@ -521,3 +521,6 @@ Pedido: rclone instalado com o app, login na instalação ou depois, pasta próp
 - **Não testado:** disco USB e udisks2 reais (VM sem USB; o `Format` exige `exfatprogs`/`e2fsprogs` e a regra padrão do polkit
   para `modify-device` em disco removível da sessão ativa) e jogos de verdade vindos do pendrive (o `scan` com a pasta extra
   não tem teste de biblioteca; o código só soma a raiz à lista que já era varrida).
+
+- **Nota de teste (A1):** como o Core agora empurra `status.changed` em toda conexão, o `rpc()` de `tests/e2e/lib.mjs` passou a ignorar linhas sem `id` (eventos) e esperar a resposta; antes pegava a primeira linha.
+- **Suíte completa da Fase 2 (agente A):** Core 99 unidade + 17 e2e, tsc limpo, 21 cenários de UI sem falhas (`primeiro_uso` e `celular` repetidos depois do ajuste do `rpc()` e de compilar `apps/remote`).

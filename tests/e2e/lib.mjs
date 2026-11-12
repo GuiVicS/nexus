@@ -58,11 +58,15 @@ export function rpc(sock, method, params = {}) {
     s.on('error', reject);
     s.on('data', (d) => {
       buf += d;
-      const i = buf.indexOf('\n');
-      if (i >= 0) {
+      let i;
+      // o Core também empurra eventos (status.changed…) nesta conexão: só vale a linha com a resposta (tem id)
+      while ((i = buf.indexOf('\n')) >= 0) {
         const m = JSON.parse(buf.slice(0, i));
+        buf = buf.slice(i + 1);
+        if (m.id === undefined) continue;
         s.end();
         m.error ? reject(Object.assign(new Error(m.error.message), m.error)) : resolve(m.result);
+        return;
       }
     });
     s.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) + '\n');
