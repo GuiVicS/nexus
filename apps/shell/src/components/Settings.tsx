@@ -6,6 +6,7 @@ import { askConfirm, askPin, effectsLevel, fail, guarded, isKid, me, prefs, S, s
 import { fmtBytes, ratingLabel } from '../lib/format';
 import { Avatar, Icon, Switch } from './ui';
 import { PadsSection } from './Pads';
+import { ControlsExtras } from './Controls';
 import { AudioPanel, BtPanel, DisplayPanel, LocalePanel, NetPanel } from './System';
 import { sfx } from '@nexus/ui';
 
@@ -94,6 +95,7 @@ function PaneCtrl() {
       <SwRow k="invy" label="Inverter eixo Y" desc="Para câmeras em terceira pessoa" />
       <Info label="Mapa de botões" desc="A selecionar · B voltar · Y busca · ≡ opções · LB/RB seções · LT/RT página · Guia central" />
       <Show when={!isKid()}><ActRow a="remote" icon="tv" label="Usar o celular como controle" desc="Gamepad, mouse e teclado no celular" k="s-remote" /></Show>
+      <ControlsExtras />
       <Show when={!isKid()}><PadsSection /></Show>
     </Pane>
   );

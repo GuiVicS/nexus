@@ -932,3 +932,59 @@ scenarios.navegacao = async () => {
     await core.stop();
   }
 };
+
+// B6: Ajustes → Controles só com o teclado: zona morta, teste ao vivo de botões/analógicos (controle falso injetado na
+// Gamepad API), vibração de teste e ajuda para controle sem suporte.
+scenarios.controles = async () => {
+  const core = await startCore({ demo: true });
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    // controle falso: a página lê navigator.getGamepads() como num controle de verdade
+    await ui.ev(`(()=>{window.__rumbles=0;window.__gp={id:'Xbox Wireless Controller (STANDARD GAMEPAD)',index:0,connected:true,mapping:'standard',axes:[0,0,0,0],buttons:Array.from({length:17},()=>({pressed:false,value:0})),vibrationActuator:{playEffect:async()=>{window.__rumbles++;return 'complete'}}};navigator.getGamepads=()=>[window.__gp];})()`);
+    await openSettingsCat(ui, 'ctrl', 'Controles');
+    await ui.until(`()=>document.querySelector('[data-k=ctl-test]')`, 'seção Testar');
+    check(/Controle sem suporte/.test(await ui.text('#setpane')), 'ajuda para controle sem suporte aparece');
+    await ui.key('ArrowRight'); // entra no painel
+    // zona morta: 10 % → 14 % com →, e → 8 % com ←
+    await goTo(ui, 'ctl-dz', 'zona morta');
+    check(/10%/.test(await ui.text('[data-k=ctl-dz]')), 'zona morta começa em 10 %');
+    await ui.key('ArrowRight');
+    await ui.key('ArrowRight');
+    check(/14%/.test(await ui.text('[data-k=ctl-dz]')), 'zona morta sobe de 2 em 2 (14 %)');
+    check((await ui.ev(`localStorage.getItem('nexus.deadzone')`)) === '14', 'zona morta guardada neste aparelho');
+    // vibração de teste
+    await goTo(ui, 'ctl-vib', 'vibração de teste');
+    await ui.key('Enter');
+    await ui.until(`()=>window.__rumbles===1`, 'vibração enviada ao controle');
+    // teste ao vivo
+    await goTo(ui, 'ctl-test', 'testar botões');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('[data-pt] [data-k=pt-name]')`, 'tela de teste com o controle');
+    check(/Xbox Wireless Controller/.test(await ui.text('[data-k=pt-name]')), 'mostra o nome do controle');
+    await ui.ev(`(()=>{const g=window.__gp;g.buttons[0]={pressed:true,value:1};g.buttons[7]={pressed:true,value:0.5};g.axes=[0.6,-0.5,0.05,0];})()`);
+    await ui.until(`()=>document.querySelector('.pt-b[data-b=A]')?.classList.contains('on')`, 'botão A aceso');
+    check(await ui.ev(`!document.querySelector('.pt-b[data-b=B]').classList.contains('on')`), 'B continua apagado');
+    check(/RT 50%/.test(await ui.text('.pt-trig')), 'gatilho direito a 50 %');
+    check(/Analógico esquerdo 60, -50/.test(await ui.text('[data-k=pt-l]')), 'analógico esquerdo ao vivo');
+    check((await ui.ev(`document.querySelector('[data-k=pt-r] i').dataset.dead`)) === '1', 'analógico direito dentro da zona morta');
+    check(/A/.test(await ui.text('[data-k=pt-last]')), 'último botão lembrado');
+    // o teste não navega nos menus: A apertado no controle não fecha nem abre nada
+    check((await ui.overlays()).includes('padtest'), 'A no controle não navegou (teste continua aberto)');
+    await ui.screens('b6-controles-teste');
+    // segurar B por 1 s sai
+    await ui.ev(`(()=>{window.__gp.buttons[1]={pressed:true,value:1};})()`);
+    await ui.until(`()=>!document.querySelector('[data-pt]')`, 'segurar B sai do teste', 4000);
+    await ui.ev(`(()=>{window.__gp.buttons=window.__gp.buttons.map(()=>({pressed:false,value:0}));})()`);
+    await ui.until(`()=>document.querySelector('[data-k=ctl-test]')`, 'volta aos ajustes');
+    await ui.wait(500);
+    check(!(await ui.overlays()).includes('padtest'), 'teste fechado');
+    await ui.screens('b6-controles');
+    check(ui.errors().length === 0, `sem erros de JavaScript${ui.errors().length ? ': ' + ui.errors().join(' | ') : ''}`);
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};

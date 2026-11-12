@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, Switch, Match, type JSX } from 'solid-js';
 import { fitStage, loadMargin } from '../lib/display';
 import { MarginWizard } from './System';
+import { PadTest } from './Controls';
 import { Focus } from '@nexus/focus';
 import { sfx } from '@nexus/ui';
 import { ACT, THEME_LABEL, back, firstFocus, adjust, tab, tabsNow } from '../lib/actions';
@@ -20,7 +21,7 @@ import { AppEditor, AppPicker, FilePicker } from './Apps';
 import { PadEditor, PadMapper } from './Pads';
 import { Boot, Onboarding, ProfileEditor, ProfilePicker, Standby } from './Profiles';
 
-const FULL: Ov['kind'][] = ['margin', 'fault', 'hub', 'search', 'settings', 'launch', 'profile', 'timeup', 'appicker', 'appedit', 'filepick', 'padmap', 'padedit', 'roms'];
+const FULL: Ov['kind'][] = ['margin', 'padtest', 'fault', 'hub', 'search', 'settings', 'launch', 'profile', 'timeup', 'appicker', 'appedit', 'filepick', 'padmap', 'padedit', 'roms'];
 
 function OvBody(p: { o: Ov }) {
   const o = p.o;
@@ -46,6 +47,7 @@ function OvBody(p: { o: Ov }) {
       <Match when={o.kind === 'filepick'}><FilePicker title={o.props.title} oid={o.id} /></Match>
       <Match when={o.kind === 'confirm'}><Confirm title={o.props.title} sub={o.props.sub} yes={o.props.yes} no={o.props.no} danger={o.props.danger} countdown={o.props.countdown} oid={o.id} /></Match>
       <Match when={o.kind === 'margin'}><MarginWizard /></Match>
+      <Match when={o.kind === 'padtest'}><PadTest oid={o.id} /></Match>
     </Switch>
   );
 }

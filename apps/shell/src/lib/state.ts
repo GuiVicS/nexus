@@ -8,7 +8,7 @@ import { api } from './api';
 
 export type Screen = 'boot' | 'standby' | 'onboarding' | 'profiles' | 'shell';
 export type Tab = 'home' | 'biblioteca' | 'emu' | 'midia' | 'loja';
-export type OvKind = 'sheet' | 'hub' | 'search' | 'settings' | 'guide' | 'notif' | 'launch' | 'pin' | 'text' | 'profile' | 'timeup' | 'confirm' | 'appicker' | 'appedit' | 'filepick' | 'padmap' | 'padedit' | 'roms' | 'fault' | 'margin';
+export type OvKind = 'sheet' | 'hub' | 'search' | 'settings' | 'guide' | 'notif' | 'launch' | 'pin' | 'text' | 'profile' | 'timeup' | 'confirm' | 'appicker' | 'appedit' | 'filepick' | 'padmap' | 'padedit' | 'roms' | 'fault' | 'margin' | 'padtest';
 export type Mode = 'key' | 'pad' | 'ptr';
 
 export const DEFAULT_PREFS: Prefs = { theme: 'dark', sfx: true, vol: 60, reduce: false, hc: false, subs: false, invy: false, vib: true, pins: [], favs: [] };

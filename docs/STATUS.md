@@ -390,3 +390,22 @@ Pedido do usuário: "quando chegar no final da página, deve travar; só voltar 
   - andar pela lista lateral a partir de "Voltar ao Início" pulava para a categoria ativa.
 - **Teste:** cenário `navegacao` (fim e topo do painel, ← para a categoria certa, → para o mesmo item, pontas da
   lista lateral, ↓ item a item).
+
+### B6 — controles (2026-11-12) ✅ (parcial: sem perfil por emulador)
+
+- Ajustes → **Controles** ganhou:
+  - **Testar botões e analógicos:** tela cheia que mostra ao vivo A/B/X/Y, LB/RB, LT/RT (com %), Select/Start/Guia, L3/R3,
+    direcional e os dois analógicos (com a zona morta desenhada). Lê a Gamepad API do próprio navegador, então não passa pelo
+    Core. Durante o teste o controle **não navega** nos menus: segure **B por 1 s** para sair; **Select** faz vibrar. A
+    navegação só volta quando todos os botões forem soltos (senão o botão segurado abriria algo nos Ajustes).
+  - **Vibração de teste** (`vibrationActuator`; avisa, sem erro, se o controle/conexão não vibra).
+  - **Zona morta** dos analógicos (0–40 %, de 2 em 2, padrão 10 %): guardada neste aparelho (`localStorage`) e aplicada à
+    navegação por controle da Shell (`input.ts`).
+  - **Ajuda para controle sem suporte** (cinco situações comuns, em português simples).
+- Já existia e foi mantido: lista, apelido, ordem dos jogadores, mapeamento e exportação para o RetroArch.
+- **Teste:** cenário `controles` (controle falso injetado em `navigator.getGamepads`): zona morta, vibração, botões,
+  gatilho, analógicos, zona morta, "sem navegar durante o teste", sair com B. Capturas `b6-controles-teste` e
+  `b6-controles` (1080p/720p).
+- **Não feito:** **perfil de controle por emulador** (exigiria um arquivo de configuração do RetroArch por console, ainda não
+  existe na pasta de dados do Nexus) e **zona morta nos emuladores** (hoje o RetroArch usa a dele; a do Nexus vale só para a
+  interface). `tests/e2e/lib.mjs` passou a aceitar `NEXUS_CORE_BIN` (binário do Core a testar).
