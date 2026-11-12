@@ -20,7 +20,7 @@ fn net_part(n: &Value) -> Value {
         Some(_) => "cabo",
         None => "none",
     };
-    json!({ "available": true, "kind": kind, "name": main["connection"], "signal": n["signal"], "online": n["online"].as_bool().unwrap_or(false), "connectivity": n["connectivity"] })
+    json!({ "available": true, "kind": kind, "wifiEnabled": n["wifiEnabled"].as_bool().unwrap_or(false), "hasWifi": n["hasWifi"].as_bool().unwrap_or(false), "name": main["connection"], "signal": n["signal"], "online": n["online"].as_bool().unwrap_or(false), "connectivity": n["connectivity"] })
 }
 
 fn bt_part(b: &Value) -> Value {

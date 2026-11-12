@@ -17,6 +17,7 @@ pub mod hardware;
 pub mod inputmap;
 pub mod audio;
 pub mod bluetooth;
+pub mod brightness;
 pub mod locale;
 pub mod net;
 pub mod procs;

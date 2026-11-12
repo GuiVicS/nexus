@@ -7,7 +7,9 @@ case "$*" in
   "-t -f DEVICE,TYPE,STATE,CONNECTION device")
     echo "lo:loopback:connected (externally):lo"
     if [ -n "$cur" ]; then echo "wlan0:wifi:connected:$cur"; else echo "wlan0:wifi:disconnected:--"; fi ;;
-  "-t -f WIFI radio") echo enabled ;;
+  "-t -f WIFI radio") [ "$(cat "$S.radio" 2>/dev/null)" = off ] && echo disabled || echo enabled ;;
+  "radio wifi on") echo on > "$S.radio" ;;
+  "radio wifi off") echo off > "$S.radio" ;;
   "-t -f IP4.ADDRESS,IP4.GATEWAY,IP4.DNS,GENERAL.HWADDR device show wlan0")
     printf 'IP4.ADDRESS[1]:192.168.0.42/24\nIP4.GATEWAY:192.168.0.1\nIP4.DNS[1]:192.168.0.1\nGENERAL.HWADDR:AA\\:BB\\:CC\\:00\\:11\\:22\n' ;;
   "-t -f ipv4.method connection show "*) echo "ipv4.method:auto" ;;

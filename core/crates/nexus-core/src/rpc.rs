@@ -802,6 +802,17 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             let dir = core.cfg.data_dir.clone();
             Ok(blocking(move || crate::status::snapshot(&dir)).await?)
         }
+        // brilho: do dia a dia, qualquer perfil (a Central rápida só mostra se a tela tem backlight)
+        "brightness.status" => {
+            need_session(core)?;
+            Ok(blocking(crate::brightness::status).await?)
+        }
+        "brightness.set" => {
+            need_session(core)?;
+            let pct = v.get("percent").and_then(|x| x.as_u64()).ok_or_else(|| RpcError::invalid("falta 'percent'"))?.min(100) as u8;
+            blocking(move || crate::brightness::set(pct)).await?.map_err(|e| RpcError::new(E_FAILED, &e))?;
+            Ok(blocking(crate::brightness::status).await?)
+        }
         "status.refresh" => {
             core.status_kick.notify_one();
             Ok(json!({ "ok": true }))

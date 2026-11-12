@@ -22,7 +22,7 @@ export interface Events {
   'remote.scroll': { v: number };
   'remote.key': { key: string; mods: string[] };
   'remote.text': { back: number; text: string };
-  'input.guide': { frame?: number | null; toggle?: boolean; close?: boolean };
+  'input.guide': { frame?: number | null; toggle?: boolean; close?: boolean; ms?: number };
   'steam.ui': { open: boolean };
   'steam.dialog': { open: boolean; title?: string };
   'steam.eula': { itemId: string; title: string };

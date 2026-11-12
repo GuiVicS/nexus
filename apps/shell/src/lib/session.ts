@@ -209,6 +209,7 @@ export function startEvents() {
         else m.ACT.guide('');
         return;
       }
+      (window as unknown as { __guideT0?: number }).__guideT0 = performance.now();
       setS('frame', p?.frame ?? null);
       if (topOv()?.kind !== 'guide') m.ACT.guide('');
     });

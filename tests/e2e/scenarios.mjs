@@ -1037,3 +1037,68 @@ scenarios.statusbar = async () => {
     await core.stop();
   }
 };
+
+// A2: Central rápida — saída de som, brilho (com backlight falso), Wi-Fi e Bluetooth liga/desliga e suspender,
+// só com o teclado/controle. Mede quanto demora para a Central aparecer.
+scenarios.central = async () => {
+  const core = await startCore({ demo: true });
+  const BL = `${core.dir}/backlight/intel_backlight`;
+  fs.mkdirSync(BL, { recursive: true });
+  fs.writeFileSync(`${BL}/max_brightness`, '1000\n');
+  fs.writeFileSync(`${BL}/brightness`, '800\n');
+  fs.writeFileSync(`${core.dir}/fake-net`, 'Casa Nexus\n');
+  const rd = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim() : '');
+  const toast = (re) => `()=>[...document.querySelectorAll('.toast')].some(t=>${re}.test(t.textContent))`;
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await ui.until(`()=>!!document.querySelector('#sstat [data-k=st-net]')`, 'estado carregado');
+    await ui.key('Tab');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=guide] [data-k=g-bright]')`, 'Central com brilho (há backlight)');
+    const ms = await ui.ev(`window.__guideMs`);
+    check(typeof ms === 'number' && ms < 1500, `Central abriu em ${ms} ms (menos de 1,5 s)`);
+    // saída de som: ←/→ troca (Áudio interno → TV pelo HDMI)
+    await ui.until(`()=>/Áudio interno/.test(document.querySelector('[data-k=g-out]')?.textContent||'')`, 'saída atual na Central');
+    await goTo(ui, 'g-out', 'g-out');
+    await ui.key('ArrowRight');
+    await waitNode(() => rd(`${core.dir}/fake-audio/default`) === '54', 'saída trocada para a TV (HDMI)', 5000);
+    await ui.until(`()=>/TV Samsung/.test(document.querySelector('[data-k=g-out]')?.textContent||'')`, 'Central mostra a nova saída');
+    await ui.until(toast('/Saída de som/'), 'aviso da nova saída');
+    // brilho 80 → 70
+    await goTo(ui, 'g-bright', 'g-bright');
+    check(/80/.test(await ui.text('[data-k=g-bright]')), 'brilho atual (80)');
+    await ui.key('ArrowLeft');
+    await ui.key('ArrowLeft');
+    await waitNode(() => rd(`${BL}/brightness`) === '700', 'brilho 70 gravado pelo Core (logind simulado)', 5000);
+    check(/SetBrightness ssu backlight intel_backlight 700/.test(rd(`${core.dir}/busctl.log`)), 'pedido ao logind com o dispositivo certo');
+    // Wi-Fi desliga e liga
+    await goTo(ui, 'g-wifi', 'g-wifi');
+    await ui.key('Enter');
+    await waitNode(() => rd(`${core.dir}/fake-net.radio`) === 'off', 'Wi-Fi desligado no NetworkManager', 5000);
+    await ui.until(`()=>document.querySelector('[data-k=g-wifi] .sw')?.getAttribute('aria-checked')==='false'`, 'chave do Wi-Fi desligada (estado vem do Core)', 9000);
+    await ui.key('Enter');
+    await waitNode(() => rd(`${core.dir}/fake-net.radio`) === 'on', 'Wi-Fi ligado de novo', 5000);
+    // Bluetooth
+    await goTo(ui, 'g-bt', 'g-bt');
+    check((await ui.ev(`document.querySelector('[data-k=g-bt] .sw')?.getAttribute('aria-checked')`)) === 'true', 'Bluetooth ligado na Central');
+    await ui.key('Enter');
+    await waitNode(() => rd(`${core.dir}/fake-bt/power`) === 'no', 'Bluetooth desligado no BlueZ', 5000);
+    await ui.until(`()=>document.querySelector('[data-k=g-bt] .sw')?.getAttribute('aria-checked')==='false'`, 'chave do Bluetooth desligada', 9000);
+    await ui.screens('a2-central');
+    // suspender: confirmação e, em desenvolvimento, só simula
+    await goTo(ui, 'g-suspend', 'suspender');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação de suspender');
+    await ui.key('Escape');
+    await ui.until(`()=>!document.querySelector('#ovs [data-kind=confirm]')`, 'B cancela');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação de novo');
+    await ui.key('Enter');
+    await ui.until(toast('/Suspenso/'), 'suspensão simulada');
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};

@@ -432,3 +432,19 @@ Pedido: rclone instalado com o app, login na instalação ou depois, pasta próp
   rede, tudo por evento, sem foco na barra). Captura `a1-status` 1080p/720p.
 - **Falta:** esconder também durante vídeo (a aba Mídia/mpv é de outro agente: basta a Shell esconder `#sstat` quando o
   player estiver aberto); perfil já aparece pelo avatar da barra.
+
+### A2 — Central rápida completa (2026-11-12) ✅
+
+- **Novos atalhos na Central** (Guia / Tab): **Saída de som** (←/→ troca TV/analógica/fone, com aviso), **Brilho** (slider, só
+  quando a tela tem backlight), **Wi-Fi** e **Bluetooth** liga/desliga (adultos; o estado vem do Core pelo `status.changed`,
+  então a chave só muda quando o serviço de fato mudou) e **Suspender** (confirmação; `systemctl suspend` pelo logind).
+- **Brilho no Core (`brightness.rs`):** lê `/sys/class/backlight` (o de mais passos), grava pelo **logind**
+  (`busctl … Session.SetBrightness`, sem root) e, se recusar, direto no sysfs. Mínimo de 5 % (nunca tela preta). RPC
+  `brightness.status` / `brightness.set`; qualquer perfil mexe. TV/monitor HDMI não têm backlight: o controle não aparece.
+- **Tempo para abrir sobre o jogo:** o Core mede o quadro (`grim`, no máximo 1,5 s) + Shell na frente e registra no log
+  ("menu rápido sobre o jogo: … ms"; vai no evento `input.guide.ms`); a Shell mede o desenho (`window.__guideMs`).
+  Na VM, sem jogo de verdade, o desenho leva ~3–30 ms. **Não medido com jogo real em tela cheia** (VM sem GPU/sessão real).
+- **Testes:** unidade (conversão de brilho) e cenário `central` com `busctl` falso (grava o brilho), backlight falso, `nmcli`
+  (`radio wifi on/off`) e `bluetoothctl` falsos. Captura `a2-central` 1080p/720p.
+- **Falta:** brilho não foi testado com backlight real (VM sem); o polkit padrão deixa a sessão ativa chamar
+  `SetBrightness` e `suspend`, mas não foi confirmado num PC de verdade.

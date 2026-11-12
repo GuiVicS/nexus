@@ -83,11 +83,14 @@ pub fn pressed(core: &Core) {
         core.emit("input.guide", serde_json::json!({ "toggle": true }));
         return;
     }
+    let t0 = std::time::Instant::now();
     // PNG: o grim do Debian/Ubuntu vem sem suporte a JPEG
     let frame = core.cfg.runtime_dir.join("frame.png");
     // o grim trava com a tela bloqueada/protetor de tela: no máximo 1,5 s, senão o menu abre sem o quadro do jogo
     let ok = sway && crate::util::run_with_timeout(std::process::Command::new("grim").args(["-l", "1"]).arg(&frame), std::time::Duration::from_millis(1500));
     core.guide_open.store(true, Ordering::SeqCst);
     core.compositor.show_shell();
-    core.emit("input.guide", serde_json::json!({ "frame": if ok { Some(nexus_protocol::now_unix()) } else { None } }));
+    let ms = t0.elapsed().as_millis() as u64;
+    tracing::info!("menu rápido sobre o jogo: quadro + Shell na frente em {ms} ms");
+    core.emit("input.guide", serde_json::json!({ "frame": if ok { Some(nexus_protocol::now_unix()) } else { None }, "ms": ms }));
 }
