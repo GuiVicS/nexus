@@ -179,3 +179,16 @@ Modelo de ameaça e controles em `SECURITY.md`. Mudanças no Remote (`:8787`):
   mesma origem ok, 17ª conexão recusada, token vencido 403 com aviso e novo QR funcionando).
 - **Verificado no Core real** da sessão (10.0.2.15:8787): página 200, hello 200, origem errada 403, mesma origem
   200, `/roms` 200, token errado 403. Instalações antigas não perdem o pareamento (prazo começa na atualização).
+
+### Item 9 — lacunas do uso diário (auditoria, 2026-11-12)
+
+| Área | Hoje | Lacuna | Prioridade |
+|---|---|---|---|
+| **Volume / saída de áudio** | O slider de volume (Configurações e menu rápido) só muda os **sons da interface** (`prefs.vol` → sfx). | Não controla o volume do sistema/jogo nem escolhe a saída (HDMI × fone × Bluetooth). O usuário espera que o volume do menu rápido mude o jogo. Proposta: `wpctl` (PipeWire, já instalado) no Core — `audio.status/set_volume/set_sink`, mudo, e trocar para HDMI ao conectar. | **Alta** |
+| **Bluetooth** | Parear/remover controles (`bt.scan/pair/remove`, `controllers.rs`, tela de Controles). | Só controles: fones e caixas de som não aparecem (filtro `looks_like_pad`). Sem ligar/desligar o adaptador pela interface. | Média |
+| **Suspender / retomar** | "Suspender" chama `systemctl suspend`. | Nada trata a volta: jogo aberto não é pausado antes, controles BT podem não reconectar, a Shell não sabe que o sistema dormiu (relógio/rede). Proposta: escutar `PrepareForSleep` do logind, congelar o jogo (`cgroup.freeze`) e reconectar ao voltar. Não testável na VM (sem S3). | Média |
+| **Controle conectado/desconectado com jogo aberto** | Botão Guia: varredura de `/dev/input` a cada 3 s. Shell: eventos `gamepadconnected`. Controles registrados por jogador (`players_cfg`). | Sem aviso na tela quando o controle desliga no meio do jogo (bateria); demora até 3 s para o Guia funcionar num controle novo. Proposta: inotify em `/dev/input` + toast "Controle 1 desconectado". | Média |
+| **HDMI-CEC** (controle remoto da TV) | Nada. | Ligar/desligar a TV junto com o Nexus e navegar com o controle da TV. Depende de hardware: placas de vídeo de PC quase nunca têm CEC (só Raspberry Pi e adaptadores Pulse-Eight). Proposta: `cec-client` opcional quando existir `/dev/cec*`. | Baixa |
+| **Resolução / HDR / taxa** | Saída padrão do sway. | Sem tela para escolher resolução ou 60/120 Hz (TV 4K com PC fraco). | Média (prompt 2) |
+
+Essas lacunas viram telas do prompt "Telas de sistema" (Som, Bluetooth, Energia, Tela), que é o próximo passo.
