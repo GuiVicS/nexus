@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -I
-"""Gera as imagens da marca usadas fora da Shell (sem navegador): tela de boot (Plymouth) e fundo do sway
-enquanto a Shell sobe. Saída versionada no repositório; rode de novo só se a marca mudar.
+"""Gera as imagens da marca usadas fora da Shell (sem navegador): tela de boot (Plymouth), fundo do sway
+enquanto a Shell sobe e os ícones do controle no celular instalado como app (PWA). Saída versionada no repositório; rode de novo só se a marca mudar.
   python3 -I tools/make-brand.py"""
 import math
 import os
@@ -82,8 +82,34 @@ def dot(path, d):
     surf.write_to_png(path)
 
 
+def app_icon(path, size, full_bleed, mark_frac):
+    """Ícone do PWA: fundo escuro (quadrado arredondado, ou cheio para 'maskable'/Apple, que cortam sozinhos)."""
+    sf = cairo.ImageSurface(cairo.FORMAT_ARGB32, size, size)
+    cr = cairo.Context(sf)
+    cr.set_source_rgb(*BG)
+    if full_bleed:
+        cr.paint()
+    else:
+        r = size * 0.22
+        cr.new_sub_path()
+        cr.arc(size - r, r, r, -math.pi / 2, 0)
+        cr.arc(size - r, size - r, r, 0, math.pi / 2)
+        cr.arc(r, size - r, r, math.pi / 2, math.pi)
+        cr.arc(r, r, r, math.pi, 3 * math.pi / 2)
+        cr.close_path()
+        cr.fill()
+    mark(cr, size / 2, size / 2, size * mark_frac)
+    sf.write_to_png(path)
+
+
 if __name__ == "__main__":
     splash(os.path.join(ROOT, "system/brand/splash.png"), 1920, 1080, "")
     logo(os.path.join(ROOT, "system/plymouth/nexus/logo.png"), 220)
     dot(os.path.join(ROOT, "system/plymouth/nexus/dot.png"), 14)
+    pub = os.path.join(ROOT, "apps/remote/public")
+    app_icon(os.path.join(pub, "icon-192.png"), 192, False, 0.86)
+    app_icon(os.path.join(pub, "icon-512.png"), 512, False, 0.86)
+    # maskable: o Android recorta em círculo/gota; a marca fica dentro da zona segura (80 % central)
+    app_icon(os.path.join(pub, "icon-maskable-512.png"), 512, True, 0.62)
+    app_icon(os.path.join(pub, "apple-touch-icon.png"), 180, True, 0.72)
     print("ok")

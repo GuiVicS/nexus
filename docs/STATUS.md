@@ -390,3 +390,12 @@ Pedido do usuário: "quando chegar no final da página, deve travar; só voltar 
   - andar pela lista lateral a partir de "Voltar ao Início" pulava para a categoria ativa.
 - **Teste:** cenário `navegacao` (fim e topo do painel, ← para a categoria certa, → para o mesmo item, pontas da
   lista lateral, ↓ item a item).
+
+### Controle no celular como app (PWA) (2026-11-12) ✅
+- `apps/remote`: `manifest.webmanifest` (nome "Nexus · Controle", tela cheia), ícones 192/512/maskable/apple-touch (gerados por `tools/make-brand.py`), metas de app no iOS e Android.
+- O código do QR fica no `localStorage`: o app aberto pela tela inicial entra sem `?t=`. O código não muda quando a TV reinicia; só é trocado depois de muito tempo sem uso.
+- `sw.js` (cache "rede primeiro", nunca guarda `/remote/*` nem o envio de ROMs) só é registrado em contexto seguro.
+- Menu do controle: botão "Instalar na tela inicial". Usa o pedido do navegador quando existe; senão (ou se falhar) mostra o caminho pelo menu (iPhone: Compartilhar → Adicionar à Tela de Início; Android: ⋮ → Adicionar à tela inicial). Some quando o app já está instalado.
+- **Limites:** por http na rede local o Chrome do Android não roda o `sw.js` nem oferece "Instalar"; o atalho pela tela inicial funciona. No iOS funciona normalmente. O app fica preso ao IP da TV; a porta (8787) é fixa. Se o IP mudar, escaneie o QR de novo.
+- **Testes:** cenário `celular` com 4 checagens novas (manifesto, código guardado, botão, instruções). A Core entrega manifesto, `sw.js` e ícones com o tipo certo.
+- `tests/e2e/cdp.mjs`: o perfil do Chromium agora é temporário e apagado ao fechar, matando o grupo de processos inteiro. Antes sobravam cerca de 60–90 MB por execução em `/tmp/cdp-*`; acumulou 4,6 GB e encheu o `/tmp`.

@@ -57,3 +57,6 @@ svg.i{width:1.2em;height:1.2em;fill:none;stroke:currentColor;stroke-width:2;stro
 .kk{flex:none;min-width:46px;height:42px;padding:0 12px;border-radius:12px;background:var(--card);border:1px solid var(--line);font-size:14px;font-family:var(--mono)}.kk:active{background:var(--primary);color:var(--primary-fg)}
 .ghost-input{position:fixed;left:-200px;top:0;width:100px;height:30px;opacity:0;font-size:16px}
 @media (orientation:landscape) and (max-height:480px){.tp-main{padding:4px 12px}.keybar{padding-top:2px}}
+.link.inst{display:inline-flex;align-items:center;gap:8px;background:none;border:1px solid #2a3a3d;color:var(--fg);padding:10px 18px;border-radius:999px;font-size:15px;margin-top:6px}
+.link.inst .i{width:18px;height:18px}
+.inst-how{margin-top:4px}

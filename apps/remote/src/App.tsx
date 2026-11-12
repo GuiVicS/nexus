@@ -13,12 +13,51 @@ function getToken(): string {
   const u = new URL(location.href);
   const t = u.searchParams.get('t');
   if (t) {
-    try { sessionStorage.setItem('nx-token', t); } catch { /* sem storage */ }
+    // localStorage: o app instalado na tela inicial abre sem o ?t= e continua conectado
+    try { localStorage.setItem('nx-token', t); } catch { /* sem storage */ }
     u.searchParams.delete('t');
     history.replaceState(null, '', u.pathname + (u.search || ''));
     return t;
   }
-  try { return sessionStorage.getItem('nx-token') ?? ''; } catch { return ''; }
+  try { return localStorage.getItem('nx-token') ?? sessionStorage.getItem('nx-token') ?? ''; } catch { return ''; }
+}
+
+// Instalar na tela inicial: o Chrome só oferece o pedido em https; fora disso mostramos o caminho pelo menu do navegador.
+type InstallEvt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
+const [installEvt, setInstallEvt] = createSignal<InstallEvt | null>(null);
+addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); setInstallEvt(e as InstallEvt); });
+const installed = () =>
+  matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || (navigator as { standalone?: boolean }).standalone === true;
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+function InstallHint() {
+  const [open, setOpen] = createSignal(false);
+  const [done, setDone] = createSignal(installed());
+  addEventListener('appinstalled', () => setDone(true));
+  const go = async () => {
+    const e = installEvt();
+    if (!e) return setOpen((v) => !v);
+    try {
+      await e.prompt();
+      if ((await e.userChoice).outcome === 'accepted') setDone(true);
+      setInstallEvt(null);
+    } catch {
+      setOpen(true); // o navegador recusou o pedido: mostra o caminho manual
+    }
+  };
+  return (
+    <Show when={!done()}>
+      <button class="link inst" onClick={() => void go()}><Ic n="download" /> Instalar na tela inicial</button>
+      <Show when={open()}>
+        <p class="note inst-how">
+          {isIOS()
+            ? 'No Safari, toque em Compartilhar e depois em “Adicionar à Tela de Início”.'
+            : 'No menu do navegador (⋮), toque em “Adicionar à tela inicial” ou “Instalar app”.'}
+          {' '}Se o IP do console mudar, escaneie o QR code de novo.
+        </p>
+      </Show>
+    </Show>
+  );
 }
 
 const deviceName = () => {
@@ -117,6 +156,7 @@ export function App() {
               </button>
             </div>
             <p class="note">{uinput() ? 'Funciona nos jogos como um controle Xbox 360.' : 'Controla o menu do Nexus. Jogos exigem /dev/uinput no console.'}</p>
+            <InstallHint />
           </Show>
         </div>
       </Show>

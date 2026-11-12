@@ -303,6 +303,17 @@ scenarios.celular = () =>
       await phone.wait(900);
       check((await phone.ev(`document.querySelectorAll('.card').length`)) === 3, 'celular mostra Controle 1, 2 e Mouse e teclado');
       check(!(await phone.ev(`location.href`)).includes('t='), 'token removido da barra de endereço');
+      // PWA: manifesto ligado, código guardado (o app da tela inicial abre sem ?t=) e dica de instalar
+      check(await phone.ev(`!!document.querySelector('link[rel=manifest]')`), 'página do celular tem manifesto (PWA)');
+      check((await phone.ev(`localStorage.getItem('nx-token')||''`)).length > 10, 'código guardado no aparelho para o app instalado');
+      check(await phone.ev(`!!document.querySelector('.inst')`), 'botão "Instalar na tela inicial" no menu');
+      // sem pedido nativo (http na rede local, ou o navegador recusa) o toque mostra o caminho pelo menu do navegador
+      await phone.ev(`window.BeforeInstallPromptEvent && (BeforeInstallPromptEvent.prototype.prompt = () => Promise.reject(new Error('recusado')))`);
+      await phone.ev(`document.querySelector('.inst').scrollIntoView({block:'center'})`);
+      await phone.wait(200);
+      await phone.click(...(await phone.ev(`(()=>{const b=document.querySelector('.inst').getBoundingClientRect();return [b.left+b.width/2,b.top+b.height/2]})()`)));
+      for (let i = 0; i < 20 && !(await phone.ev(`!!document.querySelector('.inst-how')`)); i++) await sleep(100);
+      check(/tela inicial|Tela de Início/i.test(await phone.ev(`document.querySelector('.inst-how')?.textContent||''`)), 'toque em Instalar mostra como adicionar à tela inicial');
       // token inválido
       const bad = await launch({ url: core.remoteUrl + '?t=errado', w: 844, h: 390, mobile: true });
       await bad.wait(900);

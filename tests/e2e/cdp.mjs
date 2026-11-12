@@ -1,8 +1,18 @@
 // Mini driver CDP (sem dependências). Node >= 22 (WebSocket global).
 import {spawn} from 'node:child_process';
 import http from 'node:http';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+// perfis ainda abertos quando o Node sai (run.mjs termina com process.exit): apaga na saída
+const profs=new Map();
+const kill=ch=>{try{process.kill(-ch.pid,'SIGKILL')}catch{try{ch.kill('SIGKILL')}catch{}}};
+process.on('exit',()=>{for(const [p,ch] of profs){kill(ch);try{rmSync(p,{recursive:true,force:true})}catch{}}});
 export async function launch({url,w=1920,h=1080,port=9333+Math.floor(Math.random()*500),mobile=false}){
-  const ch=spawn('chromium',['--headless=new','--no-sandbox','--disable-gpu','--autoplay-policy=no-user-gesture-required',`--remote-debugging-port=${port}`,`--window-size=${w},${h}`,'--user-data-dir=/tmp/cdp-'+port,'about:blank'],{stdio:'ignore'});
+  // perfil descartável: apagado no close() (antes ficavam centenas de MB por execução em /tmp)
+  const prof=mkdtempSync(join(tmpdir(),'nexus-cdp-'));
+  const ch=spawn('chromium',['--headless=new','--no-sandbox','--disable-gpu','--autoplay-policy=no-user-gesture-required',`--remote-debugging-port=${port}`,`--window-size=${w},${h}`,'--user-data-dir='+prof,'about:blank'],{stdio:'ignore',detached:true});
+  profs.set(prof,ch);
   const get=u=>new Promise((res,rej)=>http.get(u,r=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>res(JSON.parse(d)))}).on('error',rej));
   let tabs;for(let i=0;i<60;i++){try{tabs=await get(`http://127.0.0.1:${port}/json`);if(tabs.length)break}catch{}await new Promise(r=>setTimeout(r,250))}
   const ws=new WebSocket(tabs.find(t=>t.type==='page').webSocketDebuggerUrl);
@@ -29,7 +39,7 @@ export async function launch({url,w=1920,h=1080,port=9333+Math.floor(Math.random
     async metrics(w,h){await send('Emulation.setDeviceMetricsOverride',{width:w,height:h,deviceScaleFactor:1,mobile});await new Promise(r=>setTimeout(r,300))},
     async shot(path){const r=await send('Page.captureScreenshot',{format:'png'});(await import('node:fs')).writeFileSync(path,Buffer.from(r.result.data,'base64'))},
     async click(x,y){for(const t of ['mouseMoved','mousePressed','mouseReleased'])await send('Input.dispatchMouseEvent',{type:t,x,y,button:'left',clickCount:1});},
-    close(){try{ws.close()}catch{}ch.kill('SIGKILL')}
+    close(){try{ws.close()}catch{}kill(ch);ch.once('exit',()=>{try{rmSync(prof,{recursive:true,force:true});profs.delete(prof)}catch{}})}
   };
   return api;
 }
