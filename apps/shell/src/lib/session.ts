@@ -38,7 +38,7 @@ export async function enterShell(info: SessionInfo) {
   applyPrefs();
   await loadData();
   closeAllOv();
-  setS({ tab: 'home', scr: 'shell', dockId: null, bgId: null, libFilter: 'todos', shopCat: 'inicio', emuSys: null });
+  setS({ tab: 'home', scr: 'shell', dockId: null, bgId: null, libFilter: 'todos', shopCat: 'inicio', emuSys: null, mediaShow: null });
   void api.emuStatus().then((st) => setS('emuReady', !!st.retroarch)).catch(() => {});
   void loadAppUpdates();
   sfx('profile');

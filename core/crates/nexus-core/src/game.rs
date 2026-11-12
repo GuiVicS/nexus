@@ -373,7 +373,7 @@ impl Core {
                 self.accounts.add_usage(&p.id, rest);
             }
             // a janela do login do Google Drive não é um jogo: não entra em "jogados recentemente"
-            if play_sec > 0 && !item_id.starts_with("drive:") {
+            if play_sec > 0 && !item_id.starts_with("drive:") && !item_id.starts_with("media:") {
                 self.accounts.add_playtime(&p.id, &item_id, play_sec);
             }
         }

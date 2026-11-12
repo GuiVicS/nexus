@@ -86,6 +86,8 @@ export function AppFace(p: { it: Item }) {
   );
 }
 
+/** Filme, série ou música (provedor "media", tocado pelo mpv). */
+export const isMedia = (it: Item) => it.tags.includes('media');
 export const appBg = (it: Item) => (it.brand ? it.brand.bg : hueGrad(it));
 /** Fundo grande do item: imagem de fundo (hero) quando existe; senão o degradê/cor do app. */
 export const heroStyle = (it: Item, extra: Record<string, string> = {}): JSX.CSSProperties => (it.art.hero ? { 'background-image': `url("${artUrl(it.id, 'hero')}")`, 'background-color': `hsl(${it.hue[0]} 40% 20%)`, ...extra } : { background: appBg(it), ...extra });
@@ -95,15 +97,18 @@ export function Tile(p: { it: Item; a?: string; dock?: boolean; badge?: string; 
   const running = () => S.game?.itemId === it().id;
   const act = () => p.a ?? p.defAct ?? (it().kind === 'app' ? `app:${it().id}` : `open:${it().id}`);
   return (
-    <div class="tl f" data-k={it().id} data-id={it().id} data-r="22" data-a={act()} data-verb={verbOf(it())} data-opt="1" data-dock={p.dock ? '1' : undefined} aria-label={it().title}>
-      <div class="in" style={{ background: it().kind === 'app' && !it().art.cover ? undefined : hueGrad(it()) }}>
-        <Show when={it().kind === 'app' && !it().art.cover} fallback={
+    <div class="tl f" data-k={it().id} data-id={it().id} data-r="22" data-a={act()} data-verb={verbOf(it())} data-opt={isMedia(it()) ? undefined : '1'} data-dock={p.dock ? '1' : undefined} aria-label={it().title}>
+      <div class="in" style={{ background: it().kind === 'app' && !it().art.cover && !isMedia(it()) ? undefined : hueGrad(it()) }}>
+        <Show when={it().kind === 'app' && !it().art.cover && !isMedia(it())} fallback={
           <>
+            <Show when={isMedia(it())}>
+              <div class="emuf"><span class="ab">{it().tags.includes('musica') ? '♪' : '▶'}</span><small>{it().subtitle || it().category}</small><b>{it().title}</b></div>
+            </Show>
             <Show when={it().tags.includes('emu')}>
               <div class="emuf"><span class="ab">{SYS_ABBR[sysOf(it())] ?? sysOf(it()).toUpperCase()}</span><small>{it().category}</small><b>{it().title}</b></div>
             </Show>
-            <Show when={it().art.cover} fallback={<div class="br br-i" style={{ background: 'transparent' }}><span class="mg">{mono(it().title)}</span></div>}>
-              <div class="art" style={{ 'background-image': `url("${artUrl(it().id, 'cover')}")` }} />
+            <Show when={it().art.cover || isMedia(it())} fallback={<div class="br br-i" style={{ background: 'transparent' }}><span class="mg">{mono(it().title)}</span></div>}>
+              <Show when={it().art.cover}><div class="art" style={{ 'background-image': `url("${artUrl(it().id, 'cover')}")` }} /></Show>
             </Show>
             <div class="shade" />
           </>

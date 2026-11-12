@@ -1000,3 +1000,126 @@ scenarios.drive = async () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 };
+
+// Mídia (Drive parte 2): aba Mídia com filmes/séries/músicas (pastas da TV + pasta Nexus do Google Drive, sem repetir),
+// abrir no mpv (falso: grava os argumentos) e fechar. Só controle. Com rclone, a nuvem é de verdade (FUSE).
+scenarios.midia = async () => {
+  const real = realRclone();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-med-'));
+  const touch = (p) => { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, 'x'); };
+  const vid = `${tmp}/Vídeos`;
+  const mus = `${tmp}/Música`;
+  const cloud = `${tmp}/cloud`;
+  touch(`${vid}/Matrix.mkv`);
+  touch(`${vid}/Séries/Dark/Temporada 1/e01.mkv`);
+  touch(`${mus}/Álbum Azul/faixa1.mp3`);
+  touch(`${mus}/Álbum Azul/faixa2.mp3`);
+  const log = `${tmp}/mpv.args`;
+  const env = { NEXUS_MPV: `${ROOT}/tests/e2e/fake/mpv`, NEXUS_FAKE_MPV_LOG: log, NEXUS_VIDEOS_DIR: vid, NEXUS_MUSIC_DIR: mus };
+  if (real) {
+    touch(`${cloud}/Nexus/Filmes/matrix.MKV`); // repetido: a cópia da TV vence
+    touch(`${cloud}/Nexus/Filmes/Alien.mp4`);
+    touch(`${cloud}/Nexus/Séries/Dark/Temporada 1/e02.mkv`);
+    touch(`${cloud}/Nexus/Séries/Lost/Temporada 1/pilot.mkv`);
+    touch(`${cloud}/Nexus/Músicas/Beat.flac`);
+    fs.writeFileSync(`${tmp}/fake.conf`, `[fakedrive]\ntype = alias\nremote = ${cloud}\n`);
+    Object.assign(env, { NEXUS_RCLONE: `${ROOT}/tests/e2e/fake/rclone`, NEXUS_REAL_RCLONE: real, NEXUS_FAKE_RCLONE_CONF: `${tmp}/fake.conf`, NEXUS_DRIVE_REMOTE: 'fakedrive', NEXUS_BROWSER: `${ROOT}/tests/e2e/fake/browser` });
+  } else console.log('  (sem rclone: só as pastas da TV)');
+  const core = await startCore({ demo: true, env });
+  const ui = await openUi(core);
+  const tabTo = async (t) => {
+    // RB do controle (tecla E) troca de aba
+    for (let n = 0; n < 6 && (await ui.ev(`document.querySelector('#tabs .tab.on')?.dataset.tab`)) !== t; n++) await ui.key('e', { wait: 400 });
+    await ui.until(`()=>document.querySelector('#tabs .tab.on')?.dataset.tab===${JSON.stringify(t)}`, `aba ${t}`);
+  };
+  const keys = () => ui.ev(`[...document.querySelectorAll('#view .tl')].map(e=>e.dataset.k)`);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    if (real) {
+      // conecta o Drive pelos Ajustes (login simulado), como no cenário "drive"
+      await openSettingsCat(ui, 'armaz', 'Armazenamento');
+      await ui.until(`()=>!!document.querySelector('[data-k=dr-login]')`, 'botão Entrar no Google Drive');
+      await ui.key('ArrowRight');
+      await goTo(ui, 'dr-login', 'Entrar no Google Drive');
+      await ui.key('Enter');
+      await ui.until(`()=>/Pasta “Nexus”/.test(document.querySelector('[data-k=dr-ok]')?.textContent||'')`, 'Drive montado (pasta Nexus)', 25000);
+      for (let n = 0; n < 6 && (await ui.has('#ovs [data-kind=settings]')); n++) await ui.key('Escape', { wait: 400 });
+      await ui.until(`()=>!document.querySelector('#ovs [data-kind=settings]')`, 'Ajustes fechados');
+      await sleep(500);
+    }
+    const lst = async () => {
+      const r = await core.rpc('library.list', {});
+      return (r.items ?? r).filter((i) => i.provider === 'media');
+    };
+    let list = await lst();
+    for (let n = 0; n < 30 && list.length < (real ? 9 : 5); n++) { await sleep(200); list = await lst(); }
+    const movies = list.filter((i) => i.tags.includes('filme'));
+    check(movies.length === (real ? 2 : 1), `filmes sem repetir (${movies.map((i) => i.title)})`);
+    check(list.filter((i) => i.tags.includes('musica')).length === (real ? 3 : 2), 'músicas');
+    check(list.filter((i) => i.tags.includes('serie')).length === (real ? 3 : 1), 'episódios');
+    if (real) check(list.some((i) => i.tags.includes('cloud') && i.title === 'Alien') && !list.some((i) => i.tags.includes('cloud') && i.title.toLowerCase() === 'matrix'), 'Alien vem da nuvem; Matrix só da TV');
+    await tabTo('midia');
+    await ui.until(`()=>!!document.querySelector('#view [data-k="show-Dark"]')`, 'série Dark na aba');
+    check((await keys()).includes('show-Dark') && (!real || (await keys()).includes('show-Lost')), 'séries viram um cartão cada');
+    await ui.screens('midia');
+    // série → episódios, Voltar
+    await ui.key('ArrowDown', { wait: 300 });
+    await ui.key('ArrowDown', { wait: 300 });
+    if ((await ui.focusInfo())?.k !== 'show-Dark') await ui.key('ArrowLeft', { wait: 300 });
+    check((await ui.focusInfo())?.k === 'show-Dark', 'foco no cartão da série Dark');
+    await ui.key('Enter');
+    await ui.until(`()=>!!document.querySelector('#view [data-k^="media:serie-"]') && !document.querySelector('#view [data-k^="show-"]')`, 'episódios da série');
+    check((await keys()).length === (real ? 2 : 1), 'episódios da série Dark');
+    await ui.screens('midia-serie');
+    await ui.key('Escape');
+    await ui.until(`()=>!!document.querySelector('#view [data-k="show-Dark"]')`, 'voltou à lista');
+    await sleep(300);
+    check((await ui.focusInfo())?.k === 'show-Dark', 'foco volta à série');
+    // abrir um filme: mpv em tela cheia com retomada e legendas
+    await ui.key('ArrowUp', { wait: 300 });
+    check((await ui.focusInfo())?.id?.startsWith('media:filme-'), 'foco em um filme');;
+    await ui.key('Enter');
+    for (let n = 0; n < 100 && !(fs.existsSync(log) && fs.readFileSync(log, 'utf8').includes('--fs')); n++) await sleep(100);
+    const args = fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split('\n') : [];
+    for (const a of ['--fs', '--hwdec=auto-safe', '--save-position-on-quit', '--sub-auto=fuzzy']) check(args.includes(a), `mpv recebeu ${a}`);
+    check(args.some((a) => a.startsWith('--watch-later-directory=') && a.includes('/data/')), 'pasta watch_later nos dados do Nexus');
+    check(args.some((a) => /\.(mkv|mp4)$/i.test(a)), 'arquivo do filme no fim');
+    check((await core.rpc('game.current'))?.itemId?.startsWith('media:filme-'), 'Core acompanha o mpv');
+    await ui.screens('midia-tocando');
+    await core.rpc('game.close');
+    for (let n = 0; n < 60 && (await core.rpc('game.current')); n++) await sleep(100);
+    check((await core.rpc('game.current')) === null, 'mpv fechou e voltou ao Nexus');
+    list = await lst();
+    check(list.every((i) => !(i.playtimeSec > 0)), 'mídia não conta como tempo de jogo');
+    check(ui.errors().length === 0, `sem erros de JavaScript${ui.errors().length ? ': ' + ui.errors().join(' | ') : ''}`);
+  } finally {
+    ui.close();
+    await core.stop();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+};
+
+// Mídia sem nenhum arquivo: a aba explica onde colocar filmes, séries e músicas.
+scenarios.midia_vazio = async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-med0-'));
+  const core = await startCore({ demo: true, env: { NEXUS_VIDEOS_DIR: `${tmp}/v`, NEXUS_MUSIC_DIR: `${tmp}/m` } });
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    for (let n = 0; n < 6 && (await ui.ev(`document.querySelector('#tabs .tab.on')?.dataset.tab`)) !== 'midia'; n++) await ui.key('e', { wait: 400 });
+    await ui.until(`()=>document.querySelector('#tabs .tab.on')?.dataset.tab==='midia'`, 'aba midia');
+    check(await ui.has('#media-hint'), 'dica de onde colocar os arquivos');
+    check(/Nexus.*Google Drive/.test((await ui.text('#media-hint')) ?? ''), 'dica cita a pasta Nexus do Drive');
+    check(!(await ui.has('#view [data-k^="show-"]')), 'sem séries');
+    await ui.screens('midia-vazio');
+    check(ui.errors().length === 0, `sem erros de JavaScript${ui.errors().length ? ': ' + ui.errors().join(' | ') : ''}`);
+  } finally {
+    ui.close();
+    await core.stop();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+};

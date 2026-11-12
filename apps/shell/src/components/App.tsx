@@ -183,7 +183,7 @@ export function App() {
   };
 
   // a faixa de título mostra o item focado da aba atual: ao trocar de aba/seção/console, volta ao título dela
-  createEffect(on(() => [S.tab, S.shopCat, S.libFilter, S.emuSys], () => setStripItem(null), { defer: true }));
+  createEffect(on(() => [S.tab, S.shopCat, S.libFilter, S.emuSys, S.mediaShow], () => setStripItem(null), { defer: true }));
   let tabT: ReturnType<typeof setTimeout> | undefined;
   let railT: ReturnType<typeof setTimeout> | undefined;
 
