@@ -1,7 +1,10 @@
 # HANDOFF — Nexus
 
 > Documento para continuar o desenvolvimento em **outra sessão ou outro agente** sem perder contexto.
-> Atualize a seção "Estado atual" e "Próximos passos" **ao fim de cada sessão**. Última atualização: 2026-11-12 (versão 0.4.0).
+> Atualize a seção "Estado atual" e "Próximos passos" **ao fim de cada sessão**. Última atualização: 2026-11-12 (versão 0.4.1).
+
+**Repositório (público desde a 0.4.1):** https://github.com/GuiVicS/nexus · releases: https://github.com/GuiVicS/nexus/releases
+· este arquivo em texto puro: https://raw.githubusercontent.com/GuiVicS/nexus/main/HANDOFF.md
 
 ## 1. O que é
 
@@ -184,9 +187,9 @@ Os cenários de UI são **sensíveis a carga** (máquina de 2 núcleos): um dele
 - **GitHub Releases (pedido do usuário, a partir da 0.3.0):** `gh release create vX.Y.Z` com os `.tar.gz` + `.sha256` de PC e Raspberry Pi; o README aponta para `releases/latest`.
 - **Hospedagem do download (decidida pelo usuário):** projeto Vercel `nexus-download` na conta `serafim-company`, pasta local `/root/nexus-download` (fora do repo): `index.html`, `latest.txt`, `update.sh` (cópia de `tools/update.sh`), o `.tar.gz`, `.sha256` e o código-fonte. Publicar: copiar os arquivos novos, atualizar `latest.txt`/`index.html` e `vercel deploy --prod --yes`. URL: `https://nexus-download-psi.vercel.app`.
 - **Instalar/atualizar no aparelho (0.3.1+):** `tools/update.sh` baixa da **release mais recente do GitHub** (arquitetura pela `dpkg`,
-  confere sha256). Sem o Nexus instalado roda o `install.sh` completo; com ele, só `apt install` do `.deb`. O repositório é **privado**:
-  o link aberto dá 404, então o script usa `gh release download` (precisa de `gh auth login`); o próprio script é obtido com
-  `gh api repos/GuiVicS/nexus/contents/tools/update.sh -H "Accept: application/vnd.github.raw" | sh`. O site da Vercel ficou parado na 0.2.0.
+  confere sha256). Sem o Nexus instalado roda o `install.sh` completo; com ele, só `apt install` do `.deb`. O repositório é **público**
+  (desde a 0.4.1, pedido do usuário): `curl -fsSL https://raw.githubusercontent.com/GuiVicS/nexus/main/tools/update.sh | sh`, sem login.
+  O script ainda cai no `gh release download` se o link aberto falhar (caso o repositório volte a ser privado). O site da Vercel ficou parado na 0.2.0.
 - **Instalação completa por padrão (pedido do usuário, 0.3.1):** `install.sh` = Steam (PC) + RetroArch (`--sem-steam`/`--sem-emuladores`
   para tirar) + navegador se não houver (plano: `chromium`, ou `chromium-browser` no Ubuntu) + `bluez`/`curl` nas dependências do `.deb`.
 - Ao mudar versão: `Cargo.toml`, `README.md`; depois bundle → copiar → `latest.txt` → deploy.
