@@ -1,7 +1,7 @@
 # HANDOFF — Nexus
 
 > Documento para continuar o desenvolvimento em **outra sessão ou outro agente** sem perder contexto.
-> Atualize a seção "Estado atual" e "Próximos passos" **ao fim de cada sessão**. Última atualização: 2026-11-12 (versão 0.4.1).
+> Atualize a seção "Estado atual" e "Próximos passos" **ao fim de cada sessão**. Última atualização: 2026-11-12 (versão 0.4.1 publicada; **0.5.0 em preparação**: fases 2, 3 e 4 das telas de sistema e aba Mídia, ver §4b e a seção final de `docs/STATUS.md`).
 
 **Repositório (público desde a 0.4.1):** https://github.com/GuiVicS/nexus · releases: https://github.com/GuiVicS/nexus/releases
 · este arquivo em texto puro: https://raw.githubusercontent.com/GuiVicS/nexus/main/HANDOFF.md
@@ -42,6 +42,12 @@ Sessão: nexus.desktop → nexus-session → sway kiosk (ws1 = Shell, ws2 = jogo
 - **Segurança**: socket 0600; HTTP local só com `Host` loopback (anti DNS-rebinding); Remote com token de 96 bits + bloqueio por IP; PIN com Argon2 e bloqueio por tentativas; imagens personalizadas validadas por conteúdo e restritas a pastas permitidas (`customart.rs`); Shell sem Node (`contextIsolation`, sandbox, CSP).
 
 ## 4. Estado atual (0.4.1)
+
+> **Atualização para 0.5.0 (em preparação, 2026-11-12):** as fases 2, 3 e 4 da §4b e a aba Mídia (Google Drive parte 2)
+> estão implementadas. O que cada item cobre e o que **não** foi testado em hardware real está em `docs/STATUS.md`
+> (seção "Telas de sistema" e o resumo final). O que ainda falta de fato: login do Google Drive por QR no celular,
+> controle remoto da TV via CEC, terminal embutido na Recuperação, outros idiomas da interface, e validação de tudo
+> no aparelho real (Raspberry Pi, TV com HDMI-CEC, pendrive, Wi-Fi, Bluetooth, boot).
 
 **0.4.0 "carenagem de console" (release `v0.4.0`, 2026-11-12, plano em `~/.claude/plans/jiggly-forging-ullman.md`):** a Steam e o RetroArch são só motor, nunca aparecem.
 - **Steam escondida:** janelas da classe `steam` vão para o *scratchpad* do sway (`nexus-kiosk.conf`); `no_focus` impede janela nova de trocar a tela;
@@ -188,8 +194,12 @@ Sempre que possível, conferir também na sessão real da VM.
 | Upload de ROMs | 67285d7 | Página responsiva, com versão de PC (arrastar e soltar) |
 | Controle PWA | a4df496 | Manifesto, ícones, código guardado no celular, botão "Instalar na tela inicial" |
 | Google Drive (1/2) | (este commit) | `drive.rs` (rclone): login na TV, pasta `Nexus`, montagem com cache, ROMs da nuvem nos Emuladores, etapa no primeiro uso. Falta: aba Mídia (mpv), login por QR no celular |
+| Google Drive (2/2) — Mídia | (0.5.0) | Aba Mídia com filmes, séries e músicas da pasta `Nexus` do Drive (e Vídeos/Música da TV), tocados pelo mpv em tela cheia. **Feito.** Falta: login por QR no celular |
+| Fase 2 (A1–A4, B9, B10) | (0.5.0) | Barra de status, Central rápida completa, overlay no jogo, notificações, Energia, Armazenamento e discos USB. **Feito** (ver STATUS) |
+| Fase 3 (B6, B7, B11, B15, B16, SSH) | (0.5.0) | Controles, celular (revisão), atualizações, recuperação, sobre/diagnóstico e acesso por SSH com passo a passo na TV. **Feito** (ver STATUS) |
+| Fase 4 (A5, B5, B12–B14, B17–B19) | (0.5.0) | Tela de energia, CEC, PIN esquecido e relatório de uso, aparência, acessibilidade, apps instalados (.jar/AppImage/.sh), pastas e núcleos de ROMs, privacidade. **Feito** (ver STATUS) |
 
-### Fase 2 — próxima (nesta ordem)
+### Fase 2 — feita em 0.5.0 (lista original, nesta ordem; ver STATUS)
 1. **A1 Barra de status:**
    - mostrar hora, Wi-Fi/cabo com sinal (`net.status`), Bluetooth, volume/mudo (`lib/audio.ts`), bateria dos
      controles (`bluetooth::status` → `battery`) e perfil;
@@ -222,7 +232,7 @@ Sempre que possível, conferir também na sessão real da VM.
    - formatar com PIN + confirmação dupla;
    - alerta de pouco espaço (ligado ao A1/A4).
 
-### Fase 3
+### Fase 3 — feita em 0.5.0 (lista original; ver STATUS)
 - **B6 Controles:**
   - teste de botões e analógicos ao vivo;
   - zona morta;
@@ -253,7 +263,7 @@ Sempre que possível, conferir também na sessão real da VM.
   - o que consome recursos;
   - "Gerar relatório de suporte" (logs + informações em um arquivo; entregar pelo celular).
 
-### Fase 4
+### Fase 4 — feita em 0.5.0 (lista original; ver STATUS)
 - **A5:** tela de energia única (suspender, reiniciar, desligar, trocar perfil).
 - **B5 CEC:** `cec-client`/libcec, quando houver hardware; ligar/desligar a TV junto e usar o controle remoto da TV.
 - **B12 Perfis/parental:** recuperar o PIN e relatório de uso.
@@ -358,8 +368,8 @@ Saídas de emergência: Ctrl+Alt+F3 (terminal; na VirtualBox Right-Ctrl+F3), `su
 
 ## 10. Próximos passos sugeridos (prioridade)
 
-0. **Google Drive, parte 2 (pedido do usuário, antes das fases):** aba "Mídia" (filmes, séries e músicas de `Nexus/Filmes|Séries|Músicas` pelo `mpv` em tela cheia, com o menu rápido por cima; `mpv` entra em `Depends`). Depois, login por QR no celular: o usuário cria um projeto no Google Cloud e passa o ID do cliente + página no GitHub Pages que repassa o código (PKCE) para a TV. Decisões já tomadas: login na TV agora (cliente do rclone), rclone do apt (1.60), Drive antes das fases.
-1. **Telas de sistema:** seguir as fases da §4b (próxima: fase 2, começando pelo A1).
+0. ~~**Google Drive, parte 2**~~ (**feito**: aba Mídia; falta só o login por QR no celular, ver abaixo). Pedido original: aba "Mídia" (filmes, séries e músicas de `Nexus/Filmes|Séries|Músicas` pelo `mpv` em tela cheia, com o menu rápido por cima; `mpv` entra em `Depends`). Depois, login por QR no celular: o usuário cria um projeto no Google Cloud e passa o ID do cliente + página no GitHub Pages que repassa o código (PKCE) para a TV. Decisões já tomadas: login na TV agora (cliente do rclone), rclone do apt (1.60), Drive antes das fases.
+1. ~~**Telas de sistema**~~ **feitas** (fases 2, 3 e 4 da §4b, em 0.5.0). Pendências abertas estão em `docs/STATUS.md` (resumo final) e na nota de "Atualização para 0.5.0" da §4.
 
 1. **Fechar o ciclo no aparelho do usuário:** confirmar a sessão (`session.log`), abrir um jogo Steam real, ajustar o que aparecer. Tudo o resto depende disso.
 2. **Testar num Raspberry Pi real** (pacote arm64 só validado com QEMU): sessão, GPU V3D, RAM, emuladores leves, Chromium com DRM.

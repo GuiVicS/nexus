@@ -649,3 +649,21 @@ Sobre a memória da Shell com as telas abertas: não medida nesta rodada (sem a 
 - **B19 Privacidade** (`privacy.rs`): diz que **não há telemetria**, lista cada conexão de rede real (Steam, GitHub, apt/Flatpak, libretro, Drive, NTP, celular local) marcando as que estão em uso, o que fica guardado, e limpa jogos recentes, tempo de jogo e imagens baixadas (com confirmação). O Nexus não guarda buscas (a tela diz isso). RPC `privacy.status/clear`.
 - **Testes:** `cargo test -p nexus-core` 108 unitários + 17 e2e ok (novos: aspas/Exec e Java do `.jar`, AppImage executável, código de recuperação, CEC). Cenários novos só por teclas: `energia` (CEC + A5), `perfil_pin`, `aparencia`, `apps_instalados`, `apps_sem_java`, `roms_pastas`, `privacidade`; programas falsos `tests/e2e/fake/cec-client` e `java` (`NEXUS_CEC_CLIENT`, `NEXUS_FAKE_CEC`, `NEXUS_JAVA`). Capturas 1080p/720p `a5-energia`, `b5-cec*`, `b12-*`, `b13-*`, `b14-acessibilidade`, `b17-*`, `b18-*`, `b19-privacidade` (em `$NEXUS_SHOTS`).
 - **Faltou:** controle remoto da TV via CEC; terminal; Central rápida abrir a tela de energia (Fase 2); testar de verdade o ajudante de desinstalação e o `cec-client`; texto grande nos cartões; categoria só altera o rótulo (não reagrupa abas); relatório de uso sem gráfico.
+
+### Resumo final da 0.5.0 (finalização, agente F — textos e documentação, 2026-11-12)
+
+**Feito nesta versão:** fases 2, 3 e 4 das telas de sistema (itens acima e em `HANDOFF.md` §4b) e a aba Mídia do Google Drive
+(parte 2, com mpv). Esta entrada só consolida o que já está escrito acima; não reescreve entradas antigas.
+
+**Revisão de texto (agente F):** português das telas novas revisado (`Fase4.tsx`, `Energia.tsx`, `Armazenamento.tsx`,
+`Notificacoes.tsx`, `Drive.tsx`, `Settings.tsx`, `System.tsx`, `SysAdmin.tsx`, `Views.tsx`, `apps/remote`). Mudanças só de texto:
+"Espete um pendrive" → "Conecte um pendrive"; "(troque nada)" → "não precisa trocar nada" (passo 4 do SSH);
+"A salva · B desiste" → "A salvar · B desistir" (assistente de margem). Nenhum `data-k`, id ou texto que os cenários procuram foi mudado.
+Os botões seguem o padrão de infinitivo curto já usado no projeto ("Abrir", "Alternar", "Cancelar"); não foram reescritos.
+
+**Testes desta revisão:** `tsc --noEmit` limpo; `pnpm -C apps/shell build` ok; cenários de UI com o Core compilado
+(`NEXUS_CORE_BIN`, `NEXUS_EMULATION=0`): `navegacao`, `crianca`, `adulto_demo`, `armazenamento`, `ssh`, `tela`, todos sem falhas.
+
+**Faltou (resumo):** login do Google Drive por QR no celular (precisa de projeto do usuário no Google Cloud); controle remoto
+da TV via CEC; terminal embutido na Recuperação; outros idiomas da interface e formato 12/24 h; validação no aparelho real
+(Raspberry Pi, TV com HDMI-CEC, pendrive, Wi-Fi, Bluetooth, boot da sessão); encerramento da §4b (zerar a VM) quando o usuário pedir.

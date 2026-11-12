@@ -104,7 +104,7 @@ export function StoragePanel() {
       <div class={`srow f ${busy() ? 'off' : ''}`} data-k="st-clean" data-r="22" data-a="stg:clean" data-verb="Limpar"><div><b>Limpar cache e temporários</b><small>Capas, ícones e registros antigos (não mexe em jogos nem saves)</small></div><Icon n="trash" /></div>
       <h3 class="sh2">Discos USB</h3>
       <Show when={disks()} fallback={<div class="srow info"><div><b>Procurando discos…</b></div></div>}>
-        <For each={disks()!} fallback={<div class="srow info" data-k="st-nousb"><div><b>Nenhum disco USB conectado</b><small>Espete um pendrive ou HD externo: ele aparece aqui sozinho</small></div></div>}>
+        <For each={disks()!} fallback={<div class="srow info" data-k="st-nousb"><div><b>Nenhum disco USB conectado</b><small>Conecte um pendrive ou HD externo: ele aparece aqui sozinho</small></div></div>}>
           {(d, i) => (
             <>
               <div class="srow info" data-k={`st-usb-${i()}`}>

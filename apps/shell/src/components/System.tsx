@@ -791,7 +791,7 @@ export function MarginWizard() {
         <div class="srow f slider" data-k="mw-slider" data-autofocus data-r="22" data-slider="mwiz" data-a="mwiz:save" data-verb="Salvar">
           <b>Margem</b><div class="tr"><i style={{ width: `${margin() * 10}%` }} /></div><span class="v">{margin()} %</span>
         </div>
-        <p class="sub small">A salva · B desiste</p>
+        <p class="sub small">A salvar · B desistir</p>
       </div>
     </div>
   );
