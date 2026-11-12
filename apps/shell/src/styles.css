@@ -198,3 +198,5 @@ body.fx-reduced .tl .in{transition:none}
 .spromo .i{font-size:48px;color:var(--primary)}
 .spromo b{font-size:30px;font-weight:400;display:block}
 .spromo small{font-size:22px;color:var(--muted)}
+/* Hub: aviso de nova versão do app */
+.hupd{margin-top:18px;font-size:22px;color:var(--muted);max-width:900px}

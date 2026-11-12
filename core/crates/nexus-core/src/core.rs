@@ -43,6 +43,10 @@ pub struct Core {
     pub guide_open: AtomicBool,
     /// resposta do usuário ao contrato de licença (EULA) de um jogo sendo instalado
     pub eula: Mutex<Option<bool>>,
+    /// atualizações encontradas dos apps instalados (id do item → atualização), ver `appupdates.rs`
+    pub app_updates: Mutex<std::collections::HashMap<String, crate::appupdates::AppUpdate>>,
+    /// apps sendo atualizados/restaurados agora
+    pub app_jobs: Mutex<std::collections::HashSet<String>>,
 }
 
 impl Core {
@@ -87,6 +91,8 @@ impl Core {
             steam_ui: AtomicBool::new(false),
             guide_open: AtomicBool::new(false),
             eula: Mutex::new(None),
+            app_updates: Mutex::new(Default::default()),
+            app_jobs: Mutex::new(Default::default()),
         });
         if core.demo.is_some() {
             core.seed_demo()?;
@@ -252,6 +258,9 @@ impl Core {
             }
         }
         self.apply_pending(&mut all);
+        for it in all.iter_mut() {
+            self.tag_update(it);
+        }
         let (changed, removed, done) = {
             let mut cache = self.library.write().unwrap_or_else(|e| e.into_inner());
             let changed: Vec<Item> = all.iter().filter(|n| cache.iter().find(|o| o.id == n.id) != Some(n)).cloned().collect();
@@ -269,6 +278,13 @@ impl Core {
         // só ids: cada Shell busca o que o perfil ativo pode ver (library.get_many)
         self.emit("library.changed", json!({ "ids": changed.iter().map(|i| i.id.clone()).collect::<Vec<_>>(), "removed": removed }));
         true
+    }
+
+    /// App com atualização encontrada ganha a etiqueta "update" (ícone no card, aviso no Início e na página).
+    pub fn tag_update(&self, it: &mut Item) {
+        if self.app_updates.lock().unwrap_or_else(|e| e.into_inner()).contains_key(&it.id) && !it.tags.iter().any(|t| t == "update") {
+            it.tags.push("update".into());
+        }
     }
 
     pub fn any_installing(&self) -> bool {

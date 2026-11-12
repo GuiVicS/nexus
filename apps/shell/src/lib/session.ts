@@ -1,6 +1,6 @@
 import { reconcile } from 'solid-js/store';
 import { E, RpcError } from '@nexus/protocol';
-import type { Item, SessionInfo } from '@nexus/protocol';
+import type { AppUpdate, Item, SessionInfo } from '@nexus/protocol';
 import { api, client } from './api';
 import { applyPrefs, askPin, closeAllOv, fail, findItem, fx, isKid, me, ovs, popOv, removeLib, S, setS, setMode, toast, upsertLib, topOv, askConfirm, guarded } from './state';
 import { sfx } from '@nexus/ui';
@@ -21,6 +21,18 @@ export async function loadData() {
   api.wallet().then((w) => setS('wallet', w ? w.balance : null)).catch(() => {});
 }
 
+/** Atualizações dos apps instalados (aviso, botão Atualizar, Restaurar versão anterior). */
+export async function loadAppUpdates() {
+  try {
+    const u = await api.appUpdates();
+    setS('appUpd', reconcile(Object.fromEntries(u.updates.map((x) => [x.id, x]))));
+    setS('appRestorable', u.restorable);
+    setS('appJobs', reconcile(Object.fromEntries(u.jobs.map((id) => [id, 'update' as const]))));
+  } catch {
+    /* sem sessão */
+  }
+}
+
 export async function enterShell(info: SessionInfo) {
   setS('session', info);
   applyPrefs();
@@ -28,6 +40,7 @@ export async function enterShell(info: SessionInfo) {
   closeAllOv();
   setS({ tab: 'home', scr: 'shell', dockId: null, bgId: null, libFilter: 'todos', shopCat: 'inicio', emuSys: null });
   void api.emuStatus().then((st) => setS('emuReady', !!st.retroarch)).catch(() => {});
+  void loadAppUpdates();
   sfx('profile');
   queueMicrotask(() => requestAnimationFrame(() => document.dispatchEvent(new CustomEvent('nexus:focus-home'))));
   const g = new Date().getHours();
@@ -85,6 +98,10 @@ export function startEvents() {
   client.on('library.changed', async (p: { ids: string[]; removed: string[] }) => {
     if (!S.session) return;
     removeLib(p.removed);
+    // app do Linux entrou/saiu: a lista de apps que podem voltar versão muda
+    if ([...p.ids, ...p.removed].some((id) => id.startsWith('native:') && !S.lib.some((i) => i.id === id))) {
+      void api.appUpdates().then((u) => setS('appRestorable', u.restorable)).catch(() => {});
+    }
     if (p.ids.length) {
       try {
         upsertLib(await api.items(p.ids));
@@ -121,6 +138,14 @@ export function startEvents() {
     }
   });
   client.on('profiles.changed', () => void loadProfiles().catch(() => {}));
+  client.on('apps.updates', (list: AppUpdate[]) => {
+    setS('appUpd', reconcile(Object.fromEntries(list.map((x) => [x.id, x]))));
+    void api.appUpdates().then((u) => setS('appRestorable', u.restorable)).catch(() => {}); // apps adicionados depois do login
+  });
+  client.on('apps.job', (j: { id: string; op: 'update' | 'restore'; state: string }) => {
+    if (j.state === 'running') setS('appJobs', j.id, j.op);
+    else setS('appJobs', reconcile(Object.fromEntries(Object.entries(S.appJobs).filter(([k]) => k !== j.id))));
+  });
   client.on('notification.added', (n) => {
     if (isKid()) return;
     setS('notifs', (l) => [n, ...l].slice(0, 30));

@@ -1,0 +1,60 @@
+#!/bin/sh
+# Aplica no aparelho as versões travadas em /usr/share/nexus/deps.lock (geradas na máquina de desenvolvimento
+# por tools/pin-deps.sh). Roda como root: no postinst do pacote, no instalador e no tools/update.sh.
+#   nexus-deps-apply                 RetroArch (Flatpak): vai para o commit travado e fica mascarado
+#                                    (nem o "flatpak update" nem a Central de Programas o atualizam sozinhos)
+#   nexus-deps-apply --cores ARQ     instala o pacote de núcleos do Nexus (conferido pelo SHA-256 do deps.lock)
+#   nexus-deps-apply --status        mostra o que está travado e o que está instalado
+set -eu
+LOCK=${NEXUS_DEPS_LOCK:-/usr/share/nexus/deps.lock}
+CORES=${NEXUS_CORES_DIR:-/usr/lib/nexus/cores}
+APP=org.libretro.RetroArch
+[ -r "$LOCK" ] || { echo "sem $LOCK" >&2; exit 1; }
+key() { sed -n "s/^$1=//p" "$LOCK" | head -1; }
+FARCH=$(flatpak --default-arch 2>/dev/null || uname -m)
+case "$(uname -m)" in aarch64|arm64) TAG=arm64 ;; *) TAG=x86_64 ;; esac
+
+retroarch() {
+  command -v flatpak >/dev/null 2>&1 || return 0
+  flatpak info --system "$APP" >/dev/null 2>&1 || return 0
+  WANT=$(key "RETROARCH_COMMIT_$FARCH")
+  [ -n "$WANT" ] || { echo "RetroArch: sem versão travada para $FARCH"; return 0; }
+  HAVE=$(flatpak info --system --show-commit "$APP" 2>/dev/null || true)
+  if [ "$HAVE" != "$WANT" ]; then
+    echo "→ RetroArch: indo para a versão do Nexus $(key RETROARCH_VERSION) (${WANT%"${WANT#????????????}"})"
+    flatpak mask --system --remove "$APP" >/dev/null 2>&1 || true
+    if ! flatpak update --system -y --noninteractive --commit="$WANT" "$APP"; then
+      echo "  não foi possível trocar a versão do RetroArch agora (sem internet?); fica a atual" >&2
+    fi
+  fi
+  flatpak mask --system "$APP" >/dev/null 2>&1 || true
+}
+
+cores() {
+  F=$1
+  WANT=$(key "CORES_SHA256_$TAG")
+  ID=$(key CORES_ID)
+  [ -n "$WANT" ] && [ -n "$ID" ] || { echo "deps.lock sem núcleos travados para $TAG" >&2; exit 1; }
+  GOT=$(sha256sum "$F" | cut -d' ' -f1)
+  [ "$GOT" = "$WANT" ] || { echo "pacote de núcleos não confere (esperado $WANT, veio $GOT)" >&2; exit 1; }
+  T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
+  tar -C "$T" -xzf "$F"
+  S="$T/nexus-cores-$ID"
+  [ "$(cat "$S/ID" 2>/dev/null)" = "$ID" ] || { echo "pacote de núcleos com ID errado" >&2; exit 1; }
+  ( cd "$S" && sha256sum -c --quiet SHA256SUMS ) || { echo "núcleo corrompido no pacote" >&2; exit 1; }
+  mkdir -p "$(dirname "$CORES")"
+  rm -rf "$CORES.new" && cp -r "$S" "$CORES.new" && chmod -R a+rX "$CORES.new"
+  rm -rf "$CORES.old"; [ -d "$CORES" ] && mv "$CORES" "$CORES.old"
+  mv "$CORES.new" "$CORES" && rm -rf "$CORES.old"
+  echo "→ Núcleos do Nexus $ID instalados ($(ls "$CORES"/*_libretro.so | wc -l))"
+}
+
+case "${1:-}" in
+  "") retroarch ;;
+  --cores) cores "$2" ;;
+  --status)
+    echo "RetroArch travado: $(key RETROARCH_VERSION) $(key "RETROARCH_COMMIT_$FARCH")"
+    echo "RetroArch instalado: $(flatpak info --system --show-commit "$APP" 2>/dev/null || echo nenhum)"
+    echo "Núcleos travados: $(key CORES_ID) · instalados: $(cat "$CORES/ID" 2>/dev/null || echo nenhum)" ;;
+  *) echo "uso: nexus-deps-apply [--cores ARQUIVO | --status]" >&2; exit 2 ;;
+esac

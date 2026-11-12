@@ -415,3 +415,59 @@ scenarios.steam_loja = async () => {
     await core.stop();
   }
 };
+
+scenarios.apps_atualizacoes = async () => {
+  const fs = (await import('node:fs')).default;
+  const dir = fs.mkdtempSync('/tmp/nexus-upd-');
+  const apps = `${dir}/apps/applications`;
+  fs.mkdirSync(apps, { recursive: true });
+  fs.writeFileSync(`${apps}/org.test.Video.desktop`, '[Desktop Entry]\nType=Application\nName=Vídeo Teste\nExec=flatpak run org.test.Video\nCategories=AudioVideo;\n');
+  // flatpak falso: 1.0 (c1) instalada, 2.0 (c2) disponível
+  fs.writeFileSync(`${dir}/fp-state`, '1.0 c1 c0');
+  fs.writeFileSync(`${dir}/flatpak`, `#!/bin/sh
+read v c p < ${dir}/fp-state
+case "$1" in
+  remote-ls) [ "$v" != "2.0" ] && printf 'org.test.Video\\t2.0\\n' ;;
+  list) printf 'org.test.Video\\t%s\\n' "$v" ;;
+  info) printf ' Version: %s\\n  Commit: %s\\n  Parent: %s\\n' "$v" "$c" "$p" ;;
+  update) sleep 0.4; case "$*" in *--commit=c1*) echo "1.0 c1 c0" > ${dir}/fp-state ;; *) echo "2.0 c2 c1" > ${dir}/fp-state ;; esac ;;
+esac
+exit 0
+`, { mode: 0o755 });
+  // ajudante root de verdade, rodando com o flatpak falso (Flatpak do sistema volta versão por ele)
+  fs.writeFileSync(`${dir}/helper`, `#!/bin/sh\nPATH=${dir}:$PATH NEXUS_APP_OUT=${dir}/hout NEXUS_APP_STATE=${dir}/hstate exec sh ${ROOT}/system/sysd/nexus-app-helper "$@"\n`, { mode: 0o755 });
+  const core = await startCore({ dir, env: { NEXUS_APPS_DIRS: apps, NEXUS_FLATPAK_BIN: `${dir}/flatpak`, NEXUS_APP_HELPER: `${dir}/helper`, NEXUS_APP_OUT: `${dir}/hout` } });
+  await createAdult(core);
+  const ui = await openUi(core);
+  const id = 'native:org.test.Video.desktop';
+  try {
+    await ui.pickProfile('Ana');
+    await ui.until(inShell, 'entrou');
+    await core.rpc('apps.add', { fileId: 'org.test.Video.desktop' });
+    await core.rpc('apps.check_updates');
+    // aviso nas notificações, que abre a página do app
+    await ui.until(`()=>document.querySelector('#sbBell .ndot')`, 'bolinha de notificação');
+    await ui.ev(`document.querySelector('#sbBell').click()`);
+    await ui.until(`()=>[...document.querySelectorAll('#ovs .row2')].some(r=>r.textContent.includes('Atualização disponível')&&r.textContent.includes('Vídeo Teste · versão 2.0'))`, 'notificação de atualização');
+    await ui.ev(`[...document.querySelectorAll('#ovs .row2')].find(r=>r.textContent.includes('Atualização disponível')).click()`);
+    await ui.until(`()=>document.querySelector('#ovs .hub [data-k=hupd]')?.textContent?.includes('Atualizar · 2.0')`, 'botão Atualizar na página do app');
+    check((await ui.text('#ovs .hub .hupd')).includes('você tem a 1.0'), 'explica a versão atual e a nova');
+    await ui.ev(`document.querySelector('#ovs .hub [data-k=hupd]').click()`);
+    await ui.until(`()=>document.querySelector('#ovs .hub [data-k=hupd]')?.textContent?.includes('Atualizando')`, 'atualizando…', 3000);
+    await ui.until(`()=>!document.querySelector('#ovs .hub [data-k=hupd]')`, 'atualização concluída (botão some)', 8000);
+    check(fs.readFileSync(`${dir}/fp-state`, 'utf8').startsWith('2.0'), 'flatpak atualizou para a 2.0');
+    // Opções → Restaurar versão anterior (com confirmação)
+    await ui.ev(`document.querySelector('#ovs .hub [data-k=hopt]').click()`);
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=sheet] [data-a="apprestore:${id}"]')`, 'opção Restaurar versão anterior');
+    await ui.ev(`document.querySelector('#ovs [data-kind=sheet] [data-a="apprestore:${id}"]').click()`);
+    await ui.until(`()=>document.querySelector('#ovs [data-a^="yes:"]')`, 'confirmação');
+    await ui.ev(`document.querySelector('#ovs [data-a^="yes:"]').click()`);
+    for (let i = 0; i < 40 && !fs.readFileSync(`${dir}/fp-state`, 'utf8').startsWith('1.0'); i++) await ui.wait(200);
+    check(fs.readFileSync(`${dir}/fp-state`, 'utf8').startsWith('1.0'), 'flatpak voltou para a 1.0');
+    await ui.until(`()=>document.querySelector('#ovs .hub [data-k=hupd]')?.textContent?.includes('Atualizar · 2.0')`, 'a 2.0 volta a aparecer como atualização', 6000);
+  } finally {
+    check(ui.errors().length === 0, `sem erros de JavaScript${ui.errors().length ? ': ' + ui.errors().join(' | ') : ''}`);
+    await ui.close();
+    await core.stop();
+  }
+};

@@ -61,6 +61,11 @@ function OptsSheet(p: { id: string }) {
             <Show when={inst() && !isKid() && kids().length > 0}>
               <Row ic="users" label="Liberar para perfis infantis" a={`allowsheet:${kids()[0].id}`} />
             </Show>
+            <Show when={!isKid() && i().provider === 'native' && !S.appJobs[i().id]}>
+              <Show when={S.appUpd[i().id]?.canUpdate}><Row ic="download" label={`Atualizar${S.appUpd[i().id].available ? ` para a versão ${S.appUpd[i().id].available}` : ''}`} a={`appupgrade:${i().id}`} /></Show>
+              <Show when={S.appRestorable.includes(i().id) && S.game?.itemId !== i().id}><Row ic="refresh" label="Restaurar versão anterior" a={`apprestore:${i().id}`} /></Show>
+              <Row ic="refresh" label="Procurar atualizações" a="appcheck" />
+            </Show>
             <Show when={i().state === 'installing' && i().caps.cancel}><Row ic="x" label="Cancelar download" a={`cancel:${i().id}`} /></Show>
             <Show when={inst() && i().caps.uninstall && i().state !== 'running'}><Row ic="trash" label="Desinstalar" a={`uninstall:${i().id}`} danger /></Show>
           </>

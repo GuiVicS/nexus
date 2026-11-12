@@ -1,0 +1,15 @@
+# Nexus: atualizar ou restaurar a versão anterior de um app (instância = <update|restore>:<flatpak|snap|apt>:<nome>).
+# Iniciado pelo nexus-core com `systemctl start`; o polkit (50-nexus-apps.rules) libera só esta unidade.
+[Unit]
+Description=Nexus: app %i
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/nexus/nexus-app-helper %i
+TimeoutStartSec=30min
+UMask=0022
+RuntimeDirectory=nexus-app
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+StateDirectory=nexus/apps
+StateDirectoryMode=0755

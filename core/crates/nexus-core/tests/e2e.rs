@@ -671,3 +671,107 @@ async fn roms_upload_from_phone() {
     assert!(std::fs::read_dir(roms.join("snes")).unwrap().flatten().all(|e| !e.file_name().to_string_lossy().ends_with(".parcial")));
     assert_eq!(c.event("roms.received", 3).await["name"], "Mario.sfc");
 }
+
+#[tokio::test]
+async fn app_updates_flatpak_update_and_restore() {
+    let d = tempfile::tempdir().unwrap();
+    // flatpak falso: versão 1.0 (commit c1) instalada, 2.0 (c2) no repositório
+    let st = d.path().join("fp-state");
+    std::fs::write(&st, "1.0 c1 c0").unwrap();
+    let log = d.path().join("fp-calls");
+    let fake = d.path().join("flatpak");
+    write_exec(
+        &fake,
+        &format!(
+            r#"#!/bin/sh
+echo "$@" >> {log}
+read v c p < {st}
+case "$1" in
+  remote-ls) printf 'org.libretro.RetroArch\t1.23.0\n'; [ "$v" != "2.0" ] && printf 'org.test.Jogo\t2.0\n' ;;
+  list) printf 'org.test.Jogo\t%s\norg.libretro.RetroArch\t1.22.2\n' "$v" ;;
+  info) printf '     ID: org.test.Jogo\n Version: %s\n  Commit: %s\n  Parent: %s\n' "$v" "$c" "$p" ;;
+  update)
+    case "$*" in
+      *--commit=c1*) echo "1.0 c1 c0" > {st} ;;
+      *) echo "2.0 c2 c1" > {st} ;;
+    esac ;;
+esac
+exit 0
+"#,
+            log = log.display(),
+            st = st.display()
+        ),
+    );
+    std::env::set_var("NEXUS_FLATPAK_BIN", &fake);
+    // ajudante root de verdade (system/sysd/nexus-app-helper), rodando com o flatpak falso e pastas temporárias
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../system/sysd/nexus-app-helper");
+    let out = d.path().join("helper-out");
+    let wrap = d.path().join("helper");
+    write_exec(&wrap, &format!("#!/bin/sh\nPATH={}:$PATH NEXUS_APP_OUT={} NEXUS_APP_STATE={} exec sh {} \"$@\"\n", d.path().display(), out.display(), d.path().join("helper-state").display(), root.display()));
+    std::env::set_var("NEXUS_APP_HELPER", &wrap);
+    std::env::set_var("NEXUS_APP_OUT", &out);
+    let apps = desktop_dir(d.path(), &[("org.test.Jogo.desktop", "Jogo Flatpak", "flatpak run --branch=stable org.test.Jogo @@u %U @@"), ("org.libretro.RetroArch.desktop", "RetroArch", "flatpak run org.libretro.RetroArch")]);
+    let (_r, mut c) = boot(d.path(), |cfg| cfg.apps_dirs = vec![apps]).await;
+    first_adult(&mut c).await;
+    c.ok("apps.add", json!({ "fileId": "org.test.Jogo.desktop" })).await;
+    c.ok("apps.add", json!({ "fileId": "org.libretro.RetroArch.desktop" })).await;
+    let id = "native:org.test.Jogo.desktop";
+
+    // procura: acha a 2.0, avisa uma vez e marca o item
+    let ups = c.ok("apps.check_updates", json!({})).await;
+    assert_eq!(ups.as_array().unwrap().len(), 1, "RetroArch é dependência do Nexus: não avisa ({ups})");
+    assert_eq!(ups[0]["id"], id);
+    assert_eq!((ups[0]["current"].as_str(), ups[0]["available"].as_str(), ups[0]["canUpdate"].as_bool()), (Some("1.0"), Some("2.0"), Some(true)));
+    let n = c.event("notification.added", 5).await;
+    assert_eq!(n["title"], "Atualização disponível");
+    assert_eq!(n["action"], format!("hub:{id}"));
+    let st_all = c.ok("apps.updates", json!({})).await;
+    assert_eq!(st_all["restorable"], json!([id]), "Flatpak pode voltar versão (menos o RetroArch)");
+    let e = c.call("apps.upgrade", json!({ "id": "native:org.libretro.RetroArch.desktop" })).await;
+    assert!(format!("{e:?}").contains("junto com o Nexus"), "{e:?}");
+    sleep_ms(400).await;
+    let it = c.ok("library.get", json!({ "id": id })).await;
+    assert!(it["tags"].as_array().unwrap().iter().any(|t| t == "update"), "item com etiqueta de atualização");
+    c.ok("apps.check_updates", json!({})).await;
+
+    // atualizar
+    c.ok("apps.upgrade", json!({ "id": id })).await;
+    let n = c.event("notification.added", 8).await;
+    assert_eq!(n["title"], "App atualizado", "{n}");
+    assert!(n["body"].as_str().unwrap().contains("2.0"));
+    let mut job = c.event("apps.job", 5).await;
+    while job["state"] == "running" {
+        job = c.event("apps.job", 5).await;
+    }
+    assert_eq!(job["state"], "done");
+    let mut ups = c.event("apps.updates", 5).await;
+    for _ in 0..4 {
+        if ups.as_array().unwrap().is_empty() {
+            break;
+        }
+        ups = c.event("apps.updates", 5).await;
+    }
+    assert!(ups.as_array().unwrap().is_empty(), "nada mais a atualizar");
+
+    // restaurar a versão anterior: Flatpak do sistema vai pelo ajudante root, que volta para o commit pai (c1)
+    c.ok("apps.restore", json!({ "id": id })).await;
+    let n = c.event("notification.added", 8).await;
+    assert_eq!(n["title"], "Versão anterior restaurada", "{n}");
+    assert!(n["body"].as_str().unwrap().contains("1.0"));
+    let calls = std::fs::read_to_string(&log).unwrap();
+    assert!(calls.contains("update -y --noninteractive --system org.test.Jogo"), "{calls}");
+    assert!(calls.contains("update -y --noninteractive --system --commit=c1 org.test.Jogo"), "{calls}");
+    // a 2.0 volta a aparecer como atualização, mas sem avisar de novo
+    let mut ups = c.event("apps.updates", 5).await;
+    for _ in 0..4 {
+        if !ups.as_array().unwrap().is_empty() {
+            break;
+        }
+        ups = c.event("apps.updates", 5).await;
+    }
+    assert_eq!(ups[0]["available"], "2.0");
+    // app que não veio do Flatpak: falha com aviso, sem mexer em nada
+    c.ok("apps.restore", json!({ "id": "native:nada" })).await;
+    let n = c.event("notification.added", 8).await;
+    assert_eq!(n["title"], "Não foi possível restaurar", "{n}");
+}

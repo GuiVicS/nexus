@@ -10,7 +10,7 @@ case "$ARCH" in amd64) TAG=x86_64; ALVO="Debian/Ubuntu 24.04, PC x86_64"; COM="N
 tools/build-deb.sh "$ARCH"
 B="dist/bundle-$ARCH/nexus-$VER"
 rm -rf "dist/bundle-$ARCH" && mkdir -p "$B"
-cp "dist/nexus_${VER}_${ARCH}.deb" install.sh "$B/"
+cp "dist/nexus_${VER}_${ARCH}.deb" install.sh system/packaging/deps.lock "$B/"
 cat > "$B/LEIAME.txt" <<TXT
 Nexus $VER — instalação ($ALVO)
 

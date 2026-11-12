@@ -38,7 +38,7 @@ Sessão: nexus.desktop → nexus-session → sway kiosk (ws1 = Shell, ws2 = jogo
 - **Supervisor de jogos**: `game.rs` — lança em sessão própria (`setsid`), acompanha por processos (`/proc`; Steam via `reaper … SteamLaunch AppId=N`), fecha com SIGTERM→SIGKILL, registra tempo de jogo e limite diário infantil.
 - **Segurança**: socket 0600; HTTP local só com `Host` loopback (anti DNS-rebinding); Remote com token de 96 bits + bloqueio por IP; PIN com Argon2 e bloqueio por tentativas; imagens personalizadas validadas por conteúdo e restritas a pastas permitidas (`customart.rs`); Shell sem Node (`contextIsolation`, sandbox, CSP).
 
-## 4. Estado atual (0.4.0)
+## 4. Estado atual (0.4.1)
 
 **0.4.0 "carenagem de console" (release `v0.4.0`, 2026-11-12, plano em `~/.claude/plans/jiggly-forging-ullman.md`):** a Steam e o RetroArch são só motor, nunca aparecem.
 - **Steam escondida:** janelas da classe `steam` vão para o *scratchpad* do sway (`nexus-kiosk.conf`); `no_focus` impede janela nova de trocar a tela;
@@ -57,6 +57,27 @@ Sessão: nexus.desktop → nexus-session → sway kiosk (ws1 = Shell, ws2 = jogo
   servidas pelo Core em `/art/<id>/shot0..3`, a CSP da Shell não deixa carregar imagem externa) e descrição/gêneros buscados ao abrir.
 - Validado na VM (sessão aninhada, screenshots): tudo acima, inclusive envio de ROM pela página do celular e cópia de pasta. **Não validado:** pendrive real,
   controle físico com botão Guia, jogo que pede EULA até o fim (Spacewar ficou sem resposta), Pi.
+- **Atualizações dos apps (0.4.1):** `appupdates.rs` descobre a origem de cada app adicionado (Flatpak pelo
+  `Exec=flatpak run`, Snap pela pasta `/var/lib/snapd/desktop` ou `/snap/bin`, apt por `dpkg-query -S`), procura a cada 6 h (`flatpak remote-ls
+  --updates`, `snap refresh --list`, `apt list --upgradable`), avisa uma vez por versão (notificação → página do app) e marca o item com `update`.
+  Página do app: botão **Atualizar**; Opções: **Restaurar versão anterior** e **Procurar atualizações**; Ajustes → Apps e jogos lista tudo.
+  RPCs `apps.updates`, `apps.check_updates`, `apps.upgrade`, `apps.restore` (eventos `apps.updates`, `apps.job`).
+  **Root:** Flatpak *do sistema* só atualiza sem senha; voltar versão (`--commit`) exige root (testado na VM: "Can't update to a specific commit
+  without root permissions"). Por isso existe o ajudante `system/sysd/nexus-app-helper` + unidade `nexus-app@<update|restore>:<flatpak|snap|apt>:<nome>.service`
+  + regra `system/polkit/50-nexus-apps.rules` (libera só essa unidade, verbo start, sessão local ativa). O ajudante escolhe a versão: Flatpak = commit
+  pai, Snap = `snap revert`, apt = versão guardada por ele em `/var/lib/nexus/apps/<pkg>.prev` antes de atualizar. Flatpak do usuário vai direto.
+  Sem o ajudante instalado (desenvolvimento), Snap/apt só avisam. Testes: `appupdates::tests` (inclui o script do ajudante com snap/apt falsos),
+  e2e `app_updates_flatpak_update_and_restore`, cenário de interface `apps_atualizacoes`.
+- **Dependências travadas (pedido do usuário):** RetroArch e núcleos só mudam de versão nos aparelhos quando o usuário atualiza aqui
+  na máquina de desenvolvimento e sai uma release. `system/packaging/deps.lock` (gerado por `tools/pin-deps.sh`, nunca à mão) guarda o
+  commit Flatpak do RetroArch (x86_64 = o instalado aqui; aarch64 = o commit do Flathub com o mesmo assunto) e o ID + SHA-256 dos pacotes
+  de núcleos `dist/nexus-cores-<ID>-linux-{x86_64,arm64}.tar.gz` (PC = os núcleos desta máquina; ARM = baixados do buildbot no momento do
+  pin e congelados). No aparelho, `/usr/lib/nexus/nexus-deps-apply` (root; postinst, instalador e `update.sh`) põe o RetroArch no commit
+  travado e faz `flatpak mask` (nem `flatpak update` nem a Central de Programas mexem); `--cores ARQ` confere o SHA-256 e instala em
+  `/usr/lib/nexus/cores`. O Core (`emu.rs::fetch_core`/`sync_pinned`) copia os núcleos dali para a pasta do RetroArch e troca os antigos
+  quando o ID muda; só sem esse pacote (desenvolvimento) baixa do buildbot noturno. `appupdates::is_dependency` tira RetroArch, Steam e
+  navegador das notificações e do Atualizar/Restaurar (o ajudante root também recusa). Steam se atualiza sozinha (Valve, não dá para
+  travar); o navegador fica com as atualizações de segurança do sistema.
 - Pendências pequenas: o diálogo de configuração do Unity ainda pisca; a capa "Instalando" fica sem título para jogo fora da biblioteca.
 
 
@@ -169,6 +190,10 @@ Os cenários de UI são **sensíveis a carga** (máquina de 2 núcleos): um dele
 - **Instalação completa por padrão (pedido do usuário, 0.3.1):** `install.sh` = Steam (PC) + RetroArch (`--sem-steam`/`--sem-emuladores`
   para tirar) + navegador se não houver (plano: `chromium`, ou `chromium-browser` no Ubuntu) + `bluez`/`curl` nas dependências do `.deb`.
 - Ao mudar versão: `Cargo.toml`, `README.md`; depois bundle → copiar → `latest.txt` → deploy.
+- **Quando o usuário atualizar o RetroArch ou os núcleos aqui:** `tools/pin-deps.sh` (ou `retroarch` / `cores`), publicar os núcleos
+  numa release própria `gh release create cores-<ID> dist/nexus-cores-<ID>-linux-*.tar.gz* --title "Núcleos <ID>"` (só quando mudarem;
+  ~130 MB cada) e então a release do Nexus de sempre (o `deps.lock` vai dentro do `.deb` e do `.tar.gz`). `update.sh` baixa os núcleos
+  só se o ID instalado (`/usr/lib/nexus/cores/ID`) for diferente.
 
 ## 8. Diagnóstico no aparelho (peça ao usuário nesta ordem)
 
@@ -212,13 +237,13 @@ Saídas de emergência: Ctrl+Alt+F3 (terminal; na VirtualBox Right-Ctrl+F3), `su
 ## 11. Mapa rápido de arquivos
 
 ```
-core/crates/nexus-core/src/  accounts.rs db.rs game.rs rpc.rs net.rs remote.rs vdev.rs inputmap.rs customart.rs art.rs hardware.rs procs.rs guide.rs compositor.rs roms.rs roms_upload.html
+core/crates/nexus-core/src/  accounts.rs appupdates.rs db.rs game.rs rpc.rs net.rs remote.rs vdev.rs inputmap.rs customart.rs art.rs hardware.rs procs.rs guide.rs compositor.rs roms.rs roms_upload.html
                              providers/{mod,steam,native,demo,emu,web}.rs   tests/e2e.rs (Core de ponta a ponta)
 apps/shell/src/              main.tsx styles.css lib/{state,actions,input,session,api,format,flows}.ts components/{App,Views,Emu,Roms,Hub,Overlays,Settings,Profiles,Apps,Entry,ui}.tsx
 apps/shell/electron/         main.cjs preload.cjs   (ponte segura com o Core; protocolo nexus-art://)
 apps/remote/src/             App.tsx Gamepad.tsx Touchpad.tsx link.ts remote.css   (celular)
 packages/{protocol,focus,ui} installer/src/{main,detect,plan,autologin}.rs
-system/                      session/ sway/ systemd/ polkit/ udev/ apparmor/ packaging/
+system/                      session/ sway/ systemd/ sysd/ (ajudante root) polkit/ udev/ apparmor/ packaging/
 tools/                       build-deb.sh bundle.sh update.sh extract-demo-catalog.mjs gen-protocol-index.mjs
 tests/e2e/                   lib.mjs scenarios.mjs run.mjs cdp.mjs
 assets/demo/                 catálogo e imagens fictícias do modo demonstração

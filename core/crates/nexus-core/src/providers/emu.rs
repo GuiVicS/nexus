@@ -1,5 +1,6 @@
-//! Emulação (RetroArch): ROMs em `~/ROMs/<console>/`, um núcleo libretro por console, baixado do servidor
-//! oficial (buildbot.libretro.com) na primeira vez, capas do libretro-thumbnails. Abre em tela cheia com os
+//! Emulação (RetroArch): ROMs em `~/ROMs/<console>/`, um núcleo libretro por console (do pacote travado do Nexus;
+//! em desenvolvimento, sem o pacote, baixado do servidor
+//! oficial buildbot.libretro.com), capas do libretro-thumbnails. Abre em tela cheia com os
 //! controles mapeados (autoconfig) e os jogadores reservados (Ajustes → Controles).
 use super::*;
 use nexus_protocol::*;
@@ -102,13 +103,66 @@ pub fn buildbot_arch() -> &'static str {
     }
 }
 
-/// Baixa e extrai um núcleo do buildbot oficial (zip com o .so).
+/// Núcleos travados pelo Nexus (pacote `nexus-cores-<ID>` instalado por `nexus-deps-apply --cores`): as mesmas
+/// versões da máquina de desenvolvimento, que só mudam quando uma release nova do Nexus traz outro pacote.
+pub fn pinned_dir() -> PathBuf {
+    std::env::var_os("NEXUS_CORES_DIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/usr/lib/nexus/cores"))
+}
+
+fn pinned_id(pinned: &Path) -> Option<String> {
+    std::fs::read_to_string(pinned.join("ID")).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
+fn copy_core(src: &Path, dest: &Path) -> std::io::Result<()> {
+    let tmp = dest.with_extension("so.nexus-tmp");
+    std::fs::copy(src, &tmp)?;
+    std::fs::rename(&tmp, dest)
+}
+
+/// Quando o pacote travado muda (ou na 1ª vez), troca os núcleos que já estavam na pasta do RetroArch
+/// (baixados antes, de outra versão) pelos do pacote. A marca `.nexus-cores` guarda qual pacote foi aplicado.
+pub fn sync_pinned(dir: &Path, pinned: &Path) {
+    let Some(id) = pinned_id(pinned) else { return };
+    let mark = dir.join(".nexus-cores");
+    if std::fs::read_to_string(&mark).is_ok_and(|m| m.trim() == id) {
+        return;
+    }
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let mut ok = true;
+    for e in rd.flatten() {
+        let name = e.file_name();
+        let src = pinned.join(&name);
+        if name.to_string_lossy().ends_with("_libretro.so") && src.is_file() {
+            if let Err(err) = copy_core(&src, &e.path()) {
+                tracing::warn!("núcleo {:?}: {err}", name);
+                ok = false;
+            }
+        }
+    }
+    if ok {
+        let _ = std::fs::write(&mark, &id);
+    }
+}
+
+/// Núcleo para o console: do pacote travado do Nexus; só sem esse pacote (desenvolvimento) baixa do buildbot.
 pub fn fetch_core(dir: &Path, core: &str) -> Result<PathBuf, String> {
     let dest = core_path(dir, core);
+    let pinned = pinned_dir();
+    if dir.is_dir() {
+        sync_pinned(dir, &pinned);
+    }
     if dest.is_file() {
         return Ok(dest);
     }
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let src = core_path(&pinned, core);
+    if src.is_file() {
+        copy_core(&src, &dest).map_err(|e| format!("não foi possível preparar o núcleo {core}: {e}"))?;
+        return Ok(dest);
+    }
+    if pinned_id(&pinned).is_some() {
+        tracing::warn!("núcleo {core} fora do pacote travado do Nexus; baixando do buildbot");
+    }
     let url = format!("https://buildbot.libretro.com/nightly/linux/{}/latest/{core}_libretro.so.zip", buildbot_arch());
     let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(std::time::Duration::from_secs(180))).build().into();
     let bytes = agent.get(&url).call().map_err(|e| format!("não foi possível baixar o núcleo {core}: {e}"))?.body_mut().with_config().limit(200 * 1024 * 1024).read_to_vec().map_err(|e| e.to_string())?;
@@ -356,6 +410,30 @@ pub fn fetch_cores(all: bool) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pinned_cores_replace_old_ones() {
+        let pin = tempfile::tempdir().unwrap();
+        let ra = tempfile::tempdir().unwrap();
+        std::fs::write(pin.path().join("ID"), "20261112\n").unwrap();
+        std::fs::write(pin.path().join("snes9x_libretro.so"), b"travado").unwrap();
+        std::fs::write(pin.path().join("mgba_libretro.so"), b"mgba travado").unwrap();
+        std::fs::write(ra.path().join("snes9x_libretro.so"), b"noturno").unwrap();
+        std::fs::write(ra.path().join("extra_libretro.so"), b"do usuario").unwrap();
+        sync_pinned(ra.path(), pin.path());
+        assert_eq!(std::fs::read(ra.path().join("snes9x_libretro.so")).unwrap(), b"travado");
+        assert_eq!(std::fs::read(ra.path().join("extra_libretro.so")).unwrap(), b"do usuario", "núcleo fora do pacote fica");
+        assert!(!ra.path().join("mgba_libretro.so").exists(), "só troca o que já estava; o resto vem sob demanda");
+        assert_eq!(std::fs::read_to_string(ra.path().join(".nexus-cores")).unwrap(), "20261112");
+        // mesma marca: não mexe de novo
+        std::fs::write(ra.path().join("snes9x_libretro.so"), b"mexido").unwrap();
+        sync_pinned(ra.path(), pin.path());
+        assert_eq!(std::fs::read(ra.path().join("snes9x_libretro.so")).unwrap(), b"mexido");
+        // pacote novo: troca de novo
+        std::fs::write(pin.path().join("ID"), "20261201").unwrap();
+        sync_pinned(ra.path(), pin.path());
+        assert_eq!(std::fs::read(ra.path().join("snes9x_libretro.so")).unwrap(), b"travado");
+    }
 
     #[test]
     fn titles_thumbs_and_scan() {

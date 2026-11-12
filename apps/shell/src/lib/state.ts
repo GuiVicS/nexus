@@ -1,7 +1,7 @@
 import { createSignal } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 import { RpcError, E } from '@nexus/protocol';
-import type { Friend, GameSession, HardwareProfile, Hello, Item, Notification, Parental, Prefs, Profile, RemotePairing, SessionInfo, SteamAccount } from '@nexus/protocol';
+import type { AppUpdate, Friend, GameSession, HardwareProfile, Hello, Item, Notification, Parental, Prefs, Profile, RemotePairing, SessionInfo, SteamAccount } from '@nexus/protocol';
 import { configureSfx, sfx } from '@nexus/ui';
 import type { Focus } from '@nexus/focus';
 import { api } from './api';
@@ -36,6 +36,12 @@ interface State {
   emuSys: string | null;
   /** RetroArch instalado (mostra a aba Emuladores mesmo sem jogos, para adicionar) */
   emuReady: boolean;
+  /** atualizações dos apps instalados (id do item → atualização) */
+  appUpd: Record<string, AppUpdate>;
+  /** apps que podem voltar à versão anterior (Flatpak) */
+  appRestorable: string[];
+  /** app sendo atualizado/restaurado agora → operação */
+  appJobs: Record<string, 'update' | 'restore'>;
   setCat: string;
   dockId: string | null;
   bgId: string | null;
@@ -68,6 +74,9 @@ export const [S, setS] = createStore<State>({
   shopCat: 'inicio',
   emuSys: null,
   emuReady: false,
+  appUpd: {},
+  appRestorable: [],
+  appJobs: {},
   setCat: 'som',
   dockId: null,
   bgId: null,

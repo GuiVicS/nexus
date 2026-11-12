@@ -1,0 +1,64 @@
+#!/bin/sh
+# Ajudante root do Nexus: atualiza ou restaura a versão anterior de UM app instalado.
+# Só roda pelo systemd (nexus-app@<ação>:<tipo>:<nome>.service), liberado pelo polkit para o usuário na frente da TV
+# (system/polkit/50-nexus-apps.rules). Quem decide a versão é este ajudante: "restore" volta para a anterior à
+# instalada (Flatpak: commit pai; Snap: revisão anterior; apt: a versão guardada aqui antes da última atualização).
+# Resultado em $OUT/<tipo>-<nome>: "ok <versão>" ou "err <mensagem>".
+set -u
+STATE=${NEXUS_APP_STATE:-/var/lib/nexus/apps}
+OUT=${NEXUS_APP_OUT:-/run/nexus-app}
+export LC_ALL=C LANG=C DEBIAN_FRONTEND=noninteractive
+inst=${1:-}
+action=${inst%%:*}
+rest=${inst#*:}
+kind=${rest%%:*}
+name=${rest#*:}
+case "$action" in update|restore) ;; *) echo "ação inválida" >&2; exit 2 ;; esac
+case "$kind" in flatpak|snap|apt) ;; *) echo "tipo inválido" >&2; exit 2 ;; esac
+if ! printf '%s' "$name" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'; then echo "nome inválido" >&2; exit 2; fi
+mkdir -p "$OUT" "$STATE"
+res="$OUT/$kind-$name"
+log=$(mktemp)
+trap 'rm -f "$log"' EXIT
+ok() { echo "ok $1" > "$res"; exit 0; }
+err() { echo "err $1" > "$res"; echo "$1" >&2; exit 1; }
+# dependências do Nexus: a versão vem do deps.lock (nexus-deps-apply), nunca daqui
+case "$name" in
+  org.libretro.RetroArch|com.valvesoftware.Steam|org.chromium.Chromium|com.google.Chrome|retroarch|libretro-*|steam|steam-installer|steam-launcher|steam-libs-amd64|chromium|chromium-browser|google-chrome-stable)
+    err "Este programa é atualizado junto com o Nexus" ;;
+esac
+last() { grep -v '^[[:space:]]*$' "$log" | tail -n 1 | sed 's/^[Ee]rror: //' | cut -c1-160; }
+
+case "$kind" in
+flatpak)
+  info=$(flatpak info --system "$name" 2>/dev/null) || err "App não instalado no sistema"
+  if [ "$action" = update ]; then
+    flatpak update -y --noninteractive --system "$name" >"$log" 2>&1 || err "$(last)"
+  else
+    parent=$(printf '%s\n' "$info" | awk -F': *' '/^ *Parent:/{print $2; exit}')
+    [ -n "$parent" ] && [ "$parent" != "-" ] || err "Não há versão anterior para este app"
+    flatpak update -y --noninteractive --system --commit="$parent" "$name" >"$log" 2>&1 || err "$(last)"
+  fi
+  ok "$(flatpak info --system "$name" 2>/dev/null | awk -F': *' '/^ *Version:/{print $2; exit}')"
+  ;;
+snap)
+  snap list "$name" >/dev/null 2>&1 || err "App não instalado"
+  if [ "$action" = update ]; then snap refresh "$name" >"$log" 2>&1 || err "$(last)"; else snap revert "$name" >"$log" 2>&1 || err "$(last)"; fi
+  ok "$(snap list "$name" 2>/dev/null | awk 'NR==2{print $2}')"
+  ;;
+apt)
+  cur=$(dpkg-query -W -f='${Version}' "$name" 2>/dev/null) || err "Pacote não instalado"
+  if [ "$action" = update ]; then
+    apt-get install -y --only-upgrade "$name" >"$log" 2>&1 || err "$(last)"
+    new=$(dpkg-query -W -f='${Version}' "$name")
+    [ "$new" != "$cur" ] && echo "$cur" > "$STATE/$name.prev"
+    ok "$new"
+  else
+    [ -s "$STATE/$name.prev" ] || err "Não há versão anterior guardada para este app"
+    prev=$(cat "$STATE/$name.prev")
+    apt-get install -y --allow-downgrades "$name=$prev" >"$log" 2>&1 || err "A versão anterior ($prev) não está mais disponível"
+    rm -f "$STATE/$name.prev"
+    ok "$(dpkg-query -W -f='${Version}' "$name")"
+  fi
+  ;;
+esac

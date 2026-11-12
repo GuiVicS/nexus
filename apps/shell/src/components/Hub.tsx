@@ -99,8 +99,18 @@ export function Hub(p: { id: string; oid: number }) {
                 <Show when={i().state === 'installing' && i().caps.cancel}>
                   <div class="btn f" data-k="cancel" data-r="p" data-pad="8" data-a={`cancel:${i().id}`} data-verb="Cancelar"><Icon n="x" /> Cancelar</div>
                 </Show>
+                <Show when={!isKid() && (S.appJobs[i().id] || S.appUpd[i().id]?.canUpdate)}>
+                  <Show when={S.appJobs[i().id]} fallback={
+                    <div class="btn f" data-k="hupd" data-r="p" data-pad="8" data-a={`appupgrade:${i().id}`} data-verb="Atualizar"><Icon n="download" /> Atualizar{S.appUpd[i().id]?.available ? ` · ${S.appUpd[i().id].available}` : ''}</div>
+                  }>
+                    <div class="btn f off" data-k="hupd" data-r="p" data-pad="8" data-a="noop" data-verb="Aguarde"><span class="spin" /> {S.appJobs[i().id] === 'restore' ? 'Restaurando…' : 'Atualizando…'}</div>
+                  </Show>
+                </Show>
                 <div class="btn f" data-k="hopt" data-r="p" data-pad="8" data-a={`opts:${i().id}`} data-verb="Opções"><Icon n="menu" /> Opções</div>
               </div>
+              <Show when={!isKid() && S.appUpd[i().id]}>
+                {(u) => <p class="hupd">{u().canUpdate ? `Nova versão ${u().available || ''} disponível${u().current ? ` (você tem a ${u().current})` : ''}. Se algo der errado, use Opções → Restaurar versão anterior.` : `Nova versão ${u().available} disponível. Este app vem do ${u().source}: o sistema instala a atualização.`}</p>}
+              </Show>
             </div>
             <Show when={tabs().length}>
               <div class="htabs">

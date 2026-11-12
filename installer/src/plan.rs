@@ -111,6 +111,8 @@ pub fn build(sys: &System, o: &Options) -> Vec<Step> {
         }
         s.push(cmd("Adicionar o repositório Flathub", &["flatpak", "remote-add", "--if-not-exists", "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo"]));
         s.push(cmd("Instalar o RetroArch (Flatpak)", &["flatpak", "install", "--system", "-y", "flathub", "org.libretro.RetroArch"]));
+        // fica na versão da máquina de desenvolvimento (deps.lock) e mascarado: só muda com uma release do Nexus
+        s.push(cmd("Travar o RetroArch na versão do Nexus", &["/usr/lib/nexus/nexus-deps-apply"]));
     }
     if let (Some(user), Some(dm)) = (&o.autologin_user, sys.display_manager.as_deref().and_then(autologin::dm_from_name)) {
         s.push(Step { title: format!("Entrar direto no Nexus ao ligar ({user})"), action: Action::Autologin { dm, user: user.clone() } });

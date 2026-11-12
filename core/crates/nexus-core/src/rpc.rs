@@ -355,10 +355,11 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
                 Some(prov) => prov.get(&id).await.ok().flatten(),
                 None => None,
             };
-            let it = match found {
+            let mut it = match found {
                 Some(i) => i,
                 None => core.find_item(&id).await.ok_or_else(|| RpcError::new(E_NOT_FOUND, "Item não encontrado"))?,
             };
+            core.tag_update(&mut it);
             if !core.visible_to(Some(&p), &it) {
                 return Err(RpcError::new(E_FORBIDDEN, "Este perfil não pode ver este item"));
             }
@@ -483,6 +484,60 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             ok(tokio::task::spawn_blocking(move || crate::controllers::list(&db)).await.unwrap_or_default())
         }
         "controllers.actions" => Ok(crate::controllers::actions_json()),
+        "apps.updates" => {
+            need_session(core)?;
+            let list: Vec<crate::appupdates::AppUpdate> = core.app_updates.lock().unwrap_or_else(|e| e.into_inner()).values().cloned().collect();
+            let c = core.clone();
+            let restorable = tokio::task::spawn_blocking(move || crate::appupdates::restorable(&c)).await.unwrap_or_default();
+            let jobs: Vec<String> = core.app_jobs.lock().unwrap_or_else(|e| e.into_inner()).iter().cloned().collect();
+            Ok(json!({ "updates": list, "restorable": restorable, "jobs": jobs }))
+        }
+        "apps.check_updates" => {
+            let p = need_session(core)?;
+            if p.kind == ProfileKind::Kid {
+                return Err(RpcError::new(E_FORBIDDEN, "Indisponível neste perfil"));
+            }
+            ok(crate::appupdates::check_now(core).await)
+        }
+        "apps.upgrade" | "apps.restore" => {
+            let p = need_session(core)?;
+            if p.kind == ProfileKind::Kid {
+                return Err(RpcError::new(E_FORBIDDEN, "Indisponível neste perfil"));
+            }
+            let id = s(&v, "id")?;
+            let (c0, id0) = (core.clone(), id.clone());
+            if tokio::task::spawn_blocking(move || crate::appupdates::is_dependency_item(&c0, &id0)).await.unwrap_or(false) {
+                return Err(RpcError::new(E_FORBIDDEN, crate::appupdates::DEP_MSG));
+            }
+            if core.game.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|g| g.item_id == id) {
+                return Err(RpcError::new(E_BUSY, "Feche o app antes de mudar a versão"));
+            }
+            if !core.app_jobs.lock().unwrap_or_else(|e| e.into_inner()).insert(id.clone()) {
+                return Err(RpcError::new(E_BUSY, "Este app já está sendo atualizado"));
+            }
+            let restore = method == "apps.restore";
+            let title = core.find_item(&id).await.map(|i| i.title).unwrap_or_else(|| "App".into());
+            core.emit("apps.job", json!({ "id": id, "op": if restore { "restore" } else { "update" }, "state": "running" }));
+            let c = core.clone();
+            tokio::spawn(async move {
+                let (c2, id2) = (c.clone(), id.clone());
+                let r = tokio::task::spawn_blocking(move || if restore { crate::appupdates::restore(&c2, &id2) } else { crate::appupdates::update(&c2, &id2) }).await.unwrap_or_else(|e| Err(e.to_string()));
+                c.app_jobs.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+                match &r {
+                    Ok(ver) => {
+                        let body = if ver.is_empty() { title.clone() } else { format!("{title} · versão {ver}") };
+                        c.notify("check", if restore { "Versão anterior restaurada" } else { "App atualizado" }, &body, Some(&format!("hub:{id}")));
+                    }
+                    Err(e) => {
+                        tracing::warn!("{} de {id}: {e}", if restore { "restauração" } else { "atualização" });
+                        c.notify("alert", if restore { "Não foi possível restaurar" } else { "Não foi possível atualizar" }, &format!("{title} · {e}"), Some(&format!("hub:{id}")));
+                    }
+                }
+                c.emit("apps.job", json!({ "id": id, "op": if restore { "restore" } else { "update" }, "state": if r.is_ok() { "done" } else { "failed" }, "error": r.as_ref().err() }));
+                crate::appupdates::check_now(&c).await;
+            });
+            ok(json!({ "ok": true }))
+        }
         "emu.status" => {
             need_session(core)?;
             let mut st = tokio::task::spawn_blocking(crate::providers::emu::systems_status).await.unwrap_or(Value::Null);

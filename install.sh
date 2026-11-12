@@ -66,6 +66,13 @@ if [ "$PLAN" -eq 1 ]; then
 fi
 nexus-installer check
 nexus-installer install $STEAM $EMU $ARGS --yes
+# núcleos dos emuladores travados pelo Nexus (pacote nexus-cores-* ao lado deste script, se veio junto)
+case "$ARCH" in amd64) CT=x86_64 ;; *) CT=arm64 ;; esac
+if [ -n "$EMU" ]; then
+  for f in ./nexus-cores-*-linux-"$CT".tar.gz; do
+    [ -f "$f" ] && { /usr/lib/nexus/nexus-deps-apply --cores "$f" || true; }
+  done
+fi
 echo
 echo "Pronto! Reinicie ou saia da sessão e escolha \"Nexus\" na tela de login."
 echo "Problemas? Rode: nexus-installer doctor   (Ctrl+Alt+F3 abre um terminal de emergência)"

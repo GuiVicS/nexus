@@ -145,6 +145,16 @@ function PaneApps() {
     <Pane title="Apps e jogos">
       <Info label="Só aparece o que você adicionar" desc="Jogos da Steam entram sozinhos. Programas do Linux (Minecraft, Firefox, Kodi…) entram por aqui, com nome, ícone e capas à sua escolha." />
       <ActRow a="appadd" icon="plus" label="Adicionar app ou jogo" desc="Escolha entre os programas instalados no sistema" verb="Adicionar" k="s-appadd" />
+      <h3 class="sh2">Atualizações</h3>
+      <For each={Object.values(S.appUpd)} fallback={<Info label="Tudo atualizado" desc="O Nexus procura novas versões dos apps a cada 6 horas e avisa nas notificações." />}>
+        {(u) => (
+          <div class="srow f" data-k={`up-${u.id}`} data-r="22" data-a={S.appJobs[u.id] ? 'noop' : u.canUpdate ? `appupgrade:${u.id}` : `hub:${u.id}`} data-verb={u.canUpdate ? 'Atualizar' : 'Ver'}>
+            <div><b>{u.title}</b><small>{S.appJobs[u.id] ? (S.appJobs[u.id] === 'restore' ? 'Restaurando…' : 'Atualizando…') : `${u.current ? `${u.current} → ` : ''}${u.available || 'nova versão'} · ${u.canUpdate ? u.source : `${u.source}, atualizado pelo sistema`}`}</small></div>
+            <Icon n={S.appJobs[u.id] ? 'refresh' : 'download'} />
+          </div>
+        )}
+      </For>
+      <ActRow a="appcheck" icon="refresh" label="Procurar atualizações agora" desc="Para voltar uma versão, abra o app e use Opções → Restaurar versão anterior" verb="Procurar" k="s-appcheck" />
       <h3 class="sh2">Adicionados ao Nexus</h3>
       <For each={list() ?? []} fallback={<Info label={list() === null ? 'Carregando…' : 'Nada adicionado ainda'} desc={list() === null ? '' : 'Use “Adicionar app ou jogo” acima'} />}>
         {(a) => (

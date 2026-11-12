@@ -7,3 +7,5 @@ if command -v apparmor_parser >/dev/null 2>&1 && [ -f /etc/apparmor.d/opt.nexus.
   apparmor_parser -r /etc/apparmor.d/opt.nexus.shell.nexus-shell 2>/dev/null || true
 fi
 systemctl daemon-reload 2>/dev/null || true
+# RetroArch na versão travada pelo Nexus (deps.lock) e mascarado contra atualização automática
+[ -x /usr/lib/nexus/nexus-deps-apply ] && /usr/lib/nexus/nexus-deps-apply || true

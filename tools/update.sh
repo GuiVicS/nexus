@@ -76,6 +76,24 @@ echo "→ Conferindo integridade…"
 sha256sum -c "$FILE.sha256"
 tar xzf "$FILE"
 
+# Núcleos dos emuladores: travados no deps.lock (versões da máquina de desenvolvimento), numa release
+# própria "cores-<ID>". Só baixa quando o ID muda e quando há (ou vai haver) RetroArch.
+CID=$(sed -n 's/^CORES_ID=//p' "nexus-$VER/deps.lock" 2>/dev/null || true)
+CF=""
+EMU=1
+case "$ARGS" in *--sem-emuladores*) EMU=0 ;; esac
+[ "$CUR" != "nenhuma" ] && ! flatpak info --system org.libretro.RetroArch >/dev/null 2>&1 && EMU=0
+if [ -n "$CID" ] && [ "$EMU" -eq 1 ] && [ "$(cat /usr/lib/nexus/cores/ID 2>/dev/null)" != "$CID" ]; then
+  CF="nexus-cores-$CID-linux-$TAG.tar.gz"
+  echo "→ Baixando os núcleos dos emuladores ($CID)…"
+  if [ "$GH" -eq 1 ]; then
+    gh release download "cores-$CID" -R "$REPO" -p "$CF" || CF=""
+  else
+    curl -fL --progress-bar -o "$CF" "https://github.com/$REPO/releases/download/cores-$CID/$CF" || CF=""
+  fi
+  [ -n "$CF" ] || echo "  (não deu para baixar os núcleos agora; os emuladores ficam com os atuais)" >&2
+fi
+
 if [ "${NEXUS_DRY:-0}" = "1" ]; then
   echo "(simulação: pacote baixado e verificado, nada foi instalado)"
   ls "nexus-$VER"
@@ -92,4 +110,7 @@ else
   $SUDO apt-get install -y "./nexus-$VER/nexus_${VER}_${ARCH}.deb"
   echo
   echo "Pronto: Nexus $VER instalado. Saia da sessão e entre de novo em \"Nexus\" para usar a nova versão."
+fi
+if [ -n "$CF" ]; then
+  $SUDO /usr/lib/nexus/nexus-deps-apply --cores "$T/$CF" || echo "  (os núcleos baixados não conferem; ficam os atuais)" >&2
 fi

@@ -1,4 +1,5 @@
 pub mod accounts;
+pub mod appupdates;
 pub mod art;
 pub mod avatars;
 pub mod compositor;
@@ -34,6 +35,7 @@ pub async fn run(cfg: config::Config) -> anyhow::Result<Running> {
     let started = net::start(core.clone()).await?;
     core.adopt_running_game(); // perfil restaurado + jogo aberto antes de reiniciar
     tokio::spawn(core::library_loop(core.clone()));
+    tokio::spawn(appupdates::update_loop(core.clone()));
     if guide_watch {
         guide::spawn(core.clone());
     }

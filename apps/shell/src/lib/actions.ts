@@ -519,6 +519,40 @@ export const ACT: Record<string, Fn> = {
       fail(e);
     }
   },
+  async appupgrade(id) {
+    const u = S.appUpd[id];
+    if (topOv()?.kind === 'sheet') popOv(undefined, true);
+    if (!u?.canUpdate) return void toast('Atualização pelo sistema', u ? `${u.title} vem do ${u.source}: o sistema instala esta atualização` : '', 'info');
+    try {
+      await api.appUpgrade(id);
+      setS('appJobs', id, 'update');
+      toast('Atualizando', `${u.title}${u.available ? ` · versão ${u.available}` : ''}`, 'download');
+    } catch (e) {
+      fail(e);
+    }
+  },
+  async apprestore(id) {
+    const it = findItem(id);
+    popOv(undefined, true);
+    if (!(await askConfirm({ title: 'Restaurar versão anterior?', sub: `${it?.title ?? 'O app'} volta para a versão de antes da última atualização. Dá para atualizar de novo quando quiser.`, yes: 'Restaurar' }))) return;
+    try {
+      await api.appRestore(id);
+      setS('appJobs', id, 'restore');
+      toast('Restaurando versão anterior', it?.title ?? '', 'refresh');
+    } catch (e) {
+      fail(e);
+    }
+  },
+  async appcheck() {
+    if (topOv()?.kind === 'sheet') popOv(undefined, true);
+    toast('Procurando atualizações…', 'Isso pode levar alguns segundos', 'refresh');
+    try {
+      const l = await api.appCheckUpdates();
+      toast(l.length ? `${l.length} ${l.length === 1 ? 'atualização encontrada' : 'atualizações encontradas'}` : 'Tudo atualizado', l.map((u) => u.title).join(', '), l.length ? 'download' : 'check');
+    } catch (e) {
+      fail(e);
+    }
+  },
   async uninstall(id) {
     const it = findItem(id);
     popOv(undefined, true);

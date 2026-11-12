@@ -1,0 +1,10 @@
+# Versões das dependências do Nexus nos aparelhos. NÃO edite à mão: gere com tools/pin-deps.sh,
+# que lê o que está instalado na máquina de desenvolvimento. Os aparelhos só mudam de versão quando
+# uma release nova do Nexus traz este arquivo alterado (o RetroArch fica "mascarado" no Flatpak e os
+# núcleos vêm do pacote de núcleos do Nexus, não do buildbot noturno).
+RETROARCH_VERSION=1.22.2
+RETROARCH_COMMIT_x86_64=bb2d820347e177f8354caa39b1273c3c44c0f63f82c4e115c770bb44e85d26b2
+RETROARCH_COMMIT_aarch64=cfae26d7d1ce517fa6b32f87baedb77522ece1914afe85b16c6199a03ddcb3e2
+CORES_ID=20261112
+CORES_SHA256_x86_64=6b46ff64feba4aa41fe01a99865cc4f8c109cefbdda197301b49229ec856adce
+CORES_SHA256_arm64=74558be35d85dd7c33a03f5aeb5548a2bc50552faf0e6ef356dd94a0056c467a

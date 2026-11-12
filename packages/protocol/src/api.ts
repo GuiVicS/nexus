@@ -1,3 +1,20 @@
+/** Atualização encontrada de um app instalado (Flatpak: o Nexus atualiza e restaura; Snap/apt: só avisa). */
+export interface AppUpdate {
+  id: string;
+  title: string;
+  source: string;
+  current: string;
+  available: string;
+  canUpdate: boolean;
+}
+export interface AppUpdates {
+  updates: AppUpdate[];
+  /** apps que permitem voltar à versão anterior */
+  restorable: string[];
+  /** apps sendo atualizados/restaurados agora */
+  jobs: string[];
+}
+
 /** Pendrives/HDs removíveis e pastas para buscar ROMs (aba Emuladores → Adicionar jogos). */
 export interface RomMedia {
   media: { dev: string; label: string; mount: string | null; size: number; fs: string }[];
@@ -57,6 +74,10 @@ export function createApi(c: RpcClient) {
     romsBrowse: (path: string) => call<RomListing>('roms.browse', { path }),
     romsImport: (items: { path: string; system: string }[]) => call<{ ok: boolean; copied: string[]; failed: { name: string; error: string }[] }>('roms.import', { items }, 60 * 60 * 1000),
     romsUploadLink: () => call<{ url: string; qrSvg: string }>('roms.upload_link'),
+    appUpdates: () => call<AppUpdates>('apps.updates'),
+    appCheckUpdates: () => call<AppUpdate[]>('apps.check_updates'),
+    appUpgrade: (id: string) => call<{ ok: true }>('apps.upgrade', { id }),
+    appRestore: (id: string) => call<{ ok: true }>('apps.restore', { id }),
     importAvatar: (path: string, a: { grant?: string } = {}) => call<{ avatar: string }>('profiles.avatar_import', { path, ...a }),
     steamAccount: () => call<SteamAccount>('steam.account'),
     steamSetKey: (key: string) => call<{ ok: true }>('steam.set_key', { key }),

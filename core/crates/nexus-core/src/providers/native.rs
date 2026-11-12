@@ -211,6 +211,16 @@ impl NativeProvider {
         self.scan().into_iter().find(|e| e.file_id == file_id)
     }
 
+    /// Atalho (.desktop) de um programa, já lido.
+    pub fn entry(&self, file_id: &str) -> Option<DesktopEntry> {
+        self.find(file_id)
+    }
+
+    /// Caminho do atalho (o primeiro encontrado, na mesma ordem de `scan`).
+    pub fn desktop_path(&self, file_id: &str) -> Option<PathBuf> {
+        self.dirs.iter().map(|d| d.join(file_id)).find(|p| p.is_file())
+    }
+
     pub fn registered(&self) -> Vec<Reg> {
         self.db
             .with(|c| {

@@ -1,0 +1,13 @@
+// Nexus: quem está na frente da TV (sessão local ativa) pode atualizar um app ou voltar para a versão anterior,
+// sem senha. Só a unidade nexus-app@<update|restore>:<flatpak|snap|apt>:<nome>.service; quem escolhe a versão é o
+// ajudante (/usr/lib/nexus/nexus-app-helper), nunca quem pede.
+polkit.addRule(function (action, subject) {
+  if (action.id == "org.freedesktop.systemd1.manage-units" && subject.active && subject.local) {
+    var unit = action.lookup("unit") || "";
+    var verb = action.lookup("verb") || "";
+    if (verb == "start" && /^nexus-app@(update|restore):(flatpak|snap|apt):[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.service$/.test(unit)) {
+      return polkit.Result.YES;
+    }
+  }
+  return polkit.Result.NOT_HANDLED;
+});

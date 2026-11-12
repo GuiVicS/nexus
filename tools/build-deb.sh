@@ -34,6 +34,13 @@ install -Dm644 system/session/nexus-shell.desktop "$OUT/usr/share/applications/n
 install -Dm644 system/sway/nexus-kiosk.conf "$OUT/usr/share/nexus/sway-kiosk.conf"
 for f in system/systemd/*; do install -Dm644 "$f" "$OUT/usr/lib/systemd/user/$(basename "$f")"; done
 install -Dm644 system/polkit/br.nexus.sysd.policy "$OUT/usr/share/polkit-1/actions/br.nexus.sysd.policy"
+# atualizar/restaurar apps sem senha (ajudante root + unidade do sistema + regra do polkit só para ela)
+install -Dm755 system/sysd/nexus-app-helper "$OUT/usr/lib/nexus/nexus-app-helper"
+install -Dm644 system/sysd/nexus-app@.service "$OUT/usr/lib/systemd/system/nexus-app@.service"
+# versões travadas das dependências (RetroArch e núcleos) + quem as aplica no aparelho (tools/pin-deps.sh)
+install -Dm644 system/packaging/deps.lock "$OUT/usr/share/nexus/deps.lock"
+install -Dm755 system/sysd/nexus-deps-apply "$OUT/usr/lib/nexus/nexus-deps-apply"
+install -Dm644 system/polkit/50-nexus-apps.rules "$OUT/usr/share/polkit-1/rules.d/50-nexus-apps.rules"
 install -Dm644 system/udev/70-nexus-uinput.rules "$OUT/usr/lib/udev/rules.d/70-nexus-uinput.rules"
 install -Dm644 system/udev/nexus-uinput.conf "$OUT/usr/lib/modules-load.d/nexus-uinput.conf"
 install -Dm644 system/apparmor/opt.nexus.shell.nexus-shell "$OUT/etc/apparmor.d/opt.nexus.shell.nexus-shell"

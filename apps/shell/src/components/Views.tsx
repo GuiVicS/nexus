@@ -36,11 +36,18 @@ export function actsFor(it: Item): Card[] {
     else cards.push({ ic: 'info', t: 'Detalhes', s: it.studio || it.subtitle, a: `hub:${it.id}`, v: 'Ver' });
     return cards;
   }
+  const upd = S.appUpd[it.id];
+  const job = S.appJobs[it.id];
   return [
     { ic: 'play', t: run ? 'Retomar' : `Abrir ${it.title}`, s: it.category || 'App', a: run ? 'resume' : `app:${it.id}`, v: 'Abrir' },
+    ...(job
+      ? [{ ic: 'download', t: job === 'restore' ? 'Restaurando versão anterior…' : 'Atualizando…', s: 'O app fica pronto em instantes', a: `hub:${it.id}`, v: 'Ver' }]
+      : upd && !isKid()
+        ? [{ ic: 'download', t: 'Atualização disponível', s: upd.canUpdate ? `Versão ${upd.available || 'nova'} · toque para atualizar` : `Versão ${upd.available} · pelo sistema (${upd.source})`, a: upd.canUpdate ? `appupgrade:${it.id}` : `hub:${it.id}`, v: upd.canUpdate ? 'Atualizar' : 'Ver' }]
+        : []),
     { ic: 'plus', t: prefs().pins.includes(it.id) ? 'Fixado no início' : 'Fixar no início', s: 'Gerenciar atalhos do início', a: `opts:${it.id}`, v: 'Opções' },
     { ic: 'info', t: 'Sobre o app', s: it.description || it.category || '', a: `hub:${it.id}`, v: 'Ver' },
-  ];
+  ].slice(0, 3); // com atualização, o aviso ocupa o lugar de "Sobre o app"
 }
 
 function chipOf(it: Item) {
