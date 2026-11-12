@@ -13,6 +13,7 @@ import { DrivePanel } from './Drive';
 import { NotifPanel } from './Notificacoes';
 import { PowerPanel } from './Energia';
 import { StoragePanel } from './Armazenamento';
+import { AccessExtras, AppearanceExtras, CecPanel, InstalledApps, ParentalExtras, PrivacyPanel, RomsExtras } from './Fase4';
 import { sfx } from '@nexus/ui';
 
 interface Cat { id: string; label: string; icon: string; adult?: boolean }
@@ -39,6 +40,8 @@ const CATS: Cat[] = [
   { id: 'sobre', label: 'Sobre e diagnóstico', icon: 'info', adult: true },
   { id: 'ssh', label: 'Acesso por SSH', icon: 'list', adult: true },
   { id: 'recup', label: 'Recuperação', icon: 'lock', adult: true },
+  { id: 'cec', label: 'TV (HDMI-CEC)', icon: 'tv', adult: true },
+  { id: 'priv', label: 'Privacidade', icon: 'lock', adult: true },
 ];
 
 const cats = () => CATS.filter((c) => !c.adult || !isKid());
@@ -85,6 +88,7 @@ function PaneSom() {
       <div class="srow f slider" data-k="s-vol" data-r="22" data-slider="vol" data-a="noop" data-verb="Ajustar">
         <b>Volume dos sons da interface</b><div class="tr"><i style={{ width: `${prefs().vol}%` }} /></div><span class="v">{prefs().vol}</span>
       </div>
+      <AppearanceExtras />
       <Info label="Efeitos visuais" desc={softwareGL() ? 'Mínimos (sem aceleração de vídeo: a placa de vídeo não está em uso)' : ({ full: 'Completos', reduced: 'Reduzidos (aparelho de desempenho médio)', minimal: 'Mínimos (economiza recursos)' }[effectsLevel()])} />
     </Pane>
   );
@@ -96,6 +100,7 @@ function PaneAcess() {
       <SwRow k="reduce" label="Reduzir animações" desc="Remove transições e movimentos" />
       <SwRow k="hc" label="Foco em alto contraste" desc="Contorno amarelo grosso" />
       <SwRow k="subs" label="Legendas sempre ativas" desc="Quando o jogo ou app oferecer" />
+      <AccessExtras />
     </Pane>
   );
 }
@@ -169,6 +174,7 @@ function PaneApps() {
     <Pane title="Apps e jogos">
       <Info label="Só aparece o que você adicionar" desc="Jogos da Steam entram sozinhos. Programas do Linux (Minecraft, Firefox, Kodi…) entram por aqui, com nome, ícone e capas à sua escolha." />
       <ActRow a="appadd" icon="plus" label="Adicionar app ou jogo" desc="Escolha entre os programas instalados no sistema" verb="Adicionar" k="s-appadd" />
+      <ActRow a="progadd" icon="plus" label="Adicionar programa por arquivo" desc="Para o que não tem atalho no menu: .jar (como o TLauncher, precisa do Java), AppImage, .sh ou executável" verb="Escolher" k="s-progadd" />
       <h3 class="sh2">Atualizações</h3>
       <For each={Object.values(S.appUpd)} fallback={<Info label="Tudo atualizado" desc="O Nexus procura novas versões dos apps a cada 6 horas e avisa nas notificações." />}>
         {(u) => (
@@ -188,6 +194,7 @@ function PaneApps() {
           </div>
         )}
       </For>
+      <InstalledApps />
     </Pane>
   );
 }
@@ -236,6 +243,7 @@ function PaneParental() {
           </>
         )}
       </For>
+      <Show when={S.parental.hasPin || true}><ParentalExtras /></Show>
     </Pane>
   );
 }
@@ -282,6 +290,7 @@ function PaneEmu() {
     onCleanup(() => document.removeEventListener('nexus:emufetch', h));
   });
   const withGames = () => (st()?.systems ?? []).filter((s) => s.games > 0);
+  const extras = () => <Show when={st()}>{(s) => <RomsExtras status={s()} onStatus={setSt} />}</Show>;
   return (
     <Pane title="Emuladores">
       <Show when={st()} fallback={<Info label="Verificando…" desc="" />}>
@@ -291,6 +300,7 @@ function PaneEmu() {
             <Info label="Pasta dos jogos" desc={`${s().romsDir}/<console> — copie cada ROM para a pasta do console (veja LEIA-ME.txt)`} />
             <ActRow a="emufetch:mine" icon="download" label={busy() ? 'Baixando…' : 'Baixar emuladores dos meus jogos'} desc="Baixa os núcleos só dos consoles que já têm jogos (também acontece sozinho ao abrir o jogo)" verb="Baixar" k="s-emu-mine" />
             <ActRow a="emufetch:all" icon="download" label="Baixar todos os emuladores" desc={`${s().systems.length} consoles · usa algumas centenas de MB`} verb="Baixar" k="s-emu-all" />
+            {extras()}
             <h3 class="sh2">{withGames().length ? 'Consoles com jogos' : 'Consoles suportados'}</h3>
             <For each={withGames().length ? withGames() : s().systems}>
               {(x) => <Info label={`${x.name} · ${x.games} jogo${x.games === 1 ? '' : 's'}`} desc={`Pasta ${x.dir} · .${x.exts.join(' .')} · núcleo ${x.core} ${x.coreReady ? '✓ pronto' : '(baixa na 1ª vez)'}`} />}
@@ -317,6 +327,7 @@ function PaneSis() {
         )}
       </Show>
       <ActRow a="switch" icon="user" label="Trocar perfil" desc="Volta à escolha de perfis" />
+      <ActRow a="energia" icon="power" label="Energia" desc="Suspender, reiniciar, desligar ou trocar de perfil" verb="Abrir" k="s-energia" />
       <ActRow a="restart" icon="refresh" label="Reiniciar" desc="Reinicia o console" />
       <ActRow a="off" icon="power" label="Desligar" desc="Desliga o console" />
       <Info label="Nexus" desc={`Versão ${S.hello?.version ?? '—'}${S.hello?.demo ? ' · modo demonstração' : ''}`} />
@@ -370,6 +381,8 @@ export function Settings() {
         <Show when={S.setCat === 'sobre' && !isKid()}><Pane title="Sobre e diagnóstico"><AboutPanel /></Pane></Show>
         <Show when={S.setCat === 'ssh' && !isKid()}><Pane title="Acesso por SSH"><SshPanel /></Pane></Show>
         <Show when={S.setCat === 'recup' && !isKid()}><Pane title="Recuperação"><RecoveryPanel /></Pane></Show>
+        <Show when={S.setCat === 'cec' && !isKid()}><Pane title="TV (HDMI-CEC)"><CecPanel /></Pane></Show>
+        <Show when={S.setCat === 'priv' && !isKid()}><Pane title="Privacidade"><PrivacyPanel /></Pane></Show>
       </div>
     </>
   );

@@ -35,8 +35,14 @@ type Auth = { pin?: string; parentPin?: string; grant?: string };
 
 export interface Pad { id: string; name: string; bus: 'usb' | 'bluetooth' | 'virtual' | 'outro'; vendor: number; product: number; mapped: boolean; connected: boolean; registered: boolean; nickname: string; player: number | null }
 export type PadBinding = { kind: 'button'; code: number } | { kind: 'axis' | 'hat'; code: number; dir: number };
-export interface EmuSystem { dir: string; name: string; exts: string[]; core: string; games: number; coreReady: boolean }
-export interface EmuStatus { retroarch: boolean; romsDir: string; systems: EmuSystem[] }
+export interface EmuSystem { dir: string; name: string; exts: string[]; core: string; defaultCore?: string; options?: string[]; games: number; coreReady: boolean }
+export interface EmuStatus { retroarch: boolean; romsDir: string; extraDirs?: string[]; systems: EmuSystem[] }
+/** B17: apps registrados com tamanho e origem. */
+export interface AppDetail { id: string; name: string; kind: 'game' | 'app'; hidden: boolean; category: string | null; sizeBytes: number | null; origin: string; canUninstall: boolean; categories: string[] }
+export interface ProgramInfo { kind: string; name: string; needsJava: boolean; javaOk: boolean; hint: string | null }
+export interface CecStatus { installed: boolean; installCmd: string; adapters: { port: string; kind: string }[]; wake: boolean; sleep: boolean }
+export interface PrivacyStatus { telemetry: boolean; connections: { name: string; what: string; when: string; on: boolean }[]; stores: { name: string; count: number; detail: string }[] }
+export interface UsageReport { name: string; kid: boolean; limitMin: number | null; todaySeconds: number; days: { day: string; seconds: number }[]; top: { id: string; title: string; seconds: number; lastPlayed: number | null }[] }
 export type BtKind = 'controle' | 'fone' | 'teclado' | 'mouse' | 'celular' | 'outro';
 export interface BtDevice { mac: string; name: string; gamepad: boolean; kind?: BtKind; paired?: boolean; connected?: boolean; battery?: number | null }
 export interface BtStatus { available: boolean; powered: boolean; paired: BtDevice[] }
@@ -176,9 +182,9 @@ export function createApi(c: RpcClient) {
     systemApps: () => call<SystemApp[]>('apps.system'),
     customApps: () => call<CustomApp[]>('apps.registered'),
     addApp: (fileId: string, kind: 'game' | 'app' | undefined, a: Auth) => call<CustomApp>('apps.add', { fileId, kind, ...a }),
-    updateApp: (p: { id: string; name?: string | null; kind?: 'game' | 'app'; icon?: string | null; cover?: string | null; hero?: string | null } & Auth) => call<CustomApp>('apps.update', p),
+    updateApp: (p: { id: string; name?: string | null; kind?: 'game' | 'app'; icon?: string | null; cover?: string | null; hero?: string | null; hidden?: boolean; category?: string | null } & Auth) => call<CustomApp>('apps.update', p),
     removeApp: (id: string, a: Auth) => call<{ ok: true }>('apps.remove', { id, ...a }),
-    fsList: (path?: string, a: { grant?: string } = {}) => call<FsListing>('fs.list', { path, ...a }),
+    fsList: (path?: string, a: { grant?: string } = {}, mode?: 'image' | 'program' | 'folder') => call<FsListing>('fs.list', { path, mode, ...a }),
     romsMedia: () => call<RomMedia>('roms.media'),
     romsMount: (dev: string) => call<{ path: string }>('roms.mount', { dev }),
     romsBrowse: (path: string) => call<RomListing>('roms.browse', { path }),
@@ -201,7 +207,7 @@ export function createApi(c: RpcClient) {
     logout: (a: Auth = {}) => call<{ ok: true }>('session.logout', a),
     parental: () => call<Parental>('parental.status'),
     parentalVerify: (pin: string) => call<{ grant: string }>('parental.verify', { pin }),
-    parentalSet: (newPin: string | null, currentPin?: string) => call<Parental>('parental.set', { newPin, currentPin }),
+    parentalSet: (newPin: string | null, currentPin?: string) => call<Parental & { recoveryCode?: string | null }>('parental.set', { newPin, currentPin }),
     extend: (profileId: string, minutes: number, a: Auth) => call<{ remainingMin: number | null }>('parental.extend', { profileId, minutes, ...a }),
     allowed: (profileId: string) => call<string[]>('parental.allowed', { profileId }),
     allow: (profileId: string, itemId: string, allow: boolean, a: Auth) => call<string[]>('parental.allow', { profileId, itemId, allow, ...a }),
@@ -229,6 +235,25 @@ export function createApi(c: RpcClient) {
     pairing: () => call<RemotePairing>('remote.pairing'),
     rotatePairing: () => call<RemotePairing>('remote.rotate'),
     disconnectRemote: (id: string) => call<RemotePairing>('remote.disconnect', { id }),
+    // Fase 4 (E): CEC, perfis (recuperar PIN, relatório), apps instalados, ROMs, privacidade
+    cecStatus: () => call<CecStatus>('cec.status', {}, 30000),
+    cecSet: (p: { wake?: boolean; sleep?: boolean }) => call<CecStatus>('cec.set', p, 30000),
+    cecTv: (on: boolean) => call<{ ok: true }>('cec.tv', { on }, 30000),
+    recoveryStatus2: () => call<{ has: boolean }>('parental.recovery_status'),
+    recoveryNew: (a: Auth) => call<{ code: string }>('parental.recovery_new', { ...a }),
+    recoverPin: (code: string, newPin: string) => call<{ code: string }>('parental.recover', { code, newPin }),
+    usageReport: (profileId: string, a: Auth) => call<UsageReport>('parental.report', { profileId, ...a }),
+    appDetails: () => call<AppDetail[]>('apps.details', {}, 60000),
+    programInfo: (path: string) => call<ProgramInfo>('programs.info', { path }),
+    addProgram: (p: { path: string; name?: string; kind?: 'game' | 'app' } & Auth) => call<CustomApp>('programs.add', p),
+    uninstallApp: (id: string, a: Auth) => call<{ ok: true; name: string }>('apps.uninstall', { id, ...a }, 15 * 60 * 1000),
+    romDirs: () => call<{ dirs: string[]; status: EmuStatus }>('roms.dirs'),
+    romAddDir: (path: string) => call<{ dirs: string[]; status: EmuStatus }>('roms.add_dir', { path }, 60000),
+    romRemoveDir: (path: string) => call<{ dirs: string[]; status: EmuStatus }>('roms.remove_dir', { path }, 60000),
+    romRescan: () => call<{ dirs: string[]; status: EmuStatus }>('roms.rescan', {}, 60000),
+    emuSetCore: (dir: string, core: string) => call<{ dirs: string[]; status: EmuStatus }>('emu.set_core', { dir, core }, 60000),
+    privacyStatus: () => call<PrivacyStatus>('privacy.status'),
+    privacyClear: (what: 'recent' | 'playtime' | 'cache', a: Auth = {}) => call<{ cleared: number }>('privacy.clear', { what, ...a }),
   };
 }
 

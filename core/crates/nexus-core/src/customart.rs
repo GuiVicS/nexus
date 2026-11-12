@@ -27,12 +27,17 @@ fn is_image_name(n: &str) -> bool {
     Path::new(n).extension().and_then(|e| e.to_str()).is_some_and(|e| EXTS.contains(&e.to_lowercase().as_str()))
 }
 
-fn inside(roots: &[PathBuf], p: &Path) -> bool {
+pub fn inside(roots: &[PathBuf], p: &Path) -> bool {
     let Ok(c) = p.canonicalize() else { return false };
     roots.iter().filter_map(|r| r.canonicalize().ok()).any(|r| c.starts_with(&r))
 }
 
 pub fn list(roots: &[PathBuf], path: Option<&str>) -> Result<FsListing, String> {
+    list_mode(roots, path, "image")
+}
+
+/// `mode`: "image" (pastas e imagens), "program" (pastas e programas: .jar, AppImage, .sh, executáveis) ou "folder" (só pastas).
+pub fn list_mode(roots: &[PathBuf], path: Option<&str>, mode: &str) -> Result<FsListing, String> {
     let base = match path {
         Some(p) if !p.is_empty() => PathBuf::from(p),
         _ => roots.first().cloned().ok_or("sem pastas disponíveis")?,
@@ -53,7 +58,12 @@ pub fn list(roots: &[PathBuf], path: Option<&str>) -> Result<FsListing, String> 
             let path = e.path();
             // links simbólicos só valem se continuarem dentro das pastas permitidas
             let dir = if ft.is_symlink() { path.is_dir() && inside(roots, &path) } else { ft.is_dir() };
-            if dir || (is_image_name(&name) && (!ft.is_symlink() || inside(roots, &path))) {
+            let wanted = match mode {
+                "folder" => false,
+                "program" => crate::programs::detect(&path).is_some(),
+                _ => is_image_name(&name),
+            };
+            if dir || (wanted && (!ft.is_symlink() || inside(roots, &path))) {
                 Some(FsEntry { name, path: path.to_string_lossy().to_string(), dir })
             } else {
                 None

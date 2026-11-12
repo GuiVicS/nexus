@@ -21,6 +21,9 @@ const MIGRATIONS: &[&str] = &[
     "CREATE TABLE custom_apps (
         item_id TEXT PRIMARY KEY, file_id TEXT NOT NULL, name TEXT, kind TEXT NOT NULL DEFAULT 'app',
         icon TEXT, cover TEXT, hero TEXT, added_at INTEGER NOT NULL);",
+    // B17: ocultar da biblioteca e categoria escolhida pelo usuário
+    "ALTER TABLE custom_apps ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;
+     ALTER TABLE custom_apps ADD COLUMN category TEXT;",
 ];
 
 impl Db {

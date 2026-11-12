@@ -3,7 +3,7 @@
 # ligar/desligar o servidor SSH. Só roda pelo systemd (nexus-sys@<ação>.service), liberado pelo polkit para quem está
 # na frente da TV (system/polkit/52-nexus-sys.rules); o Core só pede depois de exigir um perfil adulto e o PIN dos
 # responsáveis. Ações (sem argumentos livres):
-#   update-nexus:<latest|X.Y.Z>   upgrade-system   ssh-on   ssh-off
+#   update-nexus:<latest|X.Y.Z>   upgrade-system   ssh-on   ssh-off   remove-pkg:<pacote>   flatpak-rm:<id>
 # Resultado em $OUT/<ação>: "ok <detalhe>" ou "err <mensagem>"; o andamento em $OUT/<ação>.log.
 set -u
 OUT=${NEXUS_SYS_OUT:-/run/nexus-sys}
@@ -12,7 +12,7 @@ act=${1:-}
 verb=${act%%:*}
 arg=""
 case "$act" in *:*) arg=${act#*:} ;; esac
-case "$verb" in update-nexus|upgrade-system|ssh-on|ssh-off) ;; *) echo "ação inválida" >&2; exit 2 ;; esac
+case "$verb" in update-nexus|upgrade-system|ssh-on|ssh-off|remove-pkg|flatpak-rm) ;; *) echo "ação inválida" >&2; exit 2 ;; esac
 mkdir -p "$OUT"
 res="$OUT/$verb"
 log="$OUT/$verb.log"
@@ -51,6 +51,19 @@ ssh-on)
   # em sistemas com ssh.socket (Ubuntu 22.10+) o enable --now do serviço já liga a porta; garante também o socket
   systemctl list-unit-files ssh.socket --no-legend 2>/dev/null | grep -q '^ssh.socket' && systemctl enable --now ssh.socket >>"$log" 2>&1
   ok "$u ligado"
+  ;;
+remove-pkg)
+  # desinstalar um app pelo apt (B17). Nome validado; nunca remove o Nexus (nem arrasta o Nexus junto)
+  printf '%s' "$arg" | grep -Eq '^[a-z0-9][a-z0-9+.-]{1,79}$' || err "Nome de pacote inválido"
+  case "$arg" in nexus*) err "O Nexus não pode ser removido por aqui" ;; esac
+  apt-get -s remove "$arg" 2>&1 | grep -Eq '^Remv nexus' && err "Remover isso também removeria o Nexus"
+  apt-get -y remove "$arg" >"$log" 2>&1 || err "$(last)"
+  ok "$arg removido"
+  ;;
+flatpak-rm)
+  printf '%s' "$arg" | grep -Eq '^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)+$' || err "Id de app inválido"
+  flatpak uninstall --system -y --noninteractive "$arg" >"$log" 2>&1 || err "$(last)"
+  ok "$arg removido"
   ;;
 ssh-off)
   u=$(ssh_unit) || err "O servidor SSH não está instalado"

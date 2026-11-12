@@ -262,3 +262,15 @@ body.fx-reduced .tl .in{transition:none}
 #sstat .salert span{overflow:hidden;text-overflow:ellipsis}
 #sstat .salert .i{color:var(--danger);flex:none}
 .row2 small.low{color:var(--danger)}
+
+/* ===== Fase 4: tamanho do texto (B13/B14), fundo (B13), tela de energia (A5) ===== */
+body.ts1{--ts:1.2}
+body.ts2{--ts:1.4}
+body.ts1 .setpane>*,body.ts2 .setpane>*,body.ts1 .setrail .ri,body.ts2 .setrail .ri,body.ts1 .tab,body.ts2 .tab,body.ts1 .toast,body.ts2 .toast,body.ts1 .sheet>*,body.ts2 .sheet>*,body.ts1 .empty-state,body.ts2 .empty-state,body.ts1 .stitle,body.ts2 .stitle{zoom:var(--ts)}
+html[data-bgstyle=solid] .bg,html[data-bgstyle=blue] .bg,html[data-bgstyle=green] .bg,html[data-bgstyle=purple] .bg,html[data-bgstyle=orange] .bg{display:none}
+html[data-bgstyle=blue] #bgs{background:radial-gradient(70% 60% at 85% 10%,rgba(59,130,246,.35),transparent 70%),var(--bg)}
+html[data-bgstyle=green] #bgs{background:radial-gradient(70% 60% at 85% 10%,rgba(34,197,94,.3),transparent 70%),var(--bg)}
+html[data-bgstyle=purple] #bgs{background:radial-gradient(70% 60% at 85% 10%,rgba(168,85,247,.33),transparent 70%),var(--bg)}
+html[data-bgstyle=orange] #bgs{background:radial-gradient(70% 60% at 85% 10%,rgba(249,115,22,.32),transparent 70%),var(--bg)}
+.sheet.energia{width:760px;max-height:90%;overflow-y:auto}
+.sheet.energia h2{font-weight:400;font-size:50px;margin:0 0 8px}

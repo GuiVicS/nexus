@@ -23,7 +23,12 @@ pub struct Reg {
     pub icon: Option<String>,
     pub cover: Option<String>,
     pub hero: Option<String>,
+    pub hidden: bool,
+    pub category: Option<String>,
 }
+
+/// Categorias que o usuário pode escolher (B17).
+pub const CATEGORIES: &[&str] = &["Jogos", "Vídeo", "Música", "Internet", "Escritório", "Gráficos", "Desenvolvimento", "Ferramentas", "Sistema", "Apps"];
 
 /// Campos editáveis. `Some(None)` apaga o valor personalizado.
 #[derive(Default, Debug, Clone)]
@@ -33,6 +38,8 @@ pub struct RegPatch {
     pub icon: Option<Option<String>>,
     pub cover: Option<Option<String>>,
     pub hero: Option<Option<String>>,
+    pub hidden: Option<bool>,
+    pub category: Option<Option<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -224,9 +231,9 @@ impl NativeProvider {
     pub fn registered(&self) -> Vec<Reg> {
         self.db
             .with(|c| {
-                let mut st = c.prepare("SELECT item_id,file_id,name,kind,icon,cover,hero FROM custom_apps ORDER BY added_at, item_id")?;
+                let mut st = c.prepare("SELECT item_id,file_id,name,kind,icon,cover,hero,hidden,category FROM custom_apps ORDER BY added_at, item_id")?;
                 let v = st
-                    .query_map([], |r| Ok(Reg { item_id: r.get(0)?, file_id: r.get(1)?, name: r.get(2)?, kind: r.get(3)?, icon: r.get(4)?, cover: r.get(5)?, hero: r.get(6)? }))?
+                    .query_map([], |r| Ok(Reg { item_id: r.get(0)?, file_id: r.get(1)?, name: r.get(2)?, kind: r.get(3)?, icon: r.get(4)?, cover: r.get(5)?, hero: r.get(6)?, hidden: r.get::<_, i64>(7)? != 0, category: r.get(8)? }))?
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(v)
             })
@@ -252,6 +259,8 @@ impl NativeProvider {
                     has_cover: r.cover.is_some(),
                     has_hero: r.hero.is_some(),
                     available: e.is_some(),
+                    hidden: r.hidden,
+                    category: r.category.clone(),
                 }
             })
             .collect()
@@ -290,6 +299,11 @@ impl NativeProvider {
                 anyhow::bail!("tipo inválido");
             }
         }
+        if let Some(Some(c)) = &p.category {
+            if !CATEGORIES.contains(&c.as_str()) {
+                anyhow::bail!("categoria inválida");
+            }
+        }
         if let Some(Some(n)) = &p.name {
             if n.trim().is_empty() || n.chars().count() > 40 {
                 anyhow::bail!("nome inválido (1 a 40 caracteres)");
@@ -318,6 +332,12 @@ impl NativeProvider {
             }
             if let Some(k) = &p.kind {
                 c.execute("UPDATE custom_apps SET kind=?2 WHERE item_id=?1", params![item_id, k])?;
+            }
+            if let Some(h) = p.hidden {
+                c.execute("UPDATE custom_apps SET hidden=?2 WHERE item_id=?1", params![item_id, h as i64])?;
+            }
+            if let Some(cat) = &p.category {
+                c.execute("UPDATE custom_apps SET category=?2 WHERE item_id=?1", params![item_id, cat])?;
             }
             if let Some(v) = &icon {
                 c.execute("UPDATE custom_apps SET icon=?2 WHERE item_id=?1", params![item_id, v])?;
@@ -372,10 +392,13 @@ impl Provider for NativeProvider {
             .into_iter()
             .filter_map(|r| {
                 let e = entries.get(&r.file_id)?;
+                if r.hidden {
+                    return None;
+                }
                 let game = r.kind == "game";
                 let title = r.name.clone().unwrap_or_else(|| e.name.clone());
                 let mut it = Item::new(r.item_id.clone(), "native", if game { ItemKind::Game } else { ItemKind::App }, title);
-                let cat = category_label(&e.categories).to_string();
+                let cat = r.category.clone().unwrap_or_else(|| category_label(&e.categories).to_string());
                 it.subtitle = if game { "Linux".into() } else { cat.clone() };
                 it.category = Some(cat);
                 it.description = e.comment.clone();

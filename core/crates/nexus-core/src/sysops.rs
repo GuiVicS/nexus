@@ -30,9 +30,21 @@ pub fn out_dir() -> PathBuf {
 pub fn action_ok(a: &str) -> bool {
     match a.split_once(':') {
         Some(("update-nexus", v)) => v == "latest" || version_ok(v),
+        Some(("remove-pkg", p)) => pkg_ok(p),
+        Some(("flatpak-rm", id)) => flatpak_ok(id),
         Some(_) => false,
         None => matches!(a, "upgrade-system" | "ssh-on" | "ssh-off"),
     }
+}
+
+/// Nome de pacote Debian (minúsculas, números e + . -), sem os pacotes do próprio Nexus.
+pub fn pkg_ok(p: &str) -> bool {
+    p.len() >= 2 && p.len() <= 80 && !p.starts_with("nexus") && p.chars().next().is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) && p.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || "+.-".contains(c))
+}
+
+/// Id de app Flatpak (domínio invertido).
+pub fn flatpak_ok(id: &str) -> bool {
+    id.contains('.') && id.len() <= 120 && id.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)) && !id.starts_with('.')
 }
 
 pub fn version_ok(v: &str) -> bool {

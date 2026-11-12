@@ -1,11 +1,12 @@
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
-import type { CustomApp, FsListing, SystemApp } from '@nexus/protocol';
+import type { AppDetail, CustomApp, FsListing, SystemApp } from '@nexus/protocol';
 import { sfx } from '@nexus/ui';
 import { api } from '../lib/api';
 import { askConfirm, askText, closeOv, fail, findItem, focusLayer, guarded, pushOv, S, toast } from '../lib/state';
 import { cycHandlers } from '../lib/actions';
 import { norm } from '../lib/format';
-import { Icon, Tile } from './ui';
+import { Icon, Switch, Tile } from './ui';
+import { fmtBytes } from '../lib/format';
 
 const changed = () => document.dispatchEvent(new CustomEvent('nexus:apps-changed'));
 
@@ -86,6 +87,8 @@ export function AppEditor(p: { id: string; fresh?: boolean; oid: number }) {
       if (ok) toast(ok, r.name, 'check');
     }
   };
+  const [det, setDet] = createSignal<AppDetail | null>(null);
+  const loadDet = () => void api.appDetails().then((l) => setDet(l.find((a) => a.id === p.id) ?? null)).catch(() => {});
   const chooseImage = async (field: 'icon' | 'cover' | 'hero', title: string) => {
     const path = (await pushOv<string>('filepick', { title })) as string | undefined;
     if (path) await update({ [field]: path }, 'Imagem atualizada');
@@ -100,8 +103,27 @@ export function AppEditor(p: { id: string; fresh?: boolean; oid: number }) {
       closeOv(p.oid);
     }
   };
+  const uninstall = async () => {
+    const i = info();
+    if (!(await askConfirm({ title: `Desinstalar ${i?.name ?? 'app'}?`, sub: det()?.origin.startsWith('Programa adicionado') ? 'Tira o atalho criado pelo Nexus. O arquivo original continua na sua pasta.' : 'O programa é removido do aparelho. Isso não pode ser desfeito.', yes: 'Desinstalar', danger: true }))) return;
+    toast('Desinstalando…', i?.name ?? '', 'trash');
+    const r = await guarded((a) => api.uninstallApp(p.id, a), 'Confirme para desinstalar');
+    if (r) {
+      toast('Desinstalado', r.name, 'trash');
+      changed();
+      closeOv(p.oid);
+    }
+  };
   onMount(() => {
     load();
+    loadDet();
+    cycHandlers.set('ae:cat', (d) => {
+      const cats = det()?.categories ?? [];
+      const cur = info()?.category ?? '';
+      const list = ['', ...cats];
+      const next = list[(list.indexOf(cur) + d + list.length) % list.length];
+      void update({ category: next || null }).then(loadDet);
+    });
     cycHandlers.set('ae:kind', () => void update({ kind: info()?.kind === 'game' ? 'app' : 'game' }));
     const h = (e: Event) => {
       const a = (e as CustomEvent<string>).detail;
@@ -111,6 +133,9 @@ export function AppEditor(p: { id: string; fresh?: boolean; oid: number }) {
         });
       } else if (a === 'noname') void update({ name: null });
       else if (a === 'kind') cycHandlers.get('ae:kind')?.(1);
+      else if (a === 'hide') void update({ hidden: !info()?.hidden }, info()?.hidden ? 'Voltou à biblioteca' : 'Oculto da biblioteca').then(loadDet);
+      else if (a === 'cat') cycHandlers.get('ae:cat')?.(1);
+      else if (a === 'uninstall') void uninstall();
       else if (a === 'icon') void chooseImage('icon', 'Escolher ícone');
       else if (a === 'cover') void chooseImage('cover', 'Escolher capa do card');
       else if (a === 'hero') void chooseImage('hero', 'Escolher capa de fundo');
@@ -122,6 +147,7 @@ export function AppEditor(p: { id: string; fresh?: boolean; oid: number }) {
     onCleanup(() => {
       document.removeEventListener('nexus:ae', h);
       cycHandlers.delete('ae:kind');
+      cycHandlers.delete('ae:cat');
     });
   });
   const imgRow = (field: 'icon' | 'cover' | 'hero', label: string, desc: string, has: () => boolean) => (
@@ -153,12 +179,22 @@ export function AppEditor(p: { id: string; fresh?: boolean; oid: number }) {
                 <div><b>Tipo</b><small>Jogos aparecem na Biblioteca; apps na aba Mídia</small></div>
                 <div class="cv"><Icon n="left" /><span>{i().kind === 'game' ? 'Jogo' : 'App'}</span><Icon n="right" /></div>
               </div>
+              <div class="srow f" data-k="ae-cat" data-r="22" data-cyc="ae:cat" data-a="ae:cat" data-verb="Alterar">
+                <div><b>Categoria</b><small>Como o app é agrupado nas listas</small></div>
+                <div class="cv"><Icon n="left" /><span>{i().category ?? 'Automática'}</span><Icon n="right" /></div>
+              </div>
+              <div class="srow f" data-k="ae-hide" data-r="22" data-a="ae:hide" data-verb="Alternar">
+                <div><b>Ocultar da biblioteca</b><small>Continua instalado, mas não aparece nas listas</small></div>
+                <Switch on={i().hidden} />
+              </div>
+              <div class="srow info" data-k="ae-size"><div><b>Espaço e origem</b><small>{det() ? `${det()!.sizeBytes != null ? fmtBytes(det()!.sizeBytes!) : 'tamanho desconhecido'} · ${det()!.origin}` : 'Calculando…'}</small></div></div>
               {imgRow('icon', 'Ícone', 'Mostrado nos apps e na barra de execução', () => i().hasIcon)}
               {imgRow('cover', 'Capa do card', 'Imagem do quadrado na tela inicial e nas listas', () => i().hasCover)}
               {imgRow('hero', 'Capa de fundo', 'Imagem grande ao fundo da tela inicial e do item', () => i().hasHero)}
               <div class="lacts pe-act">
                 <div class="btn pri f" data-k="ae-done" data-r="p" data-pad="8" data-a="ae:done" data-verb="Concluir"><Icon n="check" /> Concluir</div>
                 <div class="btn f" data-k="ae-remove" data-r="p" data-pad="8" data-a="ae:remove" data-verb="Remover" style={{ color: 'var(--danger)' }}><Icon n="trash" /> Remover do Nexus</div>
+                <Show when={det()?.canUninstall}><div class="btn f" data-k="ae-uninstall" data-r="p" data-pad="8" data-a="ae:uninstall" data-verb="Desinstalar" style={{ color: 'var(--danger)' }}><Icon n="trash" /> Desinstalar</div></Show>
               </div>
             </div>
           </>
@@ -169,12 +205,12 @@ export function AppEditor(p: { id: string; fresh?: boolean; oid: number }) {
 }
 
 // ---------- navegador de imagens ----------
-export function FilePicker(p: { title: string; oid: number }) {
+export function FilePicker(p: { title: string; mode?: 'image' | 'program' | 'folder'; oid: number }) {
   const [l, setL] = createSignal<FsListing | null>(null);
   const [err, setErr] = createSignal('');
   const open = async (path?: string) => {
     // guarded: na tela de perfis (sem perfil ativo) os responsáveis confirmam com o PIN
-    const r = await guarded((a) => api.fsList(path, a), 'Confirme para escolher uma imagem');
+    const r = await guarded((a) => api.fsList(path, a, p.mode), 'Confirme para escolher');
     if (!r) {
       if (!l()) closeOv(p.oid);
       else sfx('deny');
@@ -209,13 +245,16 @@ export function FilePicker(p: { title: string; oid: number }) {
               <Show when={x().parent}>
                 <div class="srow f" data-k="fp-up" data-autofocus data-r="22" data-a={`fp:dir:${x().parent}`} data-verb="Subir"><div><b>⬑ Pasta anterior</b></div><Icon n="up" /></div>
               </Show>
+              <Show when={p.mode === 'folder'}>
+                <div class="srow f" data-k="fp-use" data-r="22" data-a={`fp:pick:${x().path}`} data-verb="Usar esta pasta"><div><b>Usar esta pasta</b><small>{x().path}</small></div><Icon n="check" /></div>
+              </Show>
               <div class="chips" style={{ 'margin-bottom': '14px' }}>
                 <For each={x().roots}>{(r) => <div class="cp f" data-k={`fp-root-${r.path}`} data-r="p" data-pad="8" data-a={`fp:dir:${r.path}`} data-verb="Abrir"><Icon n="drive" /> {r.name}</div>}</For>
               </div>
-              <For each={x().entries} fallback={<p class="pane-sub">Esta pasta não tem imagens (JPG, PNG, WebP ou SVG) nem subpastas.</p>}>
+              <For each={x().entries} fallback={<p class="pane-sub">{p.mode === 'program' ? 'Esta pasta não tem programas (.jar, .AppImage, .sh, executáveis) nem subpastas.' : p.mode === 'folder' ? 'Esta pasta não tem subpastas.' : 'Esta pasta não tem imagens (JPG, PNG, WebP ou SVG) nem subpastas.'}</p>}>
                 {(e) => (
                   <div class="srow f" data-k={`fp-${e.path}`} data-r="22" data-a={e.dir ? `fp:dir:${e.path}` : `fp:pick:${e.path}`} data-verb={e.dir ? 'Abrir' : 'Escolher'}>
-                    <div><b>{e.name}</b><small>{e.dir ? 'Pasta' : 'Imagem'}</small></div>
+                    <div><b>{e.name}</b><small>{e.dir ? 'Pasta' : p.mode === 'program' ? 'Programa' : 'Imagem'}</small></div>
                     <Icon n={e.dir ? 'right' : 'check'} />
                   </div>
                 )}

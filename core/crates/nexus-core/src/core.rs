@@ -60,6 +60,7 @@ impl Core {
         let db = Arc::new(Db::open(&cfg.data_dir.join("nexus.db"))?);
         let steam = Arc::new(SteamProvider::new(cfg.clone(), db.clone()));
         let native = Arc::new(NativeProvider::new(cfg.apps_dirs.clone(), db.clone(), cfg.data_dir.join("custom-art"), cfg.fs_roots.clone()));
+        crate::providers::emu::load_prefs(&db);
         crate::drive::init(&cfg.data_dir, &cfg.cache_dir, &cfg.runtime_dir);
         let mut providers: Vec<Arc<dyn Provider>> = vec![steam.clone(), native.clone(), Arc::new(crate::providers::drive::DriveProvider::new(cfg.data_dir.clone()))];
         if cfg.emulation {

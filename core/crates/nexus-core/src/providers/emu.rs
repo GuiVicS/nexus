@@ -67,7 +67,6 @@ pub const SYSTEMS: &[System] = &[
 ];
 
 pub struct EmuProvider {
-    roots: Vec<PathBuf>,
     /// id → (sistema, arquivo)
     index: Mutex<HashMap<String, (usize, PathBuf)>>,
 }
@@ -223,24 +222,26 @@ impl EmuProvider {
         }
         let _ = root;
         // a pasta da TV e, quando o Google Drive estiver montado, Nexus/ROMs da nuvem
-        EmuProvider { roots: all_roots(), index: Mutex::new(HashMap::new()) }
+        EmuProvider { index: Mutex::new(HashMap::new()) }
     }
 
     fn scan(&self) -> Vec<(String, usize, PathBuf)> {
-        // pastas das ROMs em discos USB escolhidos depois de iniciar entram sem reiniciar
-        let mut roots = self.roots.clone();
-        for r in crate::storage::extra_roots() {
-            if !roots.contains(&r) {
-                roots.push(r);
-            }
-        }
-        scan_roots(&roots)
+        scan_roots(&all_roots())
     }
 }
 
-/// Pastas de ROMs em uso: a da TV e, com o Google Drive montado, `Nexus/ROMs` da nuvem.
+static EXTRA: std::sync::RwLock<Vec<PathBuf>> = std::sync::RwLock::new(Vec::new());
+static CORE_PREF: std::sync::RwLock<Vec<(String, String)>> = std::sync::RwLock::new(Vec::new());
+
+/// Pastas de ROMs em uso, nesta ordem (a primeira vence cópias repetidas): a da TV, as extras que o usuário escolheu
+/// (pendrive, outro disco) e, com o Google Drive montado, `Nexus/ROMs` da nuvem.
 pub fn all_roots() -> Vec<PathBuf> {
     let mut v = vec![roms_dir()];
+    for e in EXTRA.read().unwrap_or_else(|e| e.into_inner()).iter() {
+        if !v.contains(e) {
+            v.push(e.clone());
+        }
+    }
     if let Some(r) = crate::drive::roms_root() {
         v.push(r);
     }
@@ -250,6 +251,92 @@ pub fn all_roots() -> Vec<PathBuf> {
         }
     }
     v
+}
+
+pub fn extra_dirs() -> Vec<PathBuf> {
+    EXTRA.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+pub fn set_extra_dirs(v: Vec<PathBuf>) {
+    *EXTRA.write().unwrap_or_else(|e| e.into_inner()) = v;
+}
+
+/// Outros núcleos libretro que servem para o mesmo console (o primeiro é o padrão do Nexus).
+pub fn core_options(dir: &str) -> Vec<&'static str> {
+    let own = SYSTEMS.iter().find(|s| s.dir == dir).map(|s| s.core);
+    let alt: &[&str] = match dir {
+        "nes" => &["mesen", "fceumm", "nestopia"],
+        "snes" => &["snes9x", "bsnes"],
+        "gb" | "gbc" => &["gambatte", "mgba"],
+        "gba" => &["mgba", "gpsp", "vba_next"],
+        "megadrive" | "mastersystem" | "gamegear" | "segacd" => &["genesis_plus_gx", "picodrive"],
+        "psx" => &["pcsx_rearmed", "mednafen_psx"],
+        "n64" => &["mupen64plus_next", "parallel_n64"],
+        "nds" => &["melondsds", "desmume"],
+        "arcade" | "neogeo" => &["fbneo", "mame2003_plus"],
+        "saturn" => &["mednafen_saturn", "kronos"],
+        "pcengine" => &["mednafen_pce_fast", "mednafen_pce"],
+        "atari2600" => &["stella", "stella2014"],
+        "c64" => &["vice_x64", "vice_x64sc"],
+        "dos" => &["dosbox_pure", "dosbox_svn"],
+        _ => &[],
+    };
+    match own {
+        Some(o) if alt.is_empty() => vec![o],
+        Some(o) => alt.iter().copied().chain(std::iter::once(o)).fold(vec![], |mut v, c| {
+            if !v.contains(&c) {
+                v.push(c);
+            }
+            v
+        }),
+        None => vec![],
+    }
+}
+
+/// Núcleo em uso para um console: a escolha do usuário (se ainda for válida) ou o padrão.
+pub fn core_for(s: &System) -> String {
+    let pick = CORE_PREF.read().unwrap_or_else(|e| e.into_inner()).iter().find(|(d, _)| d == s.dir).map(|(_, c)| c.clone());
+    match pick {
+        Some(c) if core_options(s.dir).contains(&c.as_str()) => c,
+        _ => s.core.to_string(),
+    }
+}
+
+/// Guarda (ou, com `core` igual ao padrão, apaga) a escolha de núcleo de um console.
+pub fn set_core_pref(dir: &str, core: &str) -> Result<(), String> {
+    let s = SYSTEMS.iter().find(|s| s.dir == dir).ok_or("Console desconhecido")?;
+    if !core_options(dir).contains(&core) {
+        return Err("Esse emulador não serve para este console".into());
+    }
+    let mut w = CORE_PREF.write().unwrap_or_else(|e| e.into_inner());
+    w.retain(|(d, _)| d != dir);
+    if core != s.core {
+        w.push((dir.to_string(), core.to_string()));
+    }
+    Ok(())
+}
+
+pub fn core_prefs() -> Vec<(String, String)> {
+    CORE_PREF.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// Lê do banco as pastas extras e os núcleos escolhidos (ao iniciar o Core).
+pub fn load_prefs(db: &crate::db::Db) {
+    if let Some(v) = db.kv_get("rom_dirs").and_then(|t| serde_json::from_str::<Vec<String>>(&t).ok()) {
+        set_extra_dirs(v.into_iter().map(PathBuf::from).collect());
+    }
+    if let Some(m) = db.kv_get("emu_cores").and_then(|t| serde_json::from_str::<std::collections::HashMap<String, String>>(&t).ok()) {
+        for (d, c) in m {
+            let _ = set_core_pref(&d, &c);
+        }
+    }
+}
+
+pub fn save_prefs(db: &crate::db::Db) {
+    let dirs: Vec<String> = extra_dirs().iter().map(|p| p.to_string_lossy().to_string()).collect();
+    let _ = db.kv_set("rom_dirs", &serde_json::to_string(&dirs).unwrap_or_else(|_| "[]".into()));
+    let m: std::collections::HashMap<String, String> = core_prefs().into_iter().collect();
+    let _ = db.kv_set("emu_cores", &serde_json::to_string(&m).unwrap_or_else(|_| "{}".into()));
 }
 
 /// Lê as pastas de ROMs como se fossem uma só: mesmo console + mesmo nome de arquivo aparece uma vez,
@@ -333,9 +420,9 @@ impl Provider for EmuProvider {
         let (si, rom) = self.index.lock().unwrap_or_else(|e| e.into_inner()).get(id).cloned().ok_or(ProviderError::NotFound)?;
         let s = &SYSTEMS[si];
         let (cmd, cores) = retroarch().ok_or_else(|| ProviderError::Msg("RetroArch não está instalado (sudo nexus-installer install --emulation --yes)".into()))?;
-        let core = s.core;
+        let core = core_for(s);
         let cores2 = cores.clone();
-        let lib = tokio::task::spawn_blocking(move || fetch_core(&cores2, core)).await?.map_err(ProviderError::Msg)?;
+        let lib = tokio::task::spawn_blocking(move || fetch_core(&cores2, &core)).await?.map_err(ProviderError::Msg)?;
         let mut argv = cmd;
         argv.extend(["-f".into(), "-L".into(), lib.display().to_string()]);
         // Como no EmulationStation, o RetroArch é só o motor: config do Nexus por cima da do usuário. Vários
@@ -436,10 +523,11 @@ pub fn systems_status() -> serde_json::Value {
             let mine = found.iter().filter(|f| f.1 == si);
             let cloud = mine.clone().filter(|f| crate::drive::is_cloud(&f.2)).count();
             let n = mine.count();
-            serde_json::json!({ "dir": s.dir, "name": s.name, "exts": s.exts, "core": s.core, "games": n, "cloud": cloud, "coreReady": cores.as_ref().is_some_and(|c| core_path(c, s.core).is_file()) })
+            let eff = core_for(s);
+            serde_json::json!({ "dir": s.dir, "name": s.name, "exts": s.exts, "core": eff, "defaultCore": s.core, "options": core_options(s.dir), "games": n, "cloud": cloud, "coreReady": cores.as_ref().is_some_and(|c| core_path(c, &eff).is_file()) })
         })
         .collect();
-    serde_json::json!({ "retroarch": cores.is_some(), "romsDir": root, "cloudRoms": crate::drive::mounted().then(crate::drive::roms_root).flatten(), "systems": list })
+    serde_json::json!({ "retroarch": cores.is_some(), "romsDir": root, "extraDirs": extra_dirs(), "cloudRoms": crate::drive::mounted().then(crate::drive::roms_root).flatten(), "systems": list })
 }
 
 /// Baixa os núcleos dos consoles que têm jogos (ou de todos, com `all`).
@@ -503,7 +591,9 @@ mod tests {
         std::fs::write(d.path().join("snes/leia.txt"), b"x").unwrap();
         std::fs::create_dir_all(d.path().join("gba")).unwrap();
         std::fs::write(d.path().join("gba/Pokemon Emerald.gba"), b"x").unwrap();
-        let p = EmuProvider { roots: vec![d.path().to_path_buf()], index: Mutex::new(HashMap::new()) };
+        set_extra_dirs(vec![]);
+        std::env::set_var("NEXUS_ROMS_DIR", d.path());
+        let p = EmuProvider { index: Mutex::new(HashMap::new()) };
         let lib = tokio::runtime::Runtime::new().unwrap().block_on(p.library()).unwrap();
         let mut names: Vec<_> = lib.iter().map(|i| (i.title.as_str(), i.category.clone().unwrap())).collect();
         names.sort();

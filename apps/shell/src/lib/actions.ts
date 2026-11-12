@@ -406,6 +406,17 @@ export const ACT: Record<string, Fn> = {
   sys(a) {
     document.dispatchEvent(new CustomEvent('nexus:sys', { detail: a }));
   },
+  /** Fase 4 (Fase4.tsx): ações das telas de energia, CEC, perfis, ROMs, privacidade. */
+  f4(a) {
+    document.dispatchEvent(new CustomEvent('nexus:f4', { detail: a }));
+  },
+  energia() {
+    if (topOv()?.kind === 'guide') popOv(undefined, true);
+    if (topOv()?.kind !== 'energia') void pushOv('energia', {});
+  },
+  progadd() {
+    void import('../components/Fase4').then((m) => m.addProgramFlow());
+  },
   ctl(a) {
     document.dispatchEvent(new CustomEvent('nexus:ctl', { detail: a }));
   },
