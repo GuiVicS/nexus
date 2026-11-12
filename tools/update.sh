@@ -114,3 +114,13 @@ fi
 if [ -n "$CF" ]; then
   $SUDO /usr/lib/nexus/nexus-deps-apply --cores "$T/$CF" || echo "  (os núcleos baixados não conferem; ficam os atuais)" >&2
 fi
+
+# Transição para o repositório apt (docs/APT.md): se ele já estiver no ar, configura a chave e a origem para o
+# Nexus passar a atualizar junto com o sistema (sudo apt upgrade). Enquanto não estiver, nada muda.
+APT_URL="${NEXUS_APT_URL:-https://guivics.github.io/nexus}"
+if [ ! -f /etc/apt/sources.list.d/nexus.sources ] && curl -fsSL -o "$T/nexus-archive-keyring.gpg" "$APT_URL/nexus-archive-keyring.gpg" 2>/dev/null \
+   && curl -fsSL -o "$T/nexus.sources" "$APT_URL/nexus.sources" 2>/dev/null && grep -q '^Signed-By:' "$T/nexus.sources"; then
+  $SUDO install -Dm644 "$T/nexus-archive-keyring.gpg" /usr/share/keyrings/nexus-archive-keyring.gpg
+  $SUDO install -Dm644 "$T/nexus.sources" /etc/apt/sources.list.d/nexus.sources
+  echo "→ Repositório apt do Nexus configurado: daqui em diante, sudo apt upgrade atualiza o Nexus."
+fi

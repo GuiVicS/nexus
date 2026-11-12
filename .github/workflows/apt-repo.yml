@@ -1,0 +1,52 @@
+# Repositório apt assinado do Nexus no GitHub Pages, refeito a cada release publicada.
+# Precisa (uma vez, ver docs/APT.md): segredo APT_GPG_KEY (chave privada de assinatura, armorada), variável
+# APT_GPG_KEY_ID (id/e-mail da chave) e Pages com origem "GitHub Actions".
+name: Repositório apt
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: apt-pages
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Baixar os .deb das 2 últimas versões
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p debs t
+          for tag in $(gh release list -R "$GITHUB_REPOSITORY" --limit 30 --json tagName -q '.[].tagName' | grep '^v' | head -2); do
+            gh release download "$tag" -R "$GITHUB_REPOSITORY" -p 'nexus-*-linux-*.tar.gz' -D t
+          done
+          for f in t/*.tar.gz; do tar -xzf "$f" -C t; done
+          find t -name 'nexus_*.deb' -exec mv {} debs/ \;
+          ls -lh debs
+      - name: Importar a chave de assinatura
+        env:
+          APT_GPG_KEY: ${{ secrets.APT_GPG_KEY }}
+        run: printf '%s\n' "$APT_GPG_KEY" | gpg --batch --import
+      - name: Montar o repositório
+        env:
+          NEXUS_APT_KEY: ${{ vars.APT_GPG_KEY_ID }}
+          NEXUS_APT_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+        run: sh tools/apt-repo.sh debs site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.d.outputs.page_url }}
+    steps:
+      - id: d
+        uses: actions/deploy-pages@v4

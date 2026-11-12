@@ -128,3 +128,11 @@ Feito e testado:
   fechar.
 
 **gamescope — avaliação (não implementado, decisão de arquitetura):** ver `docs/decisions/0004-gamescope.md`.
+
+### Item 5 — distribuição pelo apt (2026-11-12)
+
+Pronto e testado localmente, **publicação aguardando o dono** (precisa gerar a chave, criar o segredo no GitHub e
+ligar o Pages — ações fora desta máquina): `tools/apt-repo.sh`, `.github/workflows/apt-repo.yml`, `docs/APT.md`,
+`update.sh` configura o repositório sozinho quando ele estiver no ar. Teste com `apt-get update` real: assinatura
+aceita, candidato 0.4.1, download ok; índice adulterado e chave errada recusados. Falta o aceite final ("instalar e
+atualizar só com apt numa máquina limpa"), que depende do repositório publicado e de uma VM limpa.
