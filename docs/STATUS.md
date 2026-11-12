@@ -192,3 +192,39 @@ Modelo de ameaça e controles em `SECURITY.md`. Mudanças no Remote (`:8787`):
 | **Resolução / HDR / taxa** | Saída padrão do sway. | Sem tela para escolher resolução ou 60/120 Hz (TV 4K com PC fraco). | Média (prompt 2) |
 
 Essas lacunas viram telas do prompt "Telas de sistema" (Som, Bluetooth, Energia, Tela), que é o próximo passo.
+
+## Telas de sistema (prompt "o Nexus substitui o desktop") — auditoria (2026-11-12)
+
+Legenda: ✅ existe · 🟡 parcial · ❌ falta. Serviços disponíveis na VM: NetworkManager (`nmcli`), BlueZ
+(`bluetoothctl`), PipeWire (`wpctl`), logind, udisks2 (`udisksctl`), UPower, `timedatectl`, `localectl`.
+
+| Item | Estado | O que existe | O que falta |
+|---|---|---|---|
+| A1 Barra de status | 🟡 | Abas, relógio, chip do jogo, busca, sino, engrenagem, avatar, tempo restante (criança) | Wi-Fi/cabo, Bluetooth, volume/mudo, bateria dos controles, alertas (sem internet, disco cheio) |
+| A2 Central rápida | 🟡 | Guia/F1/Select+Start: Retomar, Início, Fechar, volume **(só sons da UI)**, tema, trocar perfil, reiniciar, desligar | Volume real do sistema, saída de áudio, Wi-Fi/BT liga-desliga, suspender, brilho |
+| A3 Overlay no jogo | 🟡 | Menu rápido sobre o jogo; "Forçar encerramento"; kill do escopo após a carência | Volume e bateria do controle no overlay; aviso de notificação importante por cima do jogo |
+| A4 Notificações | 🟡 | Toasts e central de notificações (updates, downloads, ROM recebida) | Fila curta com limite, "silenciar durante jogos", controle desconectado, disco cheio |
+| A5 Bloqueio / desligar | 🟡 | Standby "Pressione A", escolha de perfil com PIN, desligar/reiniciar | Tela de energia única (suspender/reiniciar/desligar/trocar perfil) |
+| A6 Boot e transições | 🟡 | Tela "Carregando" da Shell, "Reconectando ao Core…", Shell recarrega se o renderer cai | Plymouth com a marca, tela de erro amigável (reiniciar sessão / recuperação) se Core ou Shell falham |
+| A7 Primeiro uso | 🟡 | Boas-vindas → criar perfil → PIN (opcional) → pronto | Idioma/fuso/teclado, rede, parear controle, pasta de ROMs, parear celular, Steam |
+| B1 Rede | ❌ | — | Tudo (Wi-Fi, cabo, IP/DNS, oculta, esquecer, teste, IP fixo) |
+| B2 Bluetooth | 🟡 | Buscar/parear/remover **controles** (Controles → Bluetooth) | Ligar/desligar, fones/teclados, conectar, bateria, ajuda por modelo |
+| B3 Áudio | ❌ | Só volume dos sons da UI | Saída, volume geral, teste, microfone, saída por perfil |
+| B4 Tela e vídeo | ❌ | Mostra a resolução | Resolução, Hz, escala, margem, rotação, HDR/VRR, confirmação de 15 s |
+| B5 HDMI-CEC | ❌ | — | Tudo (depende de hardware) |
+| B6 Controles | 🟡 | Lista, apelido, jogador, mapeamento, exporta para RetroArch, vibração/inverter Y (prefs) | Teste de botões/analógicos, zona morta, ajuda para controles sem suporte |
+| B7 Celular | ✅ | QR, aparelhos, desconectar, trocar código, endereço, explicação | (validade do código: feito no item 8) |
+| B8 Idioma/hora | ❌ | — | Idioma, teclado, fuso, formato, NTP |
+| B9 Armazenamento | 🟡 | Espaço livre total; pendrives na tela de ROMs | Uso por categoria, ejetar, usar como biblioteca, limpar cache, formatar |
+| B10 Energia | 🟡 | Desligar, reiniciar, suspender (RPC) | Inatividade para suspender/apagar tela, botão físico, comportamento ao ligar |
+| B11 Atualizações | 🟡 | Atualizações de apps com reverter; `update.sh` | Versão do Nexus/sistema, verificar/instalar pela UI, histórico, reverter o Nexus |
+| B12 Perfis/parental | ✅ | Limite de tempo, classificação, apps liberados, PIN | Recuperar PIN, relatório de uso |
+| B13 Aparência | 🟡 | Tema, sons e volume, reduzir animações | Tamanho do texto, fundo |
+| B14 Acessibilidade | 🟡 | Reduzir animações, foco alto contraste, legendas | Texto maior, leitor de tela |
+| B15 Recuperação | ❌ | Rotas fora da UI (Ctrl+Alt+F3, force-desktop, revert-autologin) | Tudo dentro da UI |
+| B16 Sobre/diagnóstico | 🟡 | SO, arquitetura, memória, GPU, nível de desempenho, versão | CPU, temperatura, uso atual, uptime, throttling, relatório de suporte |
+| B17 Apps instalados | 🟡 | Adicionar app/atalho, imagens, remover personalizados | Tamanho, desinstalar jogos, ocultar, categoria |
+| B18 ROMs | 🟡 | Pasta fixa `~/ROMs`, núcleos, capas automáticas, importar | Escolher pastas, reescanear, emulador padrão por console |
+| B19 Privacidade | ❌ | (o Nexus não tem telemetria) | Tela explicando o que vai pela rede, limpar histórico/busca |
+
+Ordem de implementação: A6, A7, B1–B4 → A1–A4, B10, B9 → B6, B7, B11, B15, B16 → resto.
