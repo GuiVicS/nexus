@@ -1,0 +1,24 @@
+#!/bin/sh
+# swaymsg falso para os testes. Estado em $NEXUS_FAKE_DISPLAY/cur: "LARGxALT@HZ escala rotação vrr(on/off)".
+# Uma TV HDMI com 4 modos. Comandos aceitos são anotados em log; modo fora da lista é recusado como no sway.
+D=${NEXUS_FAKE_DISPLAY:-/tmp/nexus-fake-display}
+mkdir -p "$D"; [ -f "$D/cur" ] || echo "1920x1080@60.000 1 normal off" > "$D/cur"
+read -r MODE SCALE TR VRR < "$D/cur"
+case "$1" in
+  -t)
+    [ "$2" = get_outputs ] || { echo '[]'; exit 0; }
+    W=${MODE%%x*}; R=${MODE#*@}; H=${MODE#*x}; H=${H%@*}; MHZ=$(echo "$R" | awk '{printf "%d", $1*1000}')
+    S=disabled; [ "$VRR" = on ] && S=enabled
+    printf '[{"name":"HDMI-A-1","make":"Samsung Electric Company","model":"SAMSUNG","serial":"0x01","active":true,"scale":%s,"transform":"%s","adaptive_sync_status":"%s","current_mode":{"width":%s,"height":%s,"refresh":%s},"modes":[{"width":3840,"height":2160,"refresh":30000},{"width":1920,"height":1080,"refresh":60000},{"width":1920,"height":1080,"refresh":50000},{"width":1280,"height":720,"refresh":60000}]}]\n' "$SCALE" "$TR" "$S" "$W" "$H" "$MHZ" ;;
+  output)
+    echo "$*" >> "$D/log"; shift 2
+    while [ $# -gt 1 ]; do
+      case "$1" in
+        mode) m=${2%Hz}; case "$m" in 3840x2160@30.000|1920x1080@60.000|1920x1080@50.000|1280x720@60.000) MODE=$m;; *) echo '[{"success": false, "error": "modo não suportado"}]'; exit 2;; esac ;;
+        scale) SCALE=$2 ;; transform) TR=$2 ;; adaptive_sync) VRR=$2 ;;
+        hdr) echo '[{"success": false, "error": "Unknown/invalid command hdr"}]'; exit 2 ;;
+      esac; shift 2
+    done
+    echo "$MODE $SCALE $TR $VRR" > "$D/cur"; echo '[{"success": true}]' ;;
+  *) echo '[{"success": true}]' ;;
+esac

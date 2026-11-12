@@ -878,6 +878,70 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
                 }
             }
         }
+        // ---------- tela e vídeo (sway) ----------
+        "display.status" => {
+            let db = core.db.clone();
+            Ok(blocking(move || crate::display::status(&db)).await?)
+        }
+        "display.set" => {
+            sys_access(core, &v, false)?;
+            let output = s(&v, "output")?;
+            let next = crate::display::Settings {
+                mode: os(&v, "mode"),
+                scale: v.get("scale").and_then(|x| x.as_f64()),
+                transform: os(&v, "transform"),
+                vrr: None,
+                hdr: v.get("hdr").and_then(|x| x.as_bool()),
+            };
+            let token = blocking(move || crate::display::try_set(&output, next)).await?.map_err(|e| RpcError::new(E_FAILED, &e))?;
+            let secs = crate::display::confirm_secs();
+            // sem confirmação: volta sozinho (tela preta, TV que não aceita o modo, ninguém olhando)
+            let c = core.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(secs)).await;
+                if tokio::task::spawn_blocking(move || crate::display::revert(Some(token))).await.unwrap_or(false) {
+                    c.emit("display.reverted", json!({ "token": token }));
+                }
+            });
+            core.emit("display.changed", json!({}));
+            Ok(json!({ "token": token, "secs": secs }))
+        }
+        "display.confirm" | "display.revert" => {
+            let token = v.get("token").and_then(|t| t.as_u64()).ok_or_else(|| RpcError::invalid("token ausente"))?;
+            let db = core.db.clone();
+            let keep = method == "display.confirm";
+            let ok = blocking(move || if keep { crate::display::confirm(&db, token) } else { crate::display::revert(Some(token)) }).await?;
+            core.emit("display.changed", json!({}));
+            if keep && !ok {
+                return Err(RpcError::new(E_FAILED, "O tempo acabou e a configuração anterior voltou"));
+            }
+            Ok(json!({ "ok": ok }))
+        }
+        "display.vrr" => {
+            sys_access(core, &v, false)?;
+            let output = s(&v, "output")?;
+            let on = v.get("on").and_then(|x| x.as_bool()).ok_or_else(|| RpcError::invalid("on ausente"))?;
+            let db = core.db.clone();
+            blocking(move || -> Result<(), String> {
+                let st = crate::display::Settings { vrr: Some(on), ..Default::default() };
+                crate::display::apply(&output, &st)?;
+                if let Some(o) = crate::display::outputs().into_iter().find(|o| o.name == output) {
+                    crate::display::save(&db, &o.ident, &st);
+                }
+                Ok(())
+            })
+            .await?
+            .map_err(|e| RpcError::new(E_FAILED, &e))?;
+            core.emit("display.changed", json!({}));
+            Ok(json!({ "ok": true }))
+        }
+        "display.margin" => {
+            sys_access(core, &v, false)?;
+            let m = v.get("margin").and_then(|x| x.as_u64()).ok_or_else(|| RpcError::invalid("margin ausente"))? as u32;
+            crate::display::set_margin(&core.db, m).map_err(|e| RpcError::new(E_FAILED, &e))?;
+            core.emit("display.margin", json!({ "margin": m }));
+            Ok(json!({ "margin": m }))
+        }
         // ---------- idioma, teclado, data e hora ----------
         "locale.status" => {
             let db = core.db.clone();

@@ -1,13 +1,14 @@
 // Telas de sistema compartilhadas entre o assistente de primeiro uso e os Ajustes: Rede (B1), Bluetooth (B2),
-// Áudio (B3) e Idioma/hora (B8).
+// Áudio (B3), Tela e vídeo (B4) e Idioma/hora (B8).
 // Tudo passa pelo Core (sysnet.rs, locale.rs); a Shell só mostra e pede.
 import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
-import type { AudioNode, BtDevice, BtStatus, LocaleStatus, NetStatus, NetTest, WifiNet } from '@nexus/protocol';
+import type { AudioNode, DisplayStatus, BtDevice, BtStatus, LocaleStatus, NetStatus, NetTest, WifiNet } from '@nexus/protocol';
 import { audio, audioSet, loadAudio } from '../lib/audio';
+import { margin, previewMargin } from '../lib/display';
 import { sfx } from '@nexus/ui';
 import { api, client } from '../lib/api';
 import { cycHandlers } from '../lib/actions';
-import { askChoice, askConfirm, askText, fail, guarded, toast } from '../lib/state';
+import { askChoice, askConfirm, askText, fail, guarded, popOv, pushOv, toast } from '../lib/state';
 import { Icon, Switch } from './ui';
 
 function Info(p: { label: string; desc?: string; k?: string }) {
@@ -569,5 +570,229 @@ export function AudioPanel() {
         </Show>
       )}
     </Show>
+  );
+}
+
+// ---------- B4 Tela e vídeo ----------
+const SCALES = [1, 1.25, 1.5, 1.75, 2];
+const ROT: Record<string, string> = { normal: 'Normal', '90': '90° (em pé)', '180': '180° (de cabeça para baixo)', '270': '270° (em pé, outro lado)' };
+const ROTS = Object.keys(ROT);
+const hz = (mhz: number) => `${Math.round(mhz / 10) / 100} Hz`.replace('.', ',');
+const modeStr = (w: number, h: number, mhz: number) => `${w}x${h}@${(mhz / 1000).toFixed(3)}`;
+
+/** Resolução, Hz, escala, rotação (com confirmação de 15 s), VRR/HDR quando houver, e margem para TVs. */
+export function DisplayPanel() {
+  const [st, setSt] = createSignal<DisplayStatus | null>(null);
+  const [res, setRes] = createSignal('');
+  const [rate, setRate] = createSignal(0);
+  const [scale, setScale] = createSignal(1);
+  const [rot, setRot] = createSignal('normal');
+  const [busy, setBusy] = createSignal(false);
+  const out = () => st()?.outputs[0];
+  const reset = (s: DisplayStatus) => {
+    const o = s.outputs[0];
+    if (!o) return;
+    setRes(o.width ? `${o.width}x${o.height}` : '');
+    setRate(o.refresh ?? 0);
+    setScale(o.scale);
+    setRot(o.transform);
+  };
+  const load = () =>
+    api.displayStatus().then((s) => {
+      setSt(s);
+      reset(s);
+    }).catch(() => setSt({ available: false, outputs: [], margin: margin() }));
+  const resList = () => [...new Set((out()?.modes ?? []).map((m) => `${m.width}x${m.height}`))];
+  const rateList = () => (out()?.modes ?? []).filter((m) => `${m.width}x${m.height}` === res()).map((m) => m.refresh);
+  const changed = () => {
+    const o = out();
+    if (!o) return false;
+    return res() !== `${o.width}x${o.height}` || rate() !== o.refresh || scale() !== o.scale || rot() !== o.transform;
+  };
+
+  /** Aplica e pergunta se fica; o Core volta sozinho se ninguém responder (tela preta). */
+  const tryApply = async (p: { mode?: string; scale?: number; transform?: string; hdr?: boolean }) => {
+    const o = out();
+    if (!o || busy()) return;
+    setBusy(true);
+    try {
+      const r = await guarded((a) => api.displaySet({ output: o.name, ...p, ...a }), 'Confirme para mudar a tela');
+      if (!r) return;
+      const keep = await askChoice({ title: 'Manter esta configuração?', sub: 'Se a imagem estiver cortada, piscando ou estranha, não faça nada: a anterior volta sozinha.', yes: 'Manter', no: 'Voltar à anterior', countdown: r.secs });
+      if (keep) {
+        await api.displayConfirm(r.token);
+        sfx('on');
+        toast('Tela ajustada', 'A nova configuração foi salva', 'check');
+      } else {
+        await api.displayRevert(r.token).catch(() => {});
+        // sem resposta (null): o Core já avisa com "display.reverted"; só avisa aqui quem escolheu voltar
+        if (keep === false) toast('Configuração anterior', 'A tela voltou como estava', 'refresh');
+      }
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(false);
+      void load();
+    }
+  };
+  const applySel = () => {
+    const o = out();
+    if (!o) return;
+    const p: { mode?: string; scale?: number; transform?: string } = {};
+    if (res() !== `${o.width}x${o.height}` || rate() !== o.refresh) {
+      const [w, h] = res().split('x').map(Number);
+      p.mode = modeStr(w, h, rate());
+    }
+    if (scale() !== o.scale) p.scale = scale();
+    if (rot() !== o.transform) p.transform = rot();
+    void tryApply(p);
+  };
+
+  onMount(() => {
+    void load();
+    const step = <T,>(l: T[], cur: T, d: 1 | -1) => (l.length ? l[(Math.max(0, l.indexOf(cur)) + d + l.length) % l.length] : cur);
+    cycHandlers.set('disp:res', (d) => {
+      setRes(step(resList(), res(), d));
+      const r = rateList();
+      if (!r.includes(rate())) setRate(r[0] ?? 0);
+      sfx('tab');
+    });
+    cycHandlers.set('disp:hz', (d) => {
+      setRate(step(rateList(), rate(), d));
+      sfx('tab');
+    });
+    cycHandlers.set('disp:scale', (d) => {
+      setScale(step(SCALES, scale(), d));
+      sfx('tab');
+    });
+    cycHandlers.set('disp:rot', (d) => {
+      setRot(step(ROTS, rot(), d));
+      sfx('tab');
+    });
+    cycHandlers.set('margin', (d) => {
+      const m = Math.max(0, Math.min(10, margin() + d));
+      previewMargin(m);
+      sfx('tick');
+      void guarded((a) => api.displayMargin(m, a)).catch(fail);
+    });
+    const h = (e: Event) => {
+      const a = (e as CustomEvent<string>).detail;
+      const o = out();
+      if (a === 'reload') void load();
+      else if (a === 'apply') applySel();
+      else if (a === 'undo' && st()) reset(st()!);
+      else if (a === 'vrr' && o && o.vrr !== null) void guarded((x) => api.displayVrr(o.name, !o.vrr, x)).then(() => void load()).catch(fail);
+      else if (a === 'hdr' && o && o.hdr !== null) void tryApply({ hdr: !o.hdr });
+      else if (a === 'mwiz') void pushOv('margin');
+    };
+    document.addEventListener('nexus:disp', h);
+    const off = client.on('display.reverted', () => {
+      toast('A tela voltou como estava', 'Ninguém confirmou a mudança a tempo', 'refresh');
+      void load();
+    });
+    onCleanup(() => {
+      for (const k of ['disp:res', 'disp:hz', 'disp:scale', 'disp:rot', 'margin']) cycHandlers.delete(k);
+      document.removeEventListener('nexus:disp', h);
+      off();
+    });
+  });
+
+  const cyc = (k: string, c: string, label: string, sub: string, val: string) => (
+    <div class="srow f" data-k={k} data-r="22" data-cyc={c} data-a={`cyc:${c}`} data-verb="Alterar">
+      <div><b>{label}</b><small>{sub}</small></div>
+      <div class="cv"><Icon n="left" /><span>{val}</span><Icon n="right" /></div>
+    </div>
+  );
+  return (
+    <Show when={st()} fallback={<Info label="Lendo a tela…" />}>
+      {(s) => (
+        <>
+          <Show
+            when={s().available && out()}
+            fallback={
+              <>
+                <Info k="disp-none" label="Ajustes de tela indisponíveis aqui" desc={`O Nexus não está rodando no compositor dele (sway). Resolução atual: ${screen.width} × ${screen.height}.`} />
+                <div class="srow f" data-k="disp-reload" data-r="22" data-a="disp:reload" data-verb="Tentar"><div><b>Tentar de novo</b><small>Lê a tela outra vez</small></div><Icon n="refresh" /></div>
+              </>
+            }
+          >
+            <div class="srow info netsum" data-k="disp-sum">
+              <Icon n="tv" />
+              <div><b>{out()!.label}</b><small>{out()!.width ? `${out()!.width} × ${out()!.height}${out()!.refresh ? ` · ${hz(out()!.refresh!)}` : ''} · escala ${String(out()!.scale).replace('.', ',')}` : 'Modo desconhecido'}</small></div>
+            </div>
+            <Show when={resList().length} fallback={<Info label="Resolução" desc="Esta tela não informa os modos disponíveis" />}>
+              {cyc('disp-res', 'disp:res', 'Resolução', 'Maior primeiro · use ← →', res().replace('x', ' × '))}
+              {cyc('disp-hz', 'disp:hz', 'Taxa de atualização', 'Quadros por segundo da tela', rate() ? hz(rate()) : '—')}
+            </Show>
+            {cyc('disp-scale', 'disp:scale', 'Escala da interface', 'Aumenta tudo na tela (jogos não mudam)', `${Math.round(scale() * 100)} %`)}
+            {cyc('disp-rot', 'disp:rot', 'Rotação', 'Para telas em pé ou de cabeça para baixo', ROT[rot()] ?? rot())}
+            <Show when={changed()}>
+              <div class={`srow f pri ${busy() ? 'off' : ''}`} data-k="disp-apply" data-r="22" data-a="disp:apply" data-verb="Aplicar">
+                <div><b>Aplicar mudanças</b><small>Você terá {s().confirmSecs ?? 15} s para confirmar; sem resposta, volta sozinho</small></div><Icon n="check" />
+              </div>
+              <div class="srow f" data-k="disp-undo" data-r="22" data-a="disp:undo" data-verb="Desfazer"><div><b>Desfazer escolhas</b><small>Volta os valores acima para os atuais</small></div><Icon n="back" /></div>
+            </Show>
+            <Show when={out()!.vrr !== null} fallback={<Info k="disp-vrr" label="Taxa variável (VRR / FreeSync)" desc="Não informada por esta tela" />}>
+              <div class="srow f" data-k="disp-vrr" data-r="22" data-a="disp:vrr" data-verb="Alternar"><div><b>Taxa variável (VRR / FreeSync)</b><small>Menos cortes na imagem em jogos, se a TV suportar</small></div><Switch on={!!out()!.vrr} /></div>
+            </Show>
+            <Show when={out()!.hdr !== null} fallback={<Info k="disp-hdr" label="HDR" desc="Não disponível: a tela ou o compositor não suportam" />}>
+              <div class="srow f" data-k="disp-hdr" data-r="22" data-a="disp:hdr" data-verb="Alternar"><div><b>HDR</b><small>Cores e brilho estendidos (com confirmação)</small></div><Switch on={!!out()!.hdr} /></div>
+            </Show>
+          </Show>
+          <h3 class="sh2">Margem (TVs que cortam as bordas)</h3>
+          <div class="srow f slider" data-k="disp-margin" data-r="22" data-slider="margin" data-a="disp:mwiz" data-verb="Assistente">
+            <b>Margem</b><div class="tr"><i style={{ width: `${margin() * 10}%` }} /></div><span class="v">{margin()} %</span>
+          </div>
+          <div class="srow f" data-k="disp-mwiz" data-r="22" data-a="disp:mwiz" data-verb="Abrir"><div><b>Assistente de margem</b><small>Ajuste até ver as quatro setas inteiras nos cantos da TV</small></div><Icon n="right" /></div>
+        </>
+      )}
+    </Show>
+  );
+}
+
+/** Tela cheia com setas nos cantos: ←/→ muda a margem ao vivo, A salva, B desiste (volta ao valor anterior). */
+export function MarginWizard() {
+  const start = margin();
+  let saved = false;
+  onMount(() => {
+    cycHandlers.set('mwiz', (d) => {
+      previewMargin(margin() + d);
+      sfx('tick');
+    });
+    const h = async (e: Event) => {
+      if ((e as CustomEvent<string>).detail !== 'save') return;
+      const m = margin();
+      const r = await guarded((a) => api.displayMargin(m, a)).catch((x) => (fail(x), null));
+      if (r) {
+        saved = true;
+        toast('Margem salva', `${m} %`, 'check');
+        popOv(true);
+      }
+    };
+    document.addEventListener('nexus:mwiz', h);
+    onCleanup(() => {
+      cycHandlers.delete('mwiz');
+      document.removeEventListener('nexus:mwiz', h);
+      if (!saved) previewMargin(start);
+    });
+  });
+  const corner = (c: string, rot: number) => (
+    <svg class={`mcorner mc-${c}`} viewBox="0 0 24 24" style={{ transform: `rotate(${rot}deg)` }}><path d="M4 4h12M4 4v12M4 4l14 14" /></svg>
+  );
+  return (
+    <div class="mwiz">
+      {corner('tl', 0)}
+      {corner('tr', 90)}
+      {corner('br', 180)}
+      {corner('bl', 270)}
+      <div class="mbox">
+        <h2>Ajuste da margem</h2>
+        <p class="sub">Use ← → até as quatro setas aparecerem <b>inteiras</b> nos cantos da TV.</p>
+        <div class="srow f slider" data-k="mw-slider" data-autofocus data-r="22" data-slider="mwiz" data-a="mwiz:save" data-verb="Salvar">
+          <b>Margem</b><div class="tr"><i style={{ width: `${margin() * 10}%` }} /></div><span class="v">{margin()} %</span>
+        </div>
+        <p class="sub small">A salva · B desiste</p>
+      </div>
+    </div>
   );
 }

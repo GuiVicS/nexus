@@ -3,7 +3,7 @@ import type { Item } from '@nexus/protocol';
 import { api, artUrl } from '../lib/api';
 import { ACT, THEME_LABEL, hubTab } from '../lib/actions';
 import { textSink } from '../lib/actions';
-import { closeOv, fail, findItem, guarded, hasGrant, isInstalled, isKid, me, popOv, prefs, S, setS, toast, replaceTop } from '../lib/state';
+import { closeOv, fail, findItem, guarded, hasGrant, isInstalled, isKid, me, popOv, prefs, S, setS, toast, replaceTop, topOv } from '../lib/state';
 import { effectivePrice, money, norm, priceNum } from '../lib/format';
 import { Avatar, Icon, Switch, Tile, appBg, Bar } from './ui';
 import { sfx } from '@nexus/ui';
@@ -385,13 +385,28 @@ export function TimeUp() {
 }
 
 // ---------- Confirmação ----------
-export function Confirm(p: { title: string; sub?: string; yes?: string; no?: string; danger?: boolean; oid: number }) {
+export function Confirm(p: { title: string; sub?: string; yes?: string; no?: string; danger?: boolean; countdown?: number; oid: number }) {
+  // contagem regressiva (ex.: nova resolução): sem resposta, vale o "não" quando chega a zero
+  const [left, setLeft] = createSignal(p.countdown ?? 0);
+  onMount(() => {
+    if (!p.countdown) return;
+    const t = setInterval(() => {
+      const n = left() - 1;
+      setLeft(n);
+      if (n <= 0) {
+        clearInterval(t);
+        if (topOv()?.id === p.oid) popOv(null);
+      }
+    }, 1000);
+    onCleanup(() => clearInterval(t));
+  });
   return (
     <>
       <div class="veil" />
       <div class="sheet narrow">
         <h2>{p.title}</h2>
         <Show when={p.sub}><p class="sub">{p.sub}</p></Show>
+        <Show when={p.countdown}><p class="cdown" data-k="cdown">Volta sozinho em <b>{Math.max(0, left())}</b> s</p></Show>
         <div class="lacts" style={{ 'justify-content': 'flex-start', 'margin-top': '10px' }}>
           <div class="btn f" data-autofocus data-r="p" data-pad="8" data-a={`yes:${p.oid}`} data-verb="Confirmar" style={p.danger ? { color: 'var(--danger)' } : {}}>{p.yes ?? 'Confirmar'}</div>
           <div class="btn f" data-r="p" data-pad="8" data-a={`no:${p.oid}`} data-verb="Cancelar">{p.no ?? 'Cancelar'}</div>

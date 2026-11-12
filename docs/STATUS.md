@@ -210,7 +210,7 @@ Legenda: ✅ existe · 🟡 parcial · ❌ falta. Serviços disponíveis na VM: 
 | B1 Rede | ✅ (ver B1) | — | Tudo (Wi-Fi, cabo, IP/DNS, oculta, esquecer, teste, IP fixo) |
 | B2 Bluetooth | ✅ (ver B2) | Buscar/parear/remover **controles** (Controles → Bluetooth) | Ligar/desligar, fones/teclados, conectar, bateria, ajuda por modelo |
 | B3 Áudio | ✅ (ver B3) | Só volume dos sons da UI | Saída, volume geral, teste, microfone, saída por perfil |
-| B4 Tela e vídeo | ❌ | Mostra a resolução | Resolução, Hz, escala, margem, rotação, HDR/VRR, confirmação de 15 s |
+| B4 Tela e vídeo | ✅ (ver B4) | Mostra a resolução | Resolução, Hz, escala, margem, rotação, HDR/VRR, confirmação de 15 s |
 | B5 HDMI-CEC | ❌ | — | Tudo (depende de hardware) |
 | B6 Controles | 🟡 | Lista, apelido, jogador, mapeamento, exporta para RetroArch, vibração/inverter Y (prefs) | Teste de botões/analógicos, zona morta, ajuda para controles sem suporte |
 | B7 Celular | ✅ | QR, aparelhos, desconectar, trocar código, endereço, explicação | (validade do código: feito no item 8) |
@@ -344,3 +344,32 @@ Ordem de implementação: A6, A7, B1–B4 → A1–A4, B10, B9 → B6, B7, B11, 
     (quantidade e tamanho) e o progresso geral ("Enviando 2 de 5…"). Sem dependências externas.
 - Conferido renderizando em 1440×900 e 390×844 (sem rolagem horizontal). O teste `roms_upload_from_phone` continua
   passando.
+
+### B4 — tela e vídeo (2026-11-12) ✅
+
+- Ajustes → **Tela e vídeo** (nova categoria; a antiga "Tela e som" virou **Aparência**):
+  - tela atual (nome, resolução, Hz, escala);
+  - **resolução** e **taxa de atualização** (só os modos que a tela informa, maior primeiro), **escala** (100–200 %)
+    e **rotação**, que se escolhem com ←/→ e se aplicam juntas em "Aplicar mudanças";
+  - **VRR/FreeSync** liga/desliga;
+  - **HDR** quando o compositor e a tela informam. Senão aparece "Não disponível", com o motivo.
+- **Confirmação de 15 s:** é o Core que aplica e volta sozinho, não a Shell, então funciona mesmo com tela preta.
+  A Shell mostra "Manter esta configuração? Volta sozinho em N s". Sem resposta, ou com "Voltar à anterior",
+  a configuração anterior volta. Só o que foi confirmado é salvo (por tela: marca/modelo/série) e reaplicado
+  quando o Core inicia.
+- **Margem (overscan):** slider de 0 a 10 % e **assistente** em tela cheia com setas nos quatro cantos (←/→ ao vivo,
+  A salva, B desiste). A interface inteira encolhe por igual. O valor é do aparelho e vale desde a tela de
+  perfis. **Limite:** só a interface do Nexus respeita a margem. Jogos e apps usam a tela inteira; para eles, o
+  certo é desligar o overscan na TV (modo "Ajustar à tela", "Just Scan" ou "Pixel a pixel").
+- Core: `display.rs` (sway `get_outputs`/`output …`, valores validados, token pequeno para não perder precisão no JSON
+  da Shell).
+- **Testes:** unidade (parser das saídas, validação, junção do salvo) e cenário de UI `tela` com um `swaymsg` falso
+  que guarda estado e recusa modos desconhecidos. O cenário percorre: resolução → contagem → manter (não volta
+  depois do prazo); escala sem resposta → volta sozinha; VRR; HDR indisponível; margem (encolhe 6 % ao vivo,
+  salva no Core, B desiste). **Na sessão real (sway 1.11):** escala 125 % aplicada e, sem resposta, de volta a
+  100 % em 15 s. A saída aninhada da VM não informa modos, e a tela mostra "Esta tela não informa os modos
+  disponíveis".
+- **Não testado:** TV de verdade com HDMI (modos, VRR) e HDR. O `swaymsg output … hdr` só aparece se o sway e a
+  tela suportarem.
+- **Captura:** `b4-tela`, `b4-confirmar`, `b4-margem` (1080p/720p). **Memória da Shell:** 185 MB com Tela e vídeo
+  aberto (188 MB no Início na mesma sessão).

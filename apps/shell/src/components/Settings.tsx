@@ -6,7 +6,7 @@ import { askConfirm, askPin, effectsLevel, fail, guarded, isKid, me, prefs, S, s
 import { fmtBytes, ratingLabel } from '../lib/format';
 import { Avatar, Icon, Switch } from './ui';
 import { PadsSection } from './Pads';
-import { AudioPanel, BtPanel, LocalePanel, NetPanel } from './System';
+import { AudioPanel, BtPanel, DisplayPanel, LocalePanel, NetPanel } from './System';
 import { sfx } from '@nexus/ui';
 
 interface Cat { id: string; label: string; icon: string; adult?: boolean }
@@ -14,7 +14,8 @@ const CATS: Cat[] = [
   { id: 'rede', label: 'Rede', icon: 'wifi', adult: true },
   { id: 'bt', label: 'Bluetooth', icon: 'bt', adult: true },
   { id: 'audio', label: 'Áudio', icon: 'vol' },
-  { id: 'som', label: 'Tela e aparência', icon: 'tv' },
+  { id: 'tela', label: 'Tela e vídeo', icon: 'tv', adult: true },
+  { id: 'som', label: 'Aparência', icon: 'sun' },
   { id: 'acess', label: 'Acessibilidade', icon: 'access' },
   { id: 'ctrl', label: 'Controles', icon: 'pad' },
   { id: 'remote', label: 'Controle no celular', icon: 'tv', adult: true },
@@ -62,7 +63,7 @@ function Pane(p: { title: string; children: JSX.Element }) {
 
 function PaneSom() {
   return (
-    <Pane title="Tela e aparência">
+    <Pane title="Aparência">
       <div class="srow f" data-k="s-theme" data-r="22" data-cyc="theme" data-a="cyc:theme" data-verb="Alterar">
         <div><b>Tema</b><small>Escuro, claro ou automático (segue o sistema)</small></div>
         <div class="cv"><Icon n="left" /><span>{THEME_LABEL[prefs().theme]}</span><Icon n="right" /></div>
@@ -72,7 +73,6 @@ function PaneSom() {
         <b>Volume dos sons da interface</b><div class="tr"><i style={{ width: `${prefs().vol}%` }} /></div><span class="v">{prefs().vol}</span>
       </div>
       <Info label="Efeitos visuais" desc={softwareGL() ? 'Mínimos (sem aceleração de vídeo: a placa de vídeo não está em uso)' : ({ full: 'Completos', reduced: 'Reduzidos (aparelho de desempenho médio)', minimal: 'Mínimos (economiza recursos)' }[effectsLevel()])} />
-      <Info label="Resolução" desc={`${screen.width} × ${screen.height}`} />
     </Pane>
   );
 }
@@ -332,6 +332,7 @@ export function Settings() {
         <Show when={S.setCat === 'rede' && !isKid()}><Pane title="Rede"><NetPanel /></Pane></Show>
         <Show when={S.setCat === 'bt' && !isKid()}><Pane title="Bluetooth"><BtPanel /></Pane></Show>
         <Show when={S.setCat === 'audio'}><Pane title="Áudio"><AudioPanel /></Pane></Show>
+        <Show when={S.setCat === 'tela' && !isKid()}><Pane title="Tela e vídeo"><DisplayPanel /></Pane></Show>
         <Show when={S.setCat === 'hora' && !isKid()}><Pane title="Idioma e hora"><LocalePanel /></Pane></Show>
         <Show when={S.setCat === 'som'}><PaneSom /></Show>
         <Show when={S.setCat === 'acess'}><PaneAcess /></Show>

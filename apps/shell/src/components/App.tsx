@@ -1,4 +1,6 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, Switch, Match, type JSX } from 'solid-js';
+import { fitStage, loadMargin } from '../lib/display';
+import { MarginWizard } from './System';
 import { Focus } from '@nexus/focus';
 import { sfx } from '@nexus/ui';
 import { ACT, THEME_LABEL, back, firstFocus, adjust, tab, tabsNow } from '../lib/actions';
@@ -18,7 +20,7 @@ import { AppEditor, AppPicker, FilePicker } from './Apps';
 import { PadEditor, PadMapper } from './Pads';
 import { Boot, Onboarding, ProfileEditor, ProfilePicker, Standby } from './Profiles';
 
-const FULL: Ov['kind'][] = ['fault', 'hub', 'search', 'settings', 'launch', 'profile', 'timeup', 'appicker', 'appedit', 'filepick', 'padmap', 'padedit', 'roms'];
+const FULL: Ov['kind'][] = ['margin', 'fault', 'hub', 'search', 'settings', 'launch', 'profile', 'timeup', 'appicker', 'appedit', 'filepick', 'padmap', 'padedit', 'roms'];
 
 function OvBody(p: { o: Ov }) {
   const o = p.o;
@@ -42,7 +44,8 @@ function OvBody(p: { o: Ov }) {
       <Match when={o.kind === 'roms'}><Roms oid={o.id} /></Match>
       <Match when={o.kind === 'fault'}><Fault /></Match>
       <Match when={o.kind === 'filepick'}><FilePicker title={o.props.title} oid={o.id} /></Match>
-      <Match when={o.kind === 'confirm'}><Confirm title={o.props.title} sub={o.props.sub} yes={o.props.yes} no={o.props.no} danger={o.props.danger} oid={o.id} /></Match>
+      <Match when={o.kind === 'confirm'}><Confirm title={o.props.title} sub={o.props.sub} yes={o.props.yes} no={o.props.no} danger={o.props.danger} countdown={o.props.countdown} oid={o.id} /></Match>
+      <Match when={o.kind === 'margin'}><MarginWizard /></Match>
     </Switch>
   );
 }
@@ -171,7 +174,7 @@ export function App() {
   let stage!: HTMLDivElement;
   let ring!: HTMLDivElement;
   const [ready, setReady] = createSignal(false);
-  const fit = () => document.documentElement.style.setProperty('--s', String(Math.min(innerWidth / 1920, innerHeight / 1080)));
+  const fit = fitStage;
 
   const root = (): HTMLElement | null => {
     const layers = document.querySelectorAll<HTMLElement>('#ovs > [data-oid]');
@@ -187,6 +190,7 @@ export function App() {
   onMount(() => {
     fit();
     addEventListener('resize', fit);
+    loadMargin();
     const f = new Focus({
       stage,
       ring,

@@ -809,3 +809,74 @@ scenarios.audio = async () => {
     await core.stop();
   }
 };
+
+// B4: Ajustes → Tela e vídeo só com o controle: resolução com confirmação, volta sozinha sem resposta, VRR, HDR
+// indisponível e assistente de margem (salvar e desistir).
+scenarios.tela = async () => {
+  const core = await startCore({ demo: true });
+  const D = `${core.dir}/fake-display`;
+  const cur = () => (fs.existsSync(`${D}/cur`) ? fs.readFileSync(`${D}/cur`, 'utf8').trim() : '1920x1080@60.000 1 normal off');
+  const toast = (re) => `()=>[...document.querySelectorAll('.toast')].some(t=>${re}.test(t.textContent))`;
+  const ui = await openUi(core);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await openSettingsCat(ui, 'tela', 'Tela e vídeo');
+    await ui.until(`()=>/Samsung.*1920 × 1080 · 60 Hz/.test(document.querySelector('[data-k=disp-sum]')?.textContent||'')`, 'tela, resolução e Hz atuais');
+    check(/Não disponível/.test(await ui.text('[data-k=disp-hdr]')), 'HDR indisponível explicado');
+    await ui.key('ArrowRight'); // entra no painel
+    // resolução: 1920×1080 → 1280×720, aplicar, contagem, manter
+    await goTo(ui, 'disp-res', 'resolução');
+    await ui.key('ArrowRight');
+    check(/1280 × 720/.test(await ui.text('[data-k=disp-res]')), '→ escolhe 1280 × 720');
+    await goTo(ui, 'disp-apply', 'aplicar');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm] [data-k=cdown]')`, 'confirmação com contagem regressiva');
+    check(cur().startsWith('1280x720@60.000'), 'Core aplicou o modo no sway');
+    await ui.screens('b4-confirmar');
+    await ui.key('Enter'); // "Manter" tem o foco
+    await ui.until(toast('/Tela ajustada/'), 'confirmado');
+    await new Promise((r) => setTimeout(r, 5600));
+    check(cur().startsWith('1280x720'), 'confirmado não volta depois do prazo');
+    // escala sem resposta: volta sozinha
+    await goTo(ui, 'disp-scale', 'escala');
+    await ui.key('ArrowRight');
+    await goTo(ui, 'disp-apply', 'aplicar');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação da escala');
+    check(cur().split(' ')[1] === '1.25', 'escala 125 % aplicada');
+    await waitNode(() => cur().split(' ')[1] === '1', 'sem resposta em 5 s: escala anterior volta sozinha', 9000);
+    await ui.until(`()=>!document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação some sozinha');
+    // VRR
+    await goTo(ui, 'disp-vrr', 'VRR');
+    await ui.key('Enter');
+    await waitNode(() => cur().endsWith(' on'), 'VRR ligado no sway');
+    await ui.screens('b4-tela');
+    // assistente de margem: → 3 vezes e A salva
+    await goTo(ui, 'disp-mwiz', 'assistente de margem');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=margin] .mcorner')`, 'assistente com setas nos cantos');
+    const s0 = Number(await ui.ev(`getComputedStyle(document.documentElement).getPropertyValue('--s')`));
+    for (let n = 0; n < 3; n++) await ui.key('ArrowRight', { wait: 80 });
+    const s1 = Number(await ui.ev(`getComputedStyle(document.documentElement).getPropertyValue('--s')`));
+    check(Math.abs(s1 / s0 - 0.94) < 0.001, `interface encolhe 6 % ao vivo (${s0} → ${s1})`);
+    await ui.screens('b4-margem');
+    await ui.key('Enter');
+    await ui.until(toast('/Margem salva/'), 'margem salva');
+    check((await core.rpc('display.status')).margin === 3, 'Core guardou a margem (3 %)');
+    // de novo, mas B desiste: volta ao valor salvo
+    await goTo(ui, 'disp-mwiz', 'assistente de margem');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=margin]')`, 'assistente de novo');
+    await ui.key('ArrowRight');
+    await ui.key('Escape');
+    await ui.until(`()=>!document.querySelector('#ovs [data-kind=margin]')`, 'B fecha o assistente');
+    check(Math.abs(Number(await ui.ev(`getComputedStyle(document.documentElement).getPropertyValue('--s')`)) - s1) < 1e-6, 'B desiste e a margem volta para 3 %');
+    check((await core.rpc('display.status')).margin === 3, 'margem salva não mudou');
+    check(ui.errors().length === 0, `sem erros de JavaScript${ui.errors().length ? ': ' + ui.errors().join(' | ') : ''}`);
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};

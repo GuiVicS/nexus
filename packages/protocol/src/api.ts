@@ -51,6 +51,9 @@ export interface WifiNet { ssid: string; signal: number; secure: boolean; securi
 export interface NetTest { connectivity: string; online: boolean; dns: boolean; latencyMs: number | null; elapsedMs: number }
 export interface AudioNode { id: number; name: string; node: string; kind: 'hdmi' | 'analogica' | 'bluetooth' | 'usb'; default: boolean; volume: number; muted: boolean }
 export interface AudioStatus { available: boolean; error?: string; volume: number; muted: boolean; sinks: AudioNode[]; sources: AudioNode[]; mic: { id: number; volume: number; muted: boolean } | null }
+export interface DisplayMode { width: number; height: number; refresh: number }
+export interface DisplayOutput { name: string; label: string; width: number | null; height: number | null; refresh: number | null; modes: DisplayMode[]; scale: number; transform: string; vrr: boolean | null; hdr: boolean | null }
+export interface DisplayStatus { available: boolean; outputs: DisplayOutput[]; margin: number; pending?: number | null; confirmSecs?: number }
 export interface LocaleStatus {
   timezone: string; ntp: boolean; synced: boolean; keyboard: string; language: string;
   timezones: { id: string; name: string }[]; keyboards: { id: string; name: string }[];
@@ -91,6 +94,12 @@ export function createApi(c: RpcClient) {
     audioStatus: () => call<AudioStatus>('audio.status'),
     audioSet: (p: { id?: number; source?: boolean; volume?: number; muted?: boolean; default?: number }) => call<AudioStatus>('audio.set', p),
     audioTest: (id?: number) => call<{ ok: true }>('audio.test', id === undefined ? {} : { id }, 10000),
+    displayStatus: () => call<DisplayStatus>('display.status'),
+    displaySet: (p: { output: string; mode?: string; scale?: number; transform?: string; hdr?: boolean } & Auth) => call<{ token: number; secs: number }>('display.set', p, 15000),
+    displayConfirm: (token: number) => call<{ ok: boolean }>('display.confirm', { token }),
+    displayRevert: (token: number) => call<{ ok: boolean }>('display.revert', { token }),
+    displayVrr: (output: string, on: boolean, a: Auth = {}) => call<{ ok: true }>('display.vrr', { output, on, ...a }),
+    displayMargin: (margin: number, a: Auth = {}) => call<{ margin: number }>('display.margin', { margin, ...a }),
     localeSet: (p: { timezone?: string; keyboard?: string; ntp?: boolean } & Auth) => call<LocaleStatus>('locale.set', p, 20000),
     power: (action: 'off' | 'restart' | 'suspend') => call<{ simulated: boolean }>('system.power', { action }),
     steamOpen: () => call<{ ok: true }>('steam.open'),

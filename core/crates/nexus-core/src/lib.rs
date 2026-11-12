@@ -5,6 +5,7 @@ pub mod avatars;
 pub mod compositor;
 pub mod config;
 pub mod controllers;
+pub mod display;
 pub mod core;
 pub mod customart;
 pub mod db;
@@ -44,6 +45,11 @@ pub async fn run(cfg: config::Config) -> anyhow::Result<Running> {
         std::thread::spawn(move || {
             let _ = locale::apply_keyboard(&k);
         });
+    }
+    if core.cfg.compositor == "sway" {
+        // resolução/escala/rotação confirmadas pelo usuário em cada tela
+        let db = core.db.clone();
+        std::thread::spawn(move || display::restore(&db));
     }
     let started = net::start(core.clone()).await?;
     core.adopt_running_game(); // perfil restaurado + jogo aberto antes de reiniciar

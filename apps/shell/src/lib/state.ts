@@ -8,7 +8,7 @@ import { api } from './api';
 
 export type Screen = 'boot' | 'standby' | 'onboarding' | 'profiles' | 'shell';
 export type Tab = 'home' | 'biblioteca' | 'emu' | 'midia' | 'loja';
-export type OvKind = 'sheet' | 'hub' | 'search' | 'settings' | 'guide' | 'notif' | 'launch' | 'pin' | 'text' | 'profile' | 'timeup' | 'confirm' | 'appicker' | 'appedit' | 'filepick' | 'padmap' | 'padedit' | 'roms' | 'fault';
+export type OvKind = 'sheet' | 'hub' | 'search' | 'settings' | 'guide' | 'notif' | 'launch' | 'pin' | 'text' | 'profile' | 'timeup' | 'confirm' | 'appicker' | 'appedit' | 'filepick' | 'padmap' | 'padedit' | 'roms' | 'fault' | 'margin';
 export type Mode = 'key' | 'pad' | 'ptr';
 
 export const DEFAULT_PREFS: Prefs = { theme: 'dark', sfx: true, vol: 60, reduce: false, hc: false, subs: false, invy: false, vib: true, pins: [], favs: [] };
@@ -210,7 +210,7 @@ export const askPin = (o: { title: string; sub?: string; confirm?: boolean }) =>
 export const askText = (o: { title: string; sub?: string; value?: string; max?: number; kind?: 'name' | 'key' | 'secret' | 'ip' }) => pushOv<string | null>('text', o).then((v) => (v === undefined ? null : v));
 export const askConfirm = (o: { title: string; sub?: string; yes?: string; no?: string; danger?: boolean }) => pushOv<boolean>('confirm', o).then((v) => !!v);
 /** Duas opções de verdade (sim/não) + Voltar: true, false ou null (voltou sem escolher). */
-export const askChoice = (o: { title: string; sub?: string; yes: string; no: string; danger?: boolean }) => pushOv<boolean | null>('confirm', o).then((v) => (v === true || v === false ? v : null));
+export const askChoice = (o: { title: string; sub?: string; yes: string; no: string; danger?: boolean; countdown?: number }) => pushOv<boolean | null>('confirm', o).then((v) => (v === true || v === false ? v : null));
 
 const GRANT_MS = 9 * 60 * 1000;
 export const hasGrant = () => !!S.grant && Date.now() - S.grant.at < GRANT_MS;
