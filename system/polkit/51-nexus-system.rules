@@ -1,0 +1,18 @@
+// Nexus: o aparelho é configurado pela TV, sem terminal nem senha do sistema. Quem está na frente da TV (sessão
+// local ativa) pode conectar o Wi-Fi, mudar o fuso, a hora automática e o teclado. Só estas ações; o Core ainda
+// exige um perfil adulto (ou o PIN dos responsáveis) antes de pedir qualquer uma delas.
+polkit.addRule(function (action, subject) {
+  if (!subject.active || !subject.local) return polkit.Result.NOT_HANDLED;
+  var ok = [
+    "org.freedesktop.NetworkManager.settings.modify.system",
+    "org.freedesktop.NetworkManager.settings.modify.own",
+    "org.freedesktop.NetworkManager.network-control",
+    "org.freedesktop.NetworkManager.enable-disable-wifi",
+    "org.freedesktop.NetworkManager.wifi.scan",
+    "org.freedesktop.timedate1.set-timezone",
+    "org.freedesktop.timedate1.set-ntp",
+    "org.freedesktop.locale1.set-keyboard",
+  ];
+  if (ok.indexOf(action.id) >= 0) return polkit.Result.YES;
+  return polkit.Result.NOT_HANDLED;
+});

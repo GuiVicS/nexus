@@ -1,0 +1,27 @@
+#!/bin/sh
+# nmcli falso para os cenários de UI. Estado em $NEXUS_FAKE_NET (arquivo): vazio = sem conexão; senão o SSID ativo.
+S=${NEXUS_FAKE_NET:-/tmp/nexus-fake-net}
+cur=$(cat "$S" 2>/dev/null)
+case "$*" in
+  "-t -f CONNECTIVITY general") [ -n "$cur" ] && echo full || echo none ;;
+  "-t -f DEVICE,TYPE,STATE,CONNECTION device")
+    echo "lo:loopback:connected (externally):lo"
+    if [ -n "$cur" ]; then echo "wlan0:wifi:connected:$cur"; else echo "wlan0:wifi:disconnected:--"; fi ;;
+  "-t -f WIFI radio") echo enabled ;;
+  "-t -f IP4.ADDRESS,IP4.GATEWAY,IP4.DNS,GENERAL.HWADDR device show wlan0")
+    printf 'IP4.ADDRESS[1]:192.168.0.42/24\nIP4.GATEWAY:192.168.0.1\nIP4.DNS[1]:192.168.0.1\nGENERAL.HWADDR:AA\\:BB\\:CC\\:00\\:11\\:22\n' ;;
+  "-t -f ipv4.method connection show "*) echo "ipv4.method:auto" ;;
+  "-t -f IN-USE,SIGNAL device wifi list --rescan no") [ "$cur" = "Casa Nexus" ] && echo "*:82" ;;
+  "-t -f IN-USE,SSID,SIGNAL,SECURITY device wifi list --rescan "*)
+    m=" "; [ "$cur" = "Casa Nexus" ] && m="*"
+    echo "$m:Casa Nexus:82:WPA2"; echo " :Vizinho:40:WPA2"; echo " :Café Aberto:61:" ;;
+  "-t -f NAME,TYPE connection show") [ -n "$cur" ] && echo "$cur:802-11-wireless" ;;
+  "device wifi connect Casa Nexus password senha-certa") echo "Casa Nexus" > "$S"; echo "Device 'wlan0' successfully activated" ;;
+  "device wifi connect Casa Nexus password "*) echo "Error: Connection activation failed: Secrets were required, but not provided." >&2; exit 4 ;;
+  "device wifi connect Café Aberto") echo "Café Aberto" > "$S" ;;
+  "connection delete id "*) : > "$S" ;;
+  "connection modify id "*) echo "$*" >> "$S.log" ;;
+  "connection up id "*) : ;;
+  "-t networking connectivity check") [ -n "$cur" ] && echo full || echo none ;;
+  *) echo "nmcli falso: não sei responder a: $*" >&2; exit 2 ;;
+esac

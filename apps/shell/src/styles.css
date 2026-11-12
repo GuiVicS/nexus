@@ -57,6 +57,7 @@
 /* ----- Texto ----- */
 .textentry{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:1000px;background:var(--bg2);border:1px solid var(--line);border-radius:34px;padding:38px 44px 44px;animation:pop .22s ease}
 .textentry h2{font-weight:400;font-size:42px;margin-bottom:18px}
+.textentry .tesub{font-size:26px;color:var(--muted);margin:-8px 0 16px}
 .sq.wide{position:static;width:auto;margin-bottom:22px}
 .sq.wide small{margin-left:auto;font-size:22px;color:var(--muted)}
 .kbd10{display:flex;flex-direction:column;gap:10px}
@@ -66,6 +67,13 @@
 /* ----- Perfis ----- */
 .onb{gap:22px}
 .onb small{max-width:900px;line-height:1.4}
+.onb .opane{width:1240px;max-height:560px;overflow-y:auto;scrollbar-width:none;padding:10px;text-align:left;scroll-padding:30px}
+.onb .ob-ic.sm{font-size:84px;margin-bottom:-6px}
+.onb.s-locale h1,.onb.s-net h1,.onb.s-pad h1,.onb.s-steam h1,.onb.s-phone h1{font-size:60px}
+.onb .onbfoot{margin-top:6px}
+.onb .onbqr small{font-size:26px}
+.netsum{gap:22px;justify-content:flex-start}
+.netsum>.i{width:44px;height:44px;flex:none;color:var(--primary)}
 .onb .hwline{font-size:24px;color:var(--muted);border:1px solid var(--line);padding:10px 28px;border-radius:999px}
 .ob-ic{font-size:96px;color:var(--primary)}
 .ob-ic.ok{color:var(--ok)}

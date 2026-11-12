@@ -40,6 +40,19 @@ export interface EmuStatus { retroarch: boolean; romsDir: string; systems: EmuSy
 export interface BtDevice { mac: string; name: string; gamepad: boolean }
 export interface BtStatus { available: boolean; powered: boolean; paired: BtDevice[] }
 
+export interface NetDevice { device: string; type: 'ethernet' | 'wifi'; state: string; connection: string }
+export interface NetStatus {
+  available: boolean; error?: string; connectivity?: 'full' | 'limited' | 'portal' | 'none' | 'unknown'; online?: boolean;
+  wifiEnabled?: boolean; hasWifi?: boolean; devices?: NetDevice[]; main?: NetDevice | null;
+  ip?: { address: string; gateway: string; dns: string[]; mac: string } | null; ipv4Method?: string; signal?: number | null;
+}
+export interface WifiNet { ssid: string; signal: number; secure: boolean; security: string; active: boolean; known: boolean }
+export interface NetTest { connectivity: string; online: boolean; dns: boolean; latencyMs: number | null; elapsedMs: number }
+export interface LocaleStatus {
+  timezone: string; ntp: boolean; synced: boolean; keyboard: string; language: string;
+  timezones: { id: string; name: string }[]; keyboards: { id: string; name: string }[];
+}
+
 /** Métodos tipados do Core. Cada um corresponde a uma rota em rpc.rs. */
 export function createApi(c: RpcClient) {
   const call = c.call.bind(c);
@@ -60,6 +73,16 @@ export function createApi(c: RpcClient) {
     btPair: (mac: string, a: Auth = {}) => call<{ ok: true }>('bt.pair', { mac, ...a }, 70000),
     btRemove: (mac: string, a: Auth = {}) => call<{ ok: true }>('bt.remove', { mac, ...a }),
     hardware: () => call<HardwareProfile>('hardware.profile'),
+    // rede (NetworkManager) e relógio/teclado — ver sysnet.rs e locale.rs
+    netStatus: () => call<NetStatus>('net.status', {}, 15000),
+    netTest: () => call<NetTest>('net.test', {}, 30000),
+    wifiList: (rescan = false) => call<{ networks: WifiNet[] }>('net.wifi_list', { rescan }, 30000),
+    wifiConnect: (ssid: string, password: string | undefined, hidden = false, a: Auth = {}) => call<{ ok: true }>('net.wifi_connect', { ssid, password, hidden, ...a }, 60000),
+    netForget: (name: string, a: Auth = {}) => call<{ ok: true }>('net.forget', { name, ...a }),
+    wifiEnable: (on: boolean, a: Auth = {}) => call<{ ok: true }>('net.wifi_enable', { on, ...a }),
+    setIpv4: (p: { connection: string; method: 'auto' | 'manual'; address?: string; gateway?: string; dns?: string[] } & Auth) => call<{ ok: true }>('net.set_ipv4', p, 60000),
+    localeStatus: () => call<LocaleStatus>('locale.status'),
+    localeSet: (p: { timezone?: string; keyboard?: string; ntp?: boolean } & Auth) => call<LocaleStatus>('locale.set', p, 20000),
     power: (action: 'off' | 'restart' | 'suspend') => call<{ simulated: boolean }>('system.power', { action }),
     steamOpen: () => call<{ ok: true }>('steam.open'),
     steamStorePage: (id: string) => call<{ ok: true }>('steam.store_page', { id }),

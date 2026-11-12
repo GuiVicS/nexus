@@ -187,13 +187,73 @@ scenarios.perfis = () =>
     check((await ui.ev(`document.querySelector('#ovs [data-kind=profile] .pe-prev h2').textContent`)) === 'Zeca', 'editor mostra o perfil');
   });
 
+// A7: assistente de primeiro uso completo, só com o controle (setas = D-pad, Enter = A, Esc = B).
 scenarios.primeiro_uso = () =>
   withUi({ demo: false }, async (core, ui) => {
+    const h1 = (t) => `()=>document.querySelector('.onb h1')?.textContent?.startsWith(${JSON.stringify(t)})`;
+    const next = async () => {
+      await to('onb-next');
+      await ui.key('Enter');
+    };
+    // anda com ↑/↓ até o item com data-k = k
+    const to = async (k) => {
+      for (const [dir, max] of [['ArrowUp', 14], ['ArrowDown', 14], ['ArrowLeft', 4], ['ArrowRight', 4]]) {
+        for (let n = 0; n < max; n++) {
+          if ((await ui.focusInfo())?.k === k) return;
+          await ui.key(dir, { wait: 70 });
+        }
+      }
+      check((await ui.focusInfo())?.k === k, `foco em ${k}`);
+    };
     await ui.until(`()=>document.getElementById('stage').dataset.scr==='onboarding'`, 'primeiro uso', 12000);
     await ui.wait(600);
+    await ui.screens('a7-boas-vindas');
     await ui.key('Enter');
-    await ui.until(`()=>document.querySelector('.onb h1')?.textContent==='Crie seu perfil'`, 'passo do perfil');
-    await ui.wait(400);
+    // idioma, fuso e teclado
+    await ui.until(h1('Idioma, hora e teclado'), 'etapa de idioma/hora');
+    await ui.until(`()=>/Brasília/.test(document.querySelector('[data-k=loc-tz]')?.textContent||'')`, 'fuso atual: Brasília');
+    await ui.screens('a7-idioma');
+    await to('loc-tz');
+    await ui.key('ArrowRight');
+    await ui.until(`()=>/Amazonas/.test(document.querySelector('[data-k=loc-tz]')?.textContent||'')`, '→ troca o fuso');
+    await ui.wait(1400);
+    check((await core.rpc('locale.status')).timezone === 'America/Manaus', 'Core aplicou o fuso no sistema (timedatectl)');
+    await to('loc-kb');
+    await ui.key('ArrowRight');
+    await ui.wait(1400);
+    check((await core.rpc('locale.status')).keyboard === 'us', 'teclado trocado e guardado');
+    await next();
+    // rede: B volta uma etapa
+    await ui.until(h1('Internet'), 'etapa de rede');
+    await ui.until(`()=>document.querySelectorAll('[data-k^=wifi-]').length===3`, 'três redes Wi-Fi na lista');
+    await ui.key('Escape');
+    await ui.until(h1('Idioma, hora e teclado'), 'B volta para a etapa anterior');
+    await next();
+    await ui.until(h1('Internet'), 'de volta à rede');
+    await ui.until(`()=>document.querySelectorAll('[data-k^=wifi-]').length===3`, 'lista de novo');
+    await ui.screens('a7-rede');
+    await to('wifi-0');
+    check((await ui.focusInfo()).t.startsWith('Casa Nexus'), 'rede mais forte primeiro');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=text]')`, 'pede a senha');
+    for (const ch of 'errada123') await ui.key(ch, { wait: 30 });
+    check(/^•+$/.test(await ui.text('#tev')), 'senha aparece mascarada');
+    await ui.key('Enter');
+    await ui.until(`()=>[...document.querySelectorAll('.toast')].some(t=>/Senha incorreta/.test(t.textContent))`, 'senha errada: aviso em português', 8000);
+    await to('wifi-0');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=text]')`, 'pede a senha de novo');
+    for (const ch of 'senha-certa') await ui.key(ch, { wait: 30 });
+    await ui.key('Enter');
+    await ui.until(h1('Internet') + ` && /já está conectado/.test(document.querySelector('.onb small')?.textContent||'')`, 'conectado: etapa confirma', 10000);
+    check((await core.rpc('net.status')).online === true, 'Core vê a internet');
+    await next();
+    // controle (pular) → perfil
+    await ui.until(h1('Controle'), 'etapa do controle');
+    await to('onb-skip');
+    await ui.key('Enter');
+    await ui.until(h1('Crie seu perfil'), 'etapa do perfil');
+    await ui.focusOn((f) => f.k === 'onb-profile', 10);
     await ui.key('Enter');
     await ui.until(`()=>document.querySelector('#ovs [data-kind=text]')`, 'nome');
     for (const ch of 'Ana') await ui.key(ch, { wait: 50 });
@@ -201,16 +261,30 @@ scenarios.primeiro_uso = () =>
     await ui.focusOn((f) => f.k === 'pe-save' || f.k === 'pe-cancel', 30, true);
     if ((await ui.focusInfo()).k === 'pe-cancel') await ui.key('ArrowLeft');
     await ui.key('Enter');
-    await ui.until(`()=>document.querySelector('.onb h1')?.textContent==='PIN dos responsáveis'`, 'passo do PIN');
+    await ui.until(h1('PIN dos responsáveis'), 'etapa do PIN');
+    await ui.key('Escape');
+    check(await ui.ev(`document.querySelector('.onb h1')?.textContent==='PIN dos responsáveis'`), 'perfil criado: B não volta para antes dele');
     await ui.focusOn((f) => f.a === 'onb:skip', 30);
     await ui.key('Enter');
-    await ui.until(`()=>document.querySelector('.onb h1')?.textContent?.startsWith('Tudo pronto, Ana')`, 'pronto');
+    await ui.until(h1('Jogos de console'), 'etapa das ROMs');
+    check((await ui.count('[data-k=onb-roms]')) === 1, 'já na sessão do perfil: "Adicionar jogos" disponível');
+    await next();
+    await ui.until(h1('Celular como controle'), 'etapa do celular');
+    await ui.until(`()=>document.querySelector('.onbqr svg')`, 'QR code do celular');
+    await ui.screens('a7-celular');
+    await to('onb-skip');
+    await ui.key('Enter');
+    if (await ui.ev(`document.querySelector('.onb h1')?.textContent==='Steam'`)) {
+      await ui.until(`()=>/Steam não instalada|Entrar na Steam|Conectado como/.test(document.querySelector('.onb .opane')?.textContent||'')`, 'estado da Steam');
+      await to('onb-skip');
+      await ui.key('Enter');
+    }
+    await ui.until(h1('Tudo pronto, Ana'), 'pronto');
     await ui.key('Enter');
     await ui.until(inShell, 'entrou na Shell');
     await ui.until(`()=>document.querySelector('.home-empty')`, 'estado vazio da biblioteca');
     check((await core.rpc('profiles.list')).length === 1, 'perfil criado');
   });
-
 
 scenarios.celular = () =>
   withUi({ demo: true }, async (core, ui) => {
@@ -486,7 +560,7 @@ scenarios.falha_do_core = async () => {
     await ui.until(`()=>document.querySelector('.offline')`, 'aviso "Reconectando" logo que o Core cai', 3000);
     await ui.until(`()=>document.querySelector('#ovs [data-kind=fault] h1')`, 'tela de falha depois de 12 s', 16000);
     check(!(await ui.ev(`!!document.querySelector('.offline')`)), 'o aviso pequeno sai quando a tela de falha entra');
-    check((await ui.focusInfo())?.a === 'fault:retry', 'foco em "Tentar de novo"');
+    await ui.until(`()=>document.querySelector('.f.focus')?.dataset.a==='fault:retry'`, 'foco em "Tentar de novo"', 3000);
     await ui.screens('a6-falha');
     await ui.key('ArrowRight');
     check((await ui.focusInfo())?.a === 'fault:session', 'direita vai para "Reiniciar o Nexus"');
@@ -503,5 +577,60 @@ scenarios.falha_do_core = async () => {
     ui.close();
     if (again) await again.stop();
     else await core.stop();
+  }
+};
+
+// B1: Ajustes → Rede só com o controle: estado, teste, IP automático (pede o PIN) e esquecer a rede.
+scenarios.rede = async () => {
+  const core = await startCore({ demo: true });
+  fs.writeFileSync(`${core.dir}/fake-net`, 'Casa Nexus');
+  const ui = await openUi(core);
+  const to = async (pred, what) => {
+    for (const [dir, max] of [['ArrowUp', 16], ['ArrowDown', 16], ['ArrowLeft', 4], ['ArrowRight', 4]]) {
+      for (let n = 0; n < max; n++) {
+        if (pred(await ui.focusInfo())) return;
+        await ui.key(dir, { wait: 70 });
+      }
+    }
+    check(pred(await ui.focusInfo()), `foco em ${what}`);
+  };
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    // engrenagem: sobe até a barra e anda para a direita (como no controle)
+    for (let n = 0; n < 4; n++) await ui.key('ArrowUp', { wait: 80 });
+    for (let n = 0; n < 12 && (await ui.focusInfo())?.a !== 'settings'; n++) await ui.key('ArrowRight', { wait: 80 });
+    check((await ui.focusInfo())?.a === 'settings', 'foco na engrenagem');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=settings] .setrail')`, 'ajustes');
+    await to((f) => f?.k === 'sc-rede', 'categoria Rede');
+    await ui.key('Enter');
+    await ui.until(`()=>/Casa Nexus.*internet ok/.test(document.querySelector('[data-k=net-sum]')?.textContent||'')`, 'estado: Wi-Fi conectado com internet');
+    check(/192\.168\.0\.42\/24/.test(await ui.text('[data-k=net-ip]')), 'IP, gateway e DNS nos detalhes');
+    await ui.screens('b1-rede');
+    await ui.key('ArrowRight'); // entra no painel
+    await to((f) => f?.k === 'net-test', 'Testar conexão');
+    await ui.key('Enter');
+    await ui.until(`()=>/Internet funcionando/.test(document.querySelector('[data-k=net-test]')?.textContent||'')`, 'teste de conexão', 15000);
+    // IP automático: ajuste avançado pede o PIN dos responsáveis
+    await to((f) => f?.k === 'net-ipfix', 'IP fixo');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'escolha automático/fixo');
+    await to((f) => f?.t === 'Automático', 'Automático');
+    await ui.key('Enter');
+    await ui.typePin('1234');
+    await ui.until(`()=>[...document.querySelectorAll('.toast')].some(t=>/IP automático/.test(t.textContent))`, 'IP automático aplicado');
+    check(fs.readFileSync(`${core.dir}/fake-net.log`, 'utf8').includes('ipv4.method auto'), 'Core mandou o NetworkManager voltar ao DHCP');
+    // esquecer a rede ativa
+    await to((f) => f?.k === 'wifi-0', 'rede ativa');
+    await ui.key('Enter');
+    await ui.until(`()=>document.querySelector('#ovs [data-kind=confirm]')`, 'confirmação para esquecer');
+    await ui.key('Enter');
+    await ui.until(`()=>/Sem conexão/.test(document.querySelector('[data-k=net-sum]')?.textContent||'')`, 'rede esquecida: sem conexão', 8000);
+    check(ui.errors().length === 0, `sem erros de JavaScript${ui.errors().length ? ': ' + ui.errors().join(' | ') : ''}`);
+  } finally {
+    ui.close();
+    await core.stop();
   }
 };

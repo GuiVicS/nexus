@@ -13,11 +13,13 @@ pub mod game;
 pub mod guide;
 pub mod hardware;
 pub mod inputmap;
+pub mod locale;
 pub mod net;
 pub mod procs;
 pub mod providers;
 pub mod remote;
 pub mod roms;
+pub mod sysnet;
 pub mod rpc;
 pub mod util;
 pub mod vdev;
@@ -34,6 +36,13 @@ pub async fn run(cfg: config::Config) -> anyhow::Result<Running> {
     let guide_watch = cfg.guide_watch;
     let core = core::Core::new(cfg)?;
     freeze::thaw(); // Core reiniciado com a Shell congelada (jogo aberto): ela volta a responder
+    if core.cfg.compositor == "sway" && core.db.kv_get("keyboard").is_some() {
+        // o layout escolhido no Nexus vale desde o início da sessão
+        let k = locale::keyboard_id(&core.db);
+        std::thread::spawn(move || {
+            let _ = locale::apply_keyboard(&k);
+        });
+    }
     let started = net::start(core.clone()).await?;
     core.adopt_running_game(); // perfil restaurado + jogo aberto antes de reiniciar
     tokio::spawn(core::library_loop(core.clone()));

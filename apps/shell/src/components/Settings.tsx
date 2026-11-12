@@ -6,10 +6,12 @@ import { askConfirm, askPin, effectsLevel, fail, guarded, isKid, me, prefs, S, s
 import { fmtBytes, ratingLabel } from '../lib/format';
 import { Avatar, Icon, Switch } from './ui';
 import { PadsSection } from './Pads';
+import { LocalePanel, NetPanel } from './System';
 import { sfx } from '@nexus/ui';
 
 interface Cat { id: string; label: string; icon: string; adult?: boolean }
 const CATS: Cat[] = [
+  { id: 'rede', label: 'Rede', icon: 'wifi', adult: true },
   { id: 'som', label: 'Tela e som', icon: 'vol' },
   { id: 'acess', label: 'Acessibilidade', icon: 'access' },
   { id: 'ctrl', label: 'Controles', icon: 'pad' },
@@ -19,6 +21,7 @@ const CATS: Cat[] = [
   { id: 'conta', label: 'Conta e perfis', icon: 'user', adult: true },
   { id: 'parental', label: 'Controle parental', icon: 'lock', adult: true },
   { id: 'steam', label: 'Steam', icon: 'download', adult: true },
+  { id: 'hora', label: 'Idioma e hora', icon: 'clock', adult: true },
   { id: 'sis', label: 'Sistema', icon: 'gear', adult: true },
 ];
 
@@ -333,6 +336,8 @@ export function Settings() {
         </div>
       </nav>
       <div class="setpane" id="setpane">
+        <Show when={S.setCat === 'rede' && !isKid()}><Pane title="Rede"><NetPanel /></Pane></Show>
+        <Show when={S.setCat === 'hora' && !isKid()}><Pane title="Idioma e hora"><LocalePanel /></Pane></Show>
         <Show when={S.setCat === 'som'}><PaneSom /></Show>
         <Show when={S.setCat === 'acess'}><PaneAcess /></Show>
         <Show when={S.setCat === 'ctrl'}><PaneCtrl /></Show>

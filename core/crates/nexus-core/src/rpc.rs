@@ -97,6 +97,23 @@ fn ok<T: serde::Serialize>(v: T) -> R {
     Ok(serde_json::to_value(v).unwrap_or(Value::Null))
 }
 
+/// Ajustes do sistema (rede, relógio, teclado): no primeiro uso (ainda sem perfis) qualquer um configura; depois,
+/// só adultos — criança precisa do PIN. `advanced` (IP fixo…) pede o PIN dos responsáveis sempre que houver um.
+fn sys_access(core: &Core, v: &Value, advanced: bool) -> Result<(), RpcError> {
+    if core.accounts.list().map(|l| l.is_empty()).unwrap_or(false) {
+        return Ok(());
+    }
+    let p = need_session(core)?;
+    if p.kind == ProfileKind::Kid || advanced {
+        parental(core, v)?;
+    }
+    Ok(())
+}
+
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Result<T, RpcError> {
+    tokio::task::spawn_blocking(f).await.map_err(|e| RpcError::new(E_FAILED, &e.to_string()))
+}
+
 fn need_session(core: &Core) -> Result<Profile, RpcError> {
     core.current_profile().ok_or_else(|| RpcError::new(E_SESSION, "Nenhum perfil ativo"))
 }
@@ -486,7 +503,7 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             Ok(json!({ "closing": core.close_game(force).await }))
         }
         "controllers.list" => {
-            need_session(core)?;
+            sys_access(core, &v, false)?; // também no primeiro uso, antes de existir perfil
             let db = core.db.clone();
             ok(tokio::task::spawn_blocking(move || crate::controllers::list(&db)).await.unwrap_or_default())
         }
@@ -579,9 +596,14 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
             r.map_err(|e| RpcError::new(E_FAILED, &e))
         }
         "controllers.capture" | "controllers.get_map" | "controllers.set_map" | "bt.status" | "bt.scan" | "bt.pair" | "bt.remove" => {
-            let p = need_session(core)?;
-            if p.kind == ProfileKind::Kid {
-                return Err(RpcError::new(E_FORBIDDEN, "Indisponível neste perfil"));
+            if method.starts_with("bt.") {
+                // parear o controle faz parte do primeiro uso (antes de existir perfil)
+                sys_access(core, &v, false)?;
+            } else {
+                let p = need_session(core)?;
+                if p.kind == ProfileKind::Kid {
+                    return Err(RpcError::new(E_FORBIDDEN, "Indisponível neste perfil"));
+                }
             }
             let fail = |e: String| RpcError::new(E_FAILED, &e);
             match method {
@@ -754,6 +776,69 @@ pub async fn dispatch(core: &Arc<Core>, method: &str, v: Value) -> R {
         }
 
         // ---------- controle no celular ----------
+        // ---------- rede (NetworkManager) ----------
+        "net.status" => Ok(blocking(crate::sysnet::status).await?),
+        "net.test" => Ok(blocking(crate::sysnet::test).await?),
+        "net.wifi_list" | "net.wifi_connect" | "net.forget" | "net.wifi_enable" | "net.set_ipv4" => {
+            sys_access(core, &v, method == "net.set_ipv4")?;
+            let fail = |e: String| RpcError::new(E_FAILED, &e);
+            match method {
+                "net.wifi_list" => {
+                    let rescan = v.get("rescan").and_then(|b| b.as_bool()).unwrap_or(false);
+                    blocking(move || crate::sysnet::wifi_list(rescan)).await?.map_err(fail)
+                }
+                "net.wifi_connect" => {
+                    let ssid = s(&v, "ssid")?;
+                    let pw = os(&v, "password");
+                    let hidden = v.get("hidden").and_then(|b| b.as_bool()).unwrap_or(false);
+                    blocking(move || crate::sysnet::wifi_connect(&ssid, pw.as_deref(), hidden)).await?.map_err(fail)?;
+                    core.emit("net.changed", json!({}));
+                    Ok(json!({ "ok": true }))
+                }
+                "net.forget" => {
+                    let n = s(&v, "name")?;
+                    blocking(move || crate::sysnet::forget(&n)).await?.map_err(fail)?;
+                    core.emit("net.changed", json!({}));
+                    Ok(json!({ "ok": true }))
+                }
+                "net.wifi_enable" => {
+                    let on = v.get("on").and_then(|b| b.as_bool()).ok_or_else(|| RpcError::invalid("falta 'on'"))?;
+                    blocking(move || crate::sysnet::set_wifi(on)).await?.map_err(fail)?;
+                    core.emit("net.changed", json!({}));
+                    Ok(json!({ "ok": true }))
+                }
+                _ => {
+                    let con = s(&v, "connection")?;
+                    let manual = os(&v, "method").as_deref() == Some("manual");
+                    let (addr, gw) = (os(&v, "address").unwrap_or_default(), os(&v, "gateway").unwrap_or_default());
+                    let dns: Vec<String> = v.get("dns").and_then(|d| d.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
+                    blocking(move || crate::sysnet::set_ipv4(&con, manual.then_some((addr.as_str(), gw.as_str(), dns.as_slice())))).await?.map_err(fail)?;
+                    core.emit("net.changed", json!({}));
+                    Ok(json!({ "ok": true }))
+                }
+            }
+        }
+        // ---------- idioma, teclado, data e hora ----------
+        "locale.status" => {
+            let db = core.db.clone();
+            Ok(blocking(move || crate::locale::status(&db)).await?)
+        }
+        "locale.set" => {
+            sys_access(core, &v, false)?;
+            let fail = |e: String| RpcError::new(E_FAILED, &e);
+            if let Some(tz) = os(&v, "timezone") {
+                blocking(move || crate::locale::set_timezone(&tz)).await?.map_err(fail)?;
+            }
+            if let Some(on) = v.get("ntp").and_then(|b| b.as_bool()) {
+                blocking(move || crate::locale::set_ntp(on)).await?.map_err(fail)?;
+            }
+            if let Some(k) = os(&v, "keyboard") {
+                let db = core.db.clone();
+                blocking(move || crate::locale::set_keyboard(&db, &k)).await?.map_err(fail)?;
+            }
+            let db = core.db.clone();
+            Ok(blocking(move || crate::locale::status(&db)).await?)
+        }
         "remote.pairing" => {
             need_session(core)?;
             ok(core.hub.pairing())

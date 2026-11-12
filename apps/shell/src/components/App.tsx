@@ -32,7 +32,7 @@ function OvBody(p: { o: Ov }) {
       <Match when={o.kind === 'notif'}><Notifs /></Match>
       <Match when={o.kind === 'launch'}><Launch id={o.props.id} /></Match>
       <Match when={o.kind === 'pin'}><PinPad title={o.props.title} sub={o.props.sub} confirm={o.props.confirm} oid={o.id} /></Match>
-      <Match when={o.kind === 'text'}><TextEntry title={o.props.title} value={o.props.value} max={o.props.max} kind={o.props.kind} oid={o.id} /></Match>
+      <Match when={o.kind === 'text'}><TextEntry title={o.props.title} sub={o.props.sub} value={o.props.value} max={o.props.max} kind={o.props.kind} oid={o.id} /></Match>
       <Match when={o.kind === 'profile'}><ProfileEditor id={o.props.id} first={o.props.first} oid={o.id} /></Match>
       <Match when={o.kind === 'timeup'}><TimeUp /></Match>
       <Match when={o.kind === 'appicker'}><AppPicker oid={o.id} /></Match>

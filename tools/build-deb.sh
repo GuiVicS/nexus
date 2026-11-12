@@ -45,6 +45,7 @@ install -Dm755 system/sysd/nexus-deps-apply "$OUT/usr/lib/nexus/nexus-deps-apply
 # sistema leve para jogos (serviços dispensáveis, zram, apt fora do horário de jogo); reversível
 install -Dm755 system/sysd/nexus-slim "$OUT/usr/lib/nexus/nexus-slim"
 install -Dm644 system/polkit/50-nexus-apps.rules "$OUT/usr/share/polkit-1/rules.d/50-nexus-apps.rules"
+install -Dm644 system/polkit/51-nexus-system.rules "$OUT/usr/share/polkit-1/rules.d/51-nexus-system.rules"
 install -Dm644 system/udev/70-nexus-uinput.rules "$OUT/usr/lib/udev/rules.d/70-nexus-uinput.rules"
 install -Dm644 system/udev/nexus-uinput.conf "$OUT/usr/lib/modules-load.d/nexus-uinput.conf"
 install -Dm644 system/apparmor/opt.nexus.shell.nexus-shell "$OUT/etc/apparmor.d/opt.nexus.shell.nexus-shell"

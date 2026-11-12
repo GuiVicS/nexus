@@ -52,4 +52,9 @@ arquivos sem ter visto o QR code na TV.
 - O instalador só roda como root com `--yes` e mostra o plano antes. Rotas de emergência: `Ctrl+Alt+F3`,
   `/etc/nexus/force-desktop`, `nexus-installer revert-autologin`.
 - Pacotes do repositório apt são assinados (ver `docs/APT.md`); a chave privada fica só no segredo do GitHub.
+- Polkit (`system/polkit/`): a sessão local ativa pode, sem senha, atualizar/restaurar apps (só a unidade
+  `nexus-app@…`) e mudar Wi-Fi, fuso, hora automática e teclado (`51-nexus-system.rules`). É o comportamento de um
+  console: quem está na frente da TV configura. O Core exige perfil adulto (criança: PIN) antes de pedir; IP fixo
+  pede o PIN dos responsáveis. A senha do Wi-Fi passa ao `nmcli` por argumento (visível para processos do mesmo
+  aparelho durante a conexão).
 - Apps, emuladores e jogos rodam como o usuário, em escopos systemd próprios; o Core não roda como root.

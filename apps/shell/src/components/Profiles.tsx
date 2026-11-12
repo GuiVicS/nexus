@@ -1,14 +1,16 @@
-import { createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, onMount, Show, Switch } from 'solid-js';
 import { E, RpcError } from '@nexus/protocol';
-import type { Profile } from '@nexus/protocol';
+import type { Profile, SteamAccount } from '@nexus/protocol';
 import { sfx } from '@nexus/ui';
 import { api } from '../lib/api';
 import { cycHandlers, editProfile } from '../lib/actions';
 import { enterProfile } from '../lib/session';
-import { askConfirm, askPin, askText, closeOv, fail, guarded, me, pushOv, S, setS, toast } from '../lib/state';
+import { askConfirm, askPin, askText, closeOv, fail, fx, guarded, me, pushOv, S, setS, toast } from '../lib/state';
 import { ratingLabel } from '../lib/format';
 import { Avatar, Glyph, Icon } from './ui';
 import { setParentalPin } from '../lib/flows';
+import { LocalePanel, NetPanel } from './System';
+import { PadsSection } from './Pads';
 
 // ---------- Ligar / abertura ----------
 export function Standby() {
@@ -58,62 +60,173 @@ export function ProfilePicker() {
   );
 }
 
-// ---------- Primeiro uso ----------
+// ---------- Primeiro uso (A7) ----------
+// Etapas: boas-vindas → idioma/fuso/teclado → rede → controle → perfil → PIN → jogos (ROMs) → celular → Steam →
+// pronto. Tudo só com o controle: ↑↓ entre opções, A escolhe, B volta uma etapa. Rede, controle, jogos, celular e
+// Steam têm "Pular". Antes do perfil o Core libera rede/relógio/controle sem sessão (primeiro uso); depois do perfil
+// o assistente já entra na sessão dele para as etapas seguintes.
+type Step = 'welcome' | 'locale' | 'net' | 'pad' | 'profile' | 'pin' | 'roms' | 'phone' | 'steam' | 'done';
+
 export function Onboarding() {
-  const [step, setStep] = createSignal(0);
-  const [created, setCreated] = createSignal<Profile | null>(null);
   const hw = () => S.hw;
+  const steamStep = () => hw()?.architecture === 'x86_64';
+  const steps = (): Step[] => ['welcome', 'locale', 'net', 'pad', 'profile', 'pin', 'roms', 'phone', ...(steamStep() ? (['steam'] as Step[]) : []), 'done'];
+  const [i, setI] = createSignal(0);
+  const step = () => steps()[i()];
+  const [created, setCreated] = createSignal<Profile | null>(null);
+  const [inSession, setInSession] = createSignal(false);
+  const [online, setOnline] = createSignal(false);
+  const [steam, setSteam] = createSignal<SteamAccount | null>(null);
+  const go = (to: Step) => {
+    setI(Math.max(0, steps().indexOf(to)));
+    queueMicrotask(() => requestAnimationFrame(() => fx.f?.first(document.getElementById('onboarding'))));
+  };
+  const next = () => go(steps()[Math.min(steps().length - 1, i() + 1)]);
+  const prev = () => {
+    // perfil já criado: não volta para antes dele (o perfil existe; editar é em Ajustes)
+    const floor = created() ? steps().indexOf('pin') : 0;
+    if (i() > floor) go(steps()[i() - 1]);
+    else sfx('bump');
+  };
   const startProfile = async () => {
     const r = (await editProfile(null, { first: true })) as Profile | undefined;
-    if (r) {
-      setCreated(r);
-      setStep(2);
+    if (!r) return;
+    setCreated(r);
+    try {
+      await api.selectProfile({ id: r.id });
+      setInSession(true);
+    } catch {
+      setInSession(false); // perfil com PIN próprio: as etapas seguintes ficam para depois, em Ajustes
     }
+    go('pin');
   };
+  createEffect(on(step, (st) => {
+    if (st === 'steam') void api.steamAccount().then(setSteam).catch(() => setSteam(null));
+  }));
   onMount(() => {
     const h = (e: Event) => {
       const a = (e as CustomEvent<string>).detail;
-      if (a === 'next') setStep(step() + 1);
+      if (a === 'next' || a === 'skip') next();
+      else if (a === 'back') prev();
       else if (a === 'profile') void startProfile();
-      else if (a === 'pin') void setParentalPin().then(() => setStep(3));
-      else if (a === 'skip') setStep(3);
+      else if (a === 'pin') void setParentalPin().then(() => go('roms'));
       else if (a === 'enter' && created()) void enterProfile(created()!.id);
     };
     document.addEventListener('nexus:onb', h);
     onCleanup(() => document.removeEventListener('nexus:onb', h));
   });
-  return (
-    <div class="center onb">
-      <Show when={step() === 0}>
-        <svg class="bm" viewBox="0 0 100 100"><path d="M20 80 L20 32 Q20 16 32 26 L68 72 Q80 84 80 68 L80 20" /></svg>
-        <h1>Bem-vindo ao Nexus</h1>
-        <small>Seu Linux, com cara de console. Vamos configurar em um minuto.</small>
-        <Show when={hw()}><div class="hwline">{hw()!.os} · {Math.round(hw()!.memoryMb / 1024)} GB de memória · {hw()!.architecture}</div></Show>
-        <div class="btn pri f" data-autofocus data-r="p" data-pad="8" data-a="onb:next" data-verb="Começar"><Icon n="play" /> Começar</div>
-      </Show>
-      <Show when={step() === 1}>
-        <div class="ob-ic"><Icon n="user" /></div>
-        <h1>Crie seu perfil</h1>
-        <small>Escolha um nome e um avatar. Você pode criar outros perfis depois.</small>
-        <div class="btn pri f" data-autofocus data-r="p" data-pad="8" data-a="onb:profile" data-verb="Criar"><Icon n="plus" /> Criar perfil</div>
-      </Show>
-      <Show when={step() === 2}>
-        <div class="ob-ic"><Icon n="lock" /></div>
-        <h1>PIN dos responsáveis</h1>
-        <small>Opcional. Protege perfis infantis, compras e ajustes. Você pode definir depois em Ajustes.</small>
-        <div class="lacts">
-          <div class="btn pri f" data-autofocus data-r="p" data-pad="8" data-a="onb:pin" data-verb="Definir"><Icon n="lock" /> Definir PIN</div>
-          <div class="btn f" data-r="p" data-pad="8" data-a="onb:skip" data-verb="Pular">Agora não</div>
-        </div>
-      </Show>
-      <Show when={step() === 3}>
-        <div class="ob-ic ok"><Icon n="check" /></div>
-        <h1>Tudo pronto{created() ? `, ${created()!.name}` : ''}!</h1>
-        <small>Use o controle, o teclado ou o celular para navegar. Para usar o celular, abra Ajustes → Controle no celular.</small>
-        <div class="btn pri f" data-autofocus data-r="p" data-pad="8" data-a="onb:enter" data-verb="Entrar"><Icon n="home" /> Entrar no Nexus</div>
-      </Show>
-      <div class="steps"><For each={[0, 1, 2, 3]}>{(i) => <i class={i === step() ? 'on' : i < step() ? 'done' : ''} />}</For></div>
+  // rodapé: Voltar + um botão principal ("Pular" quando a etapa é opcional e nada foi feito, senão "Continuar")
+  const Foot = (p: { skip?: boolean }) => (
+    <div class="lacts onbfoot">
+      <Show when={i() > 0}><div class="btn f" data-k="onb-back" data-r="p" data-pad="8" data-a="onb:back" data-verb="Voltar"><Icon n="left" /> Voltar</div></Show>
+      <div class="btn pri f" data-k={p.skip ? 'onb-skip' : 'onb-next'} data-autofocus data-r="p" data-pad="8" data-a={p.skip ? 'onb:skip' : 'onb:next'} data-verb={p.skip ? 'Pular' : 'Continuar'}>{p.skip ? 'Pular' : 'Continuar'} <Icon n="right" /></div>
     </div>
+  );
+  const Head = (p: { icon: string; title: string; sub: string }) => (
+    <>
+      <div class="ob-ic sm"><Icon n={p.icon} /></div>
+      <h1>{p.title}</h1>
+      <small>{p.sub}</small>
+    </>
+  );
+  return (
+    <div class={`center onb s-${step()}`}>
+      <Switch>
+        <Match when={step() === 'welcome'}>
+          <svg class="bm" viewBox="0 0 100 100"><path d="M20 80 L20 32 Q20 16 32 26 L68 72 Q80 84 80 68 L80 20" /></svg>
+          <h1>Bem-vindo ao Nexus</h1>
+          <small>Seu Linux, com cara de console. Vamos deixar tudo pronto em poucos passos, só com o controle.</small>
+          <Show when={hw()}><div class="hwline">{hw()!.os} · {Math.round(hw()!.memoryMb / 1024)} GB de memória · {hw()!.architecture}</div></Show>
+          <div class="btn pri f" data-k="onb-next" data-autofocus data-r="p" data-pad="8" data-a="onb:next" data-verb="Começar"><Icon n="play" /> Começar</div>
+        </Match>
+        <Match when={step() === 'locale'}>
+          <Head icon="clock" title="Idioma, hora e teclado" sub="Use ← → nas opções para trocar. Tudo pode ser mudado depois nos Ajustes, em Idioma e hora." />
+          <div class="opane"><LocalePanel /></div>
+          <Foot />
+        </Match>
+        <Match when={step() === 'net'}>
+          <Head icon="wifi" title="Internet" sub={online() ? 'Você já está conectado. Pode continuar.' : 'Conecte o cabo de rede ou escolha uma rede Wi-Fi. A senha pode ser digitada pelo celular depois que ele for pareado.'} />
+          <div class="opane"><NetPanel wizard onOnline={() => setOnline(true)} /></div>
+          <Foot skip={!online()} />
+        </Match>
+        <Match when={step() === 'pad'}>
+          <Head icon="pad" title="Controle" sub="Controles USB já funcionam. Para um controle sem fio, coloque-o em modo de pareamento e escolha “Parear controle Bluetooth”." />
+          <div class="opane"><PadsSection /></div>
+          <Foot skip />
+        </Match>
+        <Match when={step() === 'profile'}>
+          <Head icon="user" title="Crie seu perfil" sub="Escolha um nome e um avatar. Outros perfis (inclusive infantis) podem ser criados depois." />
+          <div class="lacts onbfoot">
+            <div class="btn f" data-k="onb-back" data-r="p" data-pad="8" data-a="onb:back" data-verb="Voltar"><Icon n="left" /> Voltar</div>
+            <div class="btn pri f" data-k="onb-profile" data-autofocus data-r="p" data-pad="8" data-a="onb:profile" data-verb="Criar"><Icon n="plus" /> Criar perfil</div>
+          </div>
+        </Match>
+        <Match when={step() === 'pin'}>
+          <Head icon="lock" title="PIN dos responsáveis" sub="Opcional. Protege perfis infantis, compras e ajustes importantes (rede avançada, recuperação). Pode ser definido depois." />
+          <div class="lacts onbfoot">
+            <div class="btn pri f" data-k="onb-pin" data-autofocus data-r="p" data-pad="8" data-a="onb:pin" data-verb="Definir"><Icon n="lock" /> Definir PIN</div>
+            <div class="btn f" data-k="onb-skip" data-r="p" data-pad="8" data-a="onb:skip" data-verb="Pular">Agora não</div>
+          </div>
+        </Match>
+        <Match when={step() === 'roms'}>
+          <Head icon="drive" title="Jogos de console (ROMs)" sub={`Os jogos ficam em ${'~/ROMs'}, uma pasta por console. Copie de um pendrive ou envie pelo celular agora, ou depois pela aba Emuladores.`} />
+          <div class="lacts onbfoot">
+            <div class="btn f" data-k="onb-back" data-r="p" data-pad="8" data-a="onb:back" data-verb="Voltar"><Icon n="left" /> Voltar</div>
+            <Show when={inSession()}><div class="btn f" data-k="onb-roms" data-r="p" data-pad="8" data-a="romsadd" data-verb="Adicionar"><Icon n="plus" /> Adicionar jogos</div></Show>
+            <div class="btn pri f" data-k="onb-next" data-autofocus data-r="p" data-pad="8" data-a="onb:next" data-verb="Continuar">Continuar <Icon n="right" /></div>
+          </div>
+        </Match>
+        <Match when={step() === 'phone'}>
+          <Head icon="tv" title="Celular como controle" sub="Aponte a câmera do celular para o código: ele vira controle, mouse e teclado (útil para digitar senhas)." />
+          <Show when={inSession()} fallback={<small>Disponível depois, em Ajustes → Controle no celular.</small>}>
+            <PhonePairing />
+          </Show>
+          <Foot skip />
+        </Match>
+        <Match when={step() === 'steam'}>
+          <Head icon="download" title="Steam" sub="Os jogos da Steam aparecem na Biblioteca do Nexus. Entre com sua conta (o login mostra um QR code para o app Steam do celular)." />
+          <div class="opane">
+            <Show when={steam()} fallback={<div class="srow info"><div><b>Verificando a Steam…</b></div></div>}>
+              {(s) => (
+                <Show when={s().installed} fallback={<div class="srow info"><div><b>Steam não instalada</b><small>Instale depois com: sudo nexus-installer install --steam --yes</small></div></div>}>
+                  <Show when={s().persona} fallback={<div class="srow f" data-k="onb-steam" data-r="22" data-a="steamopen" data-verb="Entrar"><div><b>Entrar na Steam</b><small>Abre o login da Steam em tela cheia. Volte com o botão Guia.</small></div><Icon n="play" /></div>}>
+                    <div class="srow info"><div><b>Conectado como {s().persona}</b><small>{s().libraryGames} jogos na biblioteca</small></div></div>
+                  </Show>
+                </Show>
+              )}
+            </Show>
+          </div>
+          <Foot skip />
+        </Match>
+        <Match when={step() === 'done'}>
+          <div class="ob-ic ok"><Icon n="check" /></div>
+          <h1>Tudo pronto{created() ? `, ${created()!.name}` : ''}!</h1>
+          <small>O botão Guia (ou F1, ou Select+Start) abre o menu rápido em qualquer lugar, inclusive durante os jogos.</small>
+          <div class="btn pri f" data-k="onb-enter" data-autofocus data-r="p" data-pad="8" data-a="onb:enter" data-verb="Entrar"><Icon n="home" /> Entrar no Nexus</div>
+        </Match>
+      </Switch>
+      <div class="steps"><For each={steps()}>{(_, k) => <i class={k() === i() ? 'on' : k() < i() ? 'done' : ''} />}</For></div>
+    </div>
+  );
+}
+
+/** QR do Remote (assistente): mesmo conteúdo de Ajustes → Controle no celular, compacto. */
+function PhonePairing() {
+  onMount(() => void api.pairing().then((p) => setS('pairing', p)).catch(fail));
+  onCleanup(() => setS('pairing', null));
+  return (
+    <Show when={S.pairing} fallback={<small>Gerando código…</small>}>
+      {(p) => (
+        <div class="qrcard onbqr">
+          <div class="qr" innerHTML={p().qrSvg} role="img" aria-label="QR code para abrir o controle no celular" />
+          <div class="qrinfo">
+            <h3>Mesma rede Wi-Fi do aparelho</h3>
+            <code>{p().url.replace(/\?t=.*/, '')}</code>
+            <small>{p().devices.length ? `${p().devices.length} aparelho(s) conectado(s)` : 'Esperando o celular…'}</small>
+          </div>
+        </div>
+      )}
+    </Show>
   );
 }
 

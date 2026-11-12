@@ -207,7 +207,7 @@ export function replaceTop(kind: OvKind, props: Record<string, any>) {
 
 // ---------- PIN e texto ----------
 export const askPin = (o: { title: string; sub?: string; confirm?: boolean }) => pushOv<string | null>('pin', o).then((v) => v ?? null);
-export const askText = (o: { title: string; value?: string; max?: number; kind?: 'name' | 'key' }) => pushOv<string | null>('text', o).then((v) => (v === undefined ? null : v));
+export const askText = (o: { title: string; sub?: string; value?: string; max?: number; kind?: 'name' | 'key' | 'secret' | 'ip' }) => pushOv<string | null>('text', o).then((v) => (v === undefined ? null : v));
 export const askConfirm = (o: { title: string; sub?: string; yes?: string; no?: string; danger?: boolean }) => pushOv<boolean>('confirm', o).then((v) => !!v);
 
 const GRANT_MS = 9 * 60 * 1000;

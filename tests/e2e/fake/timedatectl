@@ -1,0 +1,10 @@
+#!/bin/sh
+# timedatectl falso: estado em $NEXUS_FAKE_TZ
+S=${NEXUS_FAKE_TZ:-/tmp/nexus-fake-tz}
+[ -f "$S" ] || echo "America/Sao_Paulo" > "$S"
+case "$1" in
+  show) printf 'Timezone=%s\nNTP=yes\nNTPSynchronized=yes\n' "$(cat "$S")" ;;
+  set-timezone) echo "$2" > "$S" ;;
+  set-ntp) : ;;
+  *) exit 2 ;;
+esac

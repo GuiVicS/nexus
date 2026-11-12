@@ -205,16 +205,16 @@ Legenda: ✅ existe · 🟡 parcial · ❌ falta. Serviços disponíveis na VM: 
 | A3 Overlay no jogo | 🟡 | Menu rápido sobre o jogo; "Forçar encerramento"; kill do escopo após a carência | Volume e bateria do controle no overlay; aviso de notificação importante por cima do jogo |
 | A4 Notificações | 🟡 | Toasts e central de notificações (updates, downloads, ROM recebida) | Fila curta com limite, "silenciar durante jogos", controle desconectado, disco cheio |
 | A5 Bloqueio / desligar | 🟡 | Standby "Pressione A", escolha de perfil com PIN, desligar/reiniciar | Tela de energia única (suspender/reiniciar/desligar/trocar perfil) |
-| A6 Boot e transições | 🟡 | Tela "Carregando" da Shell, "Reconectando ao Core…", Shell recarrega se o renderer cai | Plymouth com a marca, tela de erro amigável (reiniciar sessão / recuperação) se Core ou Shell falham |
-| A7 Primeiro uso | 🟡 | Boas-vindas → criar perfil → PIN (opcional) → pronto | Idioma/fuso/teclado, rede, parear controle, pasta de ROMs, parear celular, Steam |
-| B1 Rede | ❌ | — | Tudo (Wi-Fi, cabo, IP/DNS, oculta, esquecer, teste, IP fixo) |
+| A6 Boot e transições | ✅ (ver A6) | Tela "Carregando" da Shell, "Reconectando ao Core…", Shell recarrega se o renderer cai | Plymouth com a marca, tela de erro amigável (reiniciar sessão / recuperação) se Core ou Shell falham |
+| A7 Primeiro uso | ✅ (ver A7) | Boas-vindas → criar perfil → PIN (opcional) → pronto | Idioma/fuso/teclado, rede, parear controle, pasta de ROMs, parear celular, Steam |
+| B1 Rede | ✅ (ver B1) | — | Tudo (Wi-Fi, cabo, IP/DNS, oculta, esquecer, teste, IP fixo) |
 | B2 Bluetooth | 🟡 | Buscar/parear/remover **controles** (Controles → Bluetooth) | Ligar/desligar, fones/teclados, conectar, bateria, ajuda por modelo |
 | B3 Áudio | ❌ | Só volume dos sons da UI | Saída, volume geral, teste, microfone, saída por perfil |
 | B4 Tela e vídeo | ❌ | Mostra a resolução | Resolução, Hz, escala, margem, rotação, HDR/VRR, confirmação de 15 s |
 | B5 HDMI-CEC | ❌ | — | Tudo (depende de hardware) |
 | B6 Controles | 🟡 | Lista, apelido, jogador, mapeamento, exporta para RetroArch, vibração/inverter Y (prefs) | Teste de botões/analógicos, zona morta, ajuda para controles sem suporte |
 | B7 Celular | ✅ | QR, aparelhos, desconectar, trocar código, endereço, explicação | (validade do código: feito no item 8) |
-| B8 Idioma/hora | ❌ | — | Idioma, teclado, fuso, formato, NTP |
+| B8 Idioma/hora | 🟡 (ver B8) | — | Idioma, teclado, fuso, formato, NTP |
 | B9 Armazenamento | 🟡 | Espaço livre total; pendrives na tela de ROMs | Uso por categoria, ejetar, usar como biblioteca, limpar cache, formatar |
 | B10 Energia | 🟡 | Desligar, reiniciar, suspender (RPC) | Inatividade para suspender/apagar tela, botão físico, comportamento ao ligar |
 | B11 Atualizações | 🟡 | Atualizações de apps com reverter; `update.sh` | Versão do Nexus/sistema, verificar/instalar pela UI, histórico, reverter o Nexus |
@@ -252,3 +252,36 @@ Ordem de implementação: A6, A7, B1–B4 → A1–A4, B10, B9 → B6, B7, B11, 
 - **Memória da Shell:** 153 MB no Início × 154 MB com a tela de falha aberta (PSS, `tools/measure.sh`). CPU com a
   tela aberta 18 % de um núcleo na VM (software), contra 11 % no Início: são as tentativas de reconexão; só
   acontece enquanto o Core está fora.
+
+### A7 — primeiro uso (2026-11-12) ✅
+
+- **Passos:** boas-vindas → idioma/fuso/teclado → rede → controle → perfil → PIN dos responsáveis → ROMs → celular →
+  Steam (só no PC x86_64) → pronto. Rodapé com um botão principal (Continuar/Pular) e Voltar; B volta um passo.
+  Depois de criar o perfil não dá para voltar para antes do PIN (o perfil já existe).
+- Rede, Bluetooth e controles funcionam **antes de existir perfil** (o Core libera essas chamadas só enquanto não há
+  nenhum perfil; depois exigem sessão, e as avançadas exigem o PIN).
+- **Limitações:** idioma só pt-BR (a interface ainda não é traduzida); a pasta de ROMs é fixa em `~/ROMs` (o passo
+  mostra como adicionar por pendrive/celular; escolher pastas é o B18).
+- **Testes:** cenário `primeiro_uso` percorre tudo só com setas/Enter/Esc. Capturas `a7-boas-vindas`, `a7-idioma`,
+  `a7-rede`, `a7-celular` (1080p e 720p; legíveis nas duas).
+
+### B1 — rede (2026-11-12) ✅
+
+- Core `sysnet.rs` sobre o NetworkManager (`nmcli`, saída fixa em `LC_ALL=C`, erros traduzidos): estado (cabo/Wi-Fi,
+  sinal, IP, gateway, DNS, internet), lista de redes (sem duplicatas, conhecidas primeiro), conectar (senha pelo
+  teclado na tela, com mostrar/ocultar, ou pelo celular), rede oculta, esquecer, Wi-Fi liga/desliga, teste de conexão
+  (internet, DNS, latência) e IP fixo/automático — **este atrás do PIN dos responsáveis**.
+- Permissão: regra polkit `system/polkit/51-nexus-system.rules` (só sessão local ativa; só ações de rede, fuso e
+  teclado). A Shell não roda nada privilegiado.
+- **Testes:** testes de unidade dos parsers/validadores; cenário de UI `rede` com um `nmcli` falso
+  (`tests/e2e/fake/nmcli`): detalhes, teste de conexão, IP automático com PIN (confere o comando enviado), esquecer.
+  Na VM real (NetworkManager de verdade): estado e teste corretos (cabo, 10.0.2.15/24, 30 ms).
+- **Não testado:** conectar a Wi-Fi de verdade (a VM não tem placa Wi-Fi) e a regra polkit instalada (só vai no .deb).
+- **Captura:** `b1-rede` 1080p/720p. **Memória da Shell:** 159 MB com Ajustes → Rede aberto (153 MB no Início).
+
+### B8 — idioma, teclado, data e hora (2026-11-12) 🟡
+
+- Ajustes → **Idioma e hora** (e o passo 2 do assistente): fuso (lista curada com nomes em português), hora
+  automática (NTP via `timedatectl`), teclado físico (aplicado na hora no sway e lembrado pelo Core; `localectl`
+  quando o polkit deixa).
+- **Falta:** outros idiomas (sem tradução da interface) e formato de hora 12/24 h.

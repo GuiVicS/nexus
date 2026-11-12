@@ -20,7 +20,7 @@ export const tabsNow = () => (isKid() ? kidTabs() : noStore() ? baseTabs().filte
 export const [hubTab, setHubTab] = createSignal<string>('');
 
 export const cycHandlers = new Map<string, (d: 1 | -1) => void>();
-export type TextEvent = { kind: 'char' | 'del' | 'clear' | 'enter' | 'shift'; ch?: string; screen?: boolean };
+export type TextEvent = { kind: 'char' | 'del' | 'clear' | 'enter' | 'shift' | 'reveal'; ch?: string; screen?: boolean };
 /** Quem está digitando (busca, texto, PIN). `enter` = a tecla Enter envia (em vez de ativar o foco). */
 export const textSink: { cur: null | ((e: TextEvent) => void); enter: boolean } = { cur: null, enter: false };
 
@@ -71,6 +71,7 @@ export function back() {
     if (top.kind === 'guide') return closeGuide();
     return popOv(top.kind === 'pin' || top.kind === 'text' || top.kind === 'confirm' ? (top.kind === 'confirm' ? false : null) : undefined);
   }
+  if (S.scr === 'onboarding') return void document.dispatchEvent(new CustomEvent('nexus:onb', { detail: 'back' }));
   if (S.scr !== 'shell') return;
   if (S.tab === 'home') {
     if (cur?.closest('#acts')) {
@@ -346,6 +347,12 @@ export const ACT: Record<string, Fn> = {
   pads(a) {
     document.dispatchEvent(new CustomEvent('nexus:pads', { detail: a }));
   },
+  net(a) {
+    document.dispatchEvent(new CustomEvent('nexus:net', { detail: a }));
+  },
+  loc(a) {
+    document.dispatchEvent(new CustomEvent('nexus:loc', { detail: a }));
+  },
   emufetch(a) {
     document.dispatchEvent(new CustomEvent('nexus:emufetch', { detail: a }));
   },
@@ -594,6 +601,7 @@ export const ACT: Record<string, Fn> = {
     else if (k === 'clear') sink({ kind: 'clear' });
     else if (k === 'ok') sink({ kind: 'enter' });
     else if (k === 'shift') sink({ kind: 'shift' });
+    else if (k === 'reveal') sink({ kind: 'reveal' });
     else sink({ kind: 'char', ch: k, screen: true });
   },
   tog(k) {
