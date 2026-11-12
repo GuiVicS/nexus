@@ -12,3 +12,10 @@ export const SYS_ABBR: Record<string, string> = {
   vectrex: 'VEC', odyssey2: 'O²', '3do': '3DO', msx: 'MSX', c64: 'C64', amiga: 'AMI', dos: 'DOS', scummvm: 'SCUMM', doom: 'DOOM',
 };
 
+
+/** Consoles com logomarca em `public/systems/<pasta>.svg` (Wikimedia Commons, domínio público/CC0/GPL; créditos em
+ * `public/systems/CREDITOS.md`). Sem logo, o card mostra a sigla. */
+export const SYS_LOGO = new Set<string>(["3do", "doom", "dreamcast", "gamecube", "gb", "gba", "gbc", "megadrive", "n64", "nds", "neogeo", "nes", "pokemini", "psx", "snes", "virtualboy", "wii"]);
+/** Logos com fundo próprio: ficam nas cores originais sobre um selo claro (o filtro branco viraria um retângulo). */
+export const SYS_LOGO_COLOR = new Set<string>(['gba', 'megadrive']);
+export const sysLogo = (dir: string) => (SYS_LOGO.has(dir) ? `systems/${dir}.svg` : null);

@@ -221,46 +221,62 @@ impl EmuProvider {
                 let _ = std::fs::write(readme, t);
             }
         }
-        let mut roots = vec![root];
-        // ROMs no Google Drive (pasta montada pelo rclone; vazia enquanto não conectado)
-        if let Some(r) = crate::drive::roms_root() {
-            roots.push(r);
-        }
-        EmuProvider { roots, index: Mutex::new(HashMap::new()) }
+        let _ = root;
+        // a pasta da TV e, quando o Google Drive estiver montado, Nexus/ROMs da nuvem
+        EmuProvider { roots: all_roots(), index: Mutex::new(HashMap::new()) }
     }
 
     fn scan(&self) -> Vec<(String, usize, PathBuf)> {
-        let mut out = vec![];
-        for root in &self.roots {
-            // a nuvem só é lida montada (senão é uma pasta vazia, ou uma montagem caída que travaria a leitura)
-            if crate::drive::is_cloud(root) && !crate::drive::mounted() {
-                continue;
-            }
-            for (si, s) in SYSTEMS.iter().enumerate() {
-                let dir = root.join(s.dir);
-                let mut stack = vec![(dir, 0)];
-                while let Some((d, depth)) = stack.pop() {
-                    let Ok(rd) = std::fs::read_dir(&d) else { continue };
-                    for e in rd.flatten() {
-                        let p = e.path();
-                        if p.is_dir() && depth < 2 {
-                            stack.push((p, depth + 1));
-                            continue;
-                        }
-                        let ext = p.extension().and_then(|x| x.to_str()).map(|x| x.to_lowercase()).unwrap_or_default();
-                        if !s.exts.contains(&ext.as_str()) {
-                            continue;
-                        }
-                        // jogos em várias trilhas: com .m3u/.cue presentes, os .bin/.img soltos não viram itens próprios
-                        let h = Sha256::digest(p.to_string_lossy().as_bytes());
-                        let id = format!("emu:{}-{}", s.dir, h.iter().take(6).map(|b| format!("{b:02x}")).collect::<String>());
-                        out.push((id, si, p));
+        scan_roots(&self.roots)
+    }
+}
+
+/// Pastas de ROMs em uso: a da TV e, com o Google Drive montado, `Nexus/ROMs` da nuvem.
+pub fn all_roots() -> Vec<PathBuf> {
+    let mut v = vec![roms_dir()];
+    if let Some(r) = crate::drive::roms_root() {
+        v.push(r);
+    }
+    v
+}
+
+/// Lê as pastas de ROMs como se fossem uma só: mesmo console + mesmo nome de arquivo aparece uma vez,
+/// e a cópia da TV (primeira raiz) vence a da nuvem (abre na hora, sem baixar).
+pub fn scan_roots(roots: &[PathBuf]) -> Vec<(String, usize, PathBuf)> {
+    let mut out = vec![];
+    let mut seen = std::collections::HashSet::new();
+    for root in roots {
+        // a nuvem só é lida montada (senão é uma pasta vazia, ou uma montagem caída que travaria a leitura)
+        if crate::drive::is_cloud(root) && !crate::drive::mounted() {
+            continue;
+        }
+        for (si, s) in SYSTEMS.iter().enumerate() {
+            let dir = root.join(s.dir);
+            let mut stack = vec![(dir, 0)];
+            while let Some((d, depth)) = stack.pop() {
+                let Ok(rd) = std::fs::read_dir(&d) else { continue };
+                for e in rd.flatten() {
+                    let p = e.path();
+                    if p.is_dir() && depth < 2 {
+                        stack.push((p, depth + 1));
+                        continue;
                     }
+                    let ext = p.extension().and_then(|x| x.to_str()).map(|x| x.to_lowercase()).unwrap_or_default();
+                    if !s.exts.contains(&ext.as_str()) {
+                        continue;
+                    }
+                    let name = p.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+                    if !seen.insert((si, name)) {
+                        continue; // já está na TV
+                    }
+                    let h = Sha256::digest(p.to_string_lossy().as_bytes());
+                    let id = format!("emu:{}-{}", s.dir, h.iter().take(6).map(|b| format!("{b:02x}")).collect::<String>());
+                    out.push((id, si, p));
                 }
             }
         }
-        out
     }
+    out
 }
 
 impl Default for EmuProvider {
@@ -399,14 +415,19 @@ fn write_nexus_cfg() -> Option<PathBuf> {
 pub fn systems_status() -> serde_json::Value {
     let root = roms_dir();
     let cores = retroarch().map(|r| r.1);
+    // as duas pastas juntas (TV + Google Drive), sem contar duas vezes o mesmo jogo
+    let found = scan_roots(&all_roots());
     let list: Vec<serde_json::Value> = SYSTEMS
         .iter()
-        .map(|s| {
-            let n = std::fs::read_dir(root.join(s.dir)).map(|r| r.flatten().filter(|e| e.path().extension().and_then(|x| x.to_str()).is_some_and(|x| s.exts.contains(&x.to_lowercase().as_str()))).count()).unwrap_or(0);
-            serde_json::json!({ "dir": s.dir, "name": s.name, "exts": s.exts, "core": s.core, "games": n, "coreReady": cores.as_ref().is_some_and(|c| core_path(c, s.core).is_file()) })
+        .enumerate()
+        .map(|(si, s)| {
+            let mine = found.iter().filter(|f| f.1 == si);
+            let cloud = mine.clone().filter(|f| crate::drive::is_cloud(&f.2)).count();
+            let n = mine.count();
+            serde_json::json!({ "dir": s.dir, "name": s.name, "exts": s.exts, "core": s.core, "games": n, "cloud": cloud, "coreReady": cores.as_ref().is_some_and(|c| core_path(c, s.core).is_file()) })
         })
         .collect();
-    serde_json::json!({ "retroarch": cores.is_some(), "romsDir": root, "systems": list })
+    serde_json::json!({ "retroarch": cores.is_some(), "romsDir": root, "cloudRoms": crate::drive::mounted().then(crate::drive::roms_root).flatten(), "systems": list })
 }
 
 /// Baixa os núcleos dos consoles que têm jogos (ou de todos, com `all`).

@@ -159,6 +159,9 @@ body.fx-reduced .tl .in{transition:none}
 .sysc{position:relative;height:210px;border-radius:26px;overflow:hidden;padding:24px 26px;display:flex;flex-direction:column;justify-content:flex-end;gap:4px;color:#fff;box-shadow:0 10px 30px rgba(0,0,0,.25)}
 .sysc .ab{position:absolute;right:-6px;top:-18px;font-size:120px;line-height:1;font-weight:700;letter-spacing:-.04em;opacity:.16;pointer-events:none}
 .sysc b{font-weight:400;font-size:30px;line-height:1.1}
+/* logomarca do console: monocromática branca (as originais têm cores/preto que somem no fundo do card) */
+.sysc .slogo{position:absolute;left:26px;right:26px;top:26px;height:84px;width:calc(100% - 52px);object-fit:contain;object-position:left center;filter:brightness(0) invert(1);opacity:.92;pointer-events:none}
+.sysc .slogo.color{filter:none;opacity:1;width:auto;max-width:calc(100% - 52px);height:70px;background:#fff;border-radius:14px;padding:8px 14px}
 .sysc small{font-size:20px;opacity:.75}
 .sysc.add{background:var(--card);color:var(--fg);align-items:flex-start;border:2px dashed var(--line,rgba(255,255,255,.18));box-shadow:none}
 .sysc.add .i{font-size:44px;color:var(--primary);margin-bottom:auto}

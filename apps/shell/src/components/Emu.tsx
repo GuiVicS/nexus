@@ -4,7 +4,7 @@ import { S } from '../lib/state';
 import { norm } from '../lib/format';
 import { Icon, Tile } from './ui';
 import { Strip } from './Views';
-import { isEmu, SYS_ABBR, sysOf } from '../lib/emu';
+import { isEmu, SYS_ABBR, SYS_LOGO_COLOR, sysLogo, sysOf } from '../lib/emu';
 export { isEmu, SYS_ABBR, sysOf };
 
 /** Console (sistema) com jogos na pasta de ROMs — derivado dos itens do provedor "emu" (tag `sys:<pasta>`). */
@@ -45,7 +45,9 @@ export function Emulators() {
             <For each={sys()}>
               {(s) => (
                 <div class="sysc f" data-k={`sys-${s.dir}`} data-r="26" data-a={`emusys:${s.dir}`} data-verb="Abrir" aria-label={s.name} style={{ background: grad(s.hue) }}>
-                  <span class="ab">{SYS_ABBR[s.dir] ?? s.dir.toUpperCase()}</span>
+                  <Show when={sysLogo(s.dir)} fallback={<span class="ab">{SYS_ABBR[s.dir] ?? s.dir.toUpperCase()}</span>}>
+                    {(src) => <img class={`slogo${SYS_LOGO_COLOR.has(s.dir) ? ' color' : ''}`} src={src()} alt="" loading="lazy" draggable={false} />}
+                  </Show>
                   <b>{s.name}</b>
                   <small>{s.games.length} {s.games.length === 1 ? 'jogo' : 'jogos'}</small>
                 </div>

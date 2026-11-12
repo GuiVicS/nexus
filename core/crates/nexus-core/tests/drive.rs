@@ -157,11 +157,23 @@ exec "{real}" "$@"
     }
     let rom = mnt.join("ROMs/gb/Jogo da Nuvem.gb");
     std::fs::write(&rom, vec![7u8; 3 << 20]).unwrap();
+    // o mesmo jogo na TV e na nuvem: aparece uma vez só, a cópia da TV (abre sem baixar)
+    std::fs::create_dir_all(d.join("roms/gb")).unwrap();
+    std::fs::write(d.join("roms/gb/Duplicado.gb"), b"local").unwrap();
+    std::fs::write(mnt.join("ROMs/gb/Duplicado.gb"), b"nuvem").unwrap();
+    std::fs::write(d.join("roms/gb/Só na TV.gb"), b"local").unwrap();
     r.core.refresh_library().await;
     let lib = c.ok("library.list", json!({})).await;
     let it = lib["items"].as_array().unwrap().iter().find(|i| i["title"].as_str().unwrap_or("").contains("Jogo da Nuvem")).cloned().unwrap_or_else(|| panic!("ROM da nuvem na biblioteca: {lib}"));
     assert!(it["tags"].as_array().unwrap().iter().any(|t| t == "cloud"), "{it}");
     assert!(it["subtitle"].as_str().unwrap().ends_with("Google Drive"), "{it}");
+
+    let dups: Vec<&Value> = lib["items"].as_array().unwrap().iter().filter(|i| i["title"].as_str().unwrap_or("").contains("Duplicado")).collect();
+    assert_eq!(dups.len(), 1, "jogo repetido aparece uma vez");
+    assert!(!dups[0]["tags"].as_array().unwrap().iter().any(|t| t == "cloud"), "a cópia da TV vence: {}", dups[0]);
+    let st = c.ok("emu.status", json!({})).await;
+    let gb = st["systems"].as_array().unwrap().iter().find(|s| s["dir"] == "gb").unwrap().clone();
+    assert_eq!((gb["games"].as_u64(), gb["cloud"].as_u64()), (Some(3), Some(1)), "Game Boy: 3 jogos (TV + Drive juntos), 1 só na nuvem: {gb}");
 
     // download prévio com progresso até 100%
     let seen = std::sync::Mutex::new(vec![]);
