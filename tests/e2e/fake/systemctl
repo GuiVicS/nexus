@@ -22,7 +22,7 @@ case "$1" in
       ssh-off) echo inactive > "$S/ssh-state"; echo "ok ssh desligado" > "$O/$verb" ;;
       upgrade-system) echo "Baixando pacotes…" > "$O/$verb.log"; sleep ${NEXUS_FAKE_SLOW:-1}; touch "$S/upgraded"; echo "ok atualizado" > "$O/$verb" ;;
       update-nexus)
-        v=${act#*:}; [ "$v" = latest ] && v=$(cat "$S/latest" 2>/dev/null || echo 0.5.0)
+        v=${act#*:}; [ "$v" = latest ] && v=$(cat "$S/latest" 2>/dev/null || echo 9.9.0)
         echo "Baixando nexus-$v…" > "$O/$verb.log"; sleep ${NEXUS_FAKE_SLOW:-1}
         if [ -f "$S/update-fails" ]; then echo "err Sem espaço em disco" > "$O/$verb"; exit 1; fi
         echo "$v-1" > "$S/nexus-version"; echo "ok $v-1" > "$O/$verb" ;;

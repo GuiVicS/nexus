@@ -1205,7 +1205,7 @@ scenarios.atualizacoes = async () => {
     await ui.key('ArrowRight');
     await goTo(ui, 'up-check', 'procurar atualizações');
     await ui.key('Enter');
-    await ui.until(`()=>/Nova versão disponível: 0\\.5\\.0/.test(document.querySelector('[data-k=up-nexus]')?.textContent||'')`, 'versão nova encontrada');
+    await ui.until(`()=>/Nova versão disponível: 9\\.9\\.0/.test(document.querySelector('[data-k=up-nexus]')?.textContent||'')`, 'versão nova encontrada');
     check(/3 pacote\(s\)/.test(await txt(ui, 'up-sys')) && /firefox-esr/.test(await txt(ui, 'up-sys')), 'pacotes do sistema listados');
     await ui.screens('b11-atualizacoes');
     // instalar o Nexus: confirmação → trabalho em segundo plano → versão nova + histórico + reverter
@@ -1215,10 +1215,10 @@ scenarios.atualizacoes = async () => {
     await ui.key('Enter');
     await ui.typePin('1234'); // instalar pede o PIN dos responsáveis (depois vale por alguns minutos)
     await ui.until(toastRe('/Atualizando o Nexus/'), 'atualização iniciada');
-    await ui.until(`()=>/Nexus 0\\.5\\.0-1/.test(document.querySelector('[data-k=up-nexus]')?.textContent||'')`, 'versão nova instalada', 15000);
+    await ui.until(`()=>/Nexus 9\\.9\\.0-1/.test(document.querySelector('[data-k=up-nexus]')?.textContent||'')`, 'versão nova instalada', 15000);
     check(lines('calls')[0] === 'update-nexus:latest', 'Core pediu ao ajudante a versão mais nova');
     await ui.until(`()=>document.querySelector('[data-k=up-hist-0]')`, 'histórico');
-    check(/Nexus 0\.4\.0-1 → 0\.5\.0-1/.test(await txt(ui, 'up-hist-0')), 'histórico mostra de onde para onde');
+    check(/Nexus 0\.4\.0-1 → 9\.9\.0-1/.test(await txt(ui, 'up-hist-0')), 'histórico mostra de onde para onde');
     check(/Voltar para o Nexus 0\.4\.0-1/.test(await txt(ui, 'up-revert')), 'reverter oferece a versão anterior');
     check(await ui.has('[data-k=up-restart]'), 'pede reiniciar a sessão (a versão em execução é outra)');
     // reverter
