@@ -51,6 +51,9 @@ um navegador para o streaming (se não houver), o Bluetooth, o mpv, o rclone par
 
 Requisitos: 4 GB de memória e 6 GB livres no PC; 2 GB e 3 GB no Raspberry Pi; internet durante a instalação.
 
+**Raspberry Pi com Raspberry Pi OS Lite (sem interface):** instale antes a tela de login leve (`sudo apt install -y greetd && sudo systemctl enable greetd`)
+e depois use a opção 1 com `--autologin`. Passo a passo completo e **roteiro de testes no aparelho real** em [docs/TESTE-REAL.md](docs/TESTE-REAL.md).
+
 ### Opção 1 — um comando (recomendado)
 Para **instalar** (ou atualizar — é o mesmo comando):
 ```sh

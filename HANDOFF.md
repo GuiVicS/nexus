@@ -373,6 +373,7 @@ Saídas de emergência: Ctrl+Alt+F3 (terminal; na VirtualBox Right-Ctrl+F3), `su
 
 1. **Fechar o ciclo no aparelho do usuário:** confirmar a sessão (`session.log`), abrir um jogo Steam real, ajustar o que aparecer. Tudo o resto depende disso.
 2. **Testar num Raspberry Pi real** (pacote arm64 só validado com QEMU): sessão, GPU V3D, RAM, emuladores leves, Chromium com DRM.
+   O usuário vai testar com o **roteiro em `docs/TESTE-REAL.md`** (Pi OS Lite + greetd + `--autologin`; checklist por área). Peça o resultado item a item.
 3. ~~Apps web~~ e ~~emulação~~ feitos na 0.3.0; falta URL personalizada em *Apps e jogos* e identificar console por hash.
 4. **Nexus Sysd** (D-Bus + polkit, ações com argv fixo): instalar/atualizar provedores pela interface sem terminal.
 5. Spike S1 (instalar jogo Steam sem diálogo; talvez via porta CEF 8080 da Steam — não documentado, tratar como experimento) e medir RAM/FPS reais (gate S4).
