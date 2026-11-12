@@ -1,0 +1,8 @@
+[Unit]
+Description=Nexus (Core, Shell e overlay)
+# O Nexus é a moldura, não o conteúdo: peso de CPU baixo (padrão = 100) para que, havendo disputa, jogos e apps
+# (escopos nexus-game-*, peso alto) fiquem com o processador. Com jogo aberto a Shell ainda fica congelada (freeze.rs).
+
+[Slice]
+CPUWeight=30
+IOWeight=30

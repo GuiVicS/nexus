@@ -48,10 +48,39 @@ fn members(tracker: &Tracker, sid: u32) -> Vec<u32> {
     }
 }
 
+/// cgroup do escopo do jogo (`nexus-game-*.scope`) a partir de um processo dele; `None` fora de um escopo do Nexus.
+fn game_cgroup(pid: u32) -> Option<std::path::PathBuf> {
+    let c = std::fs::read_to_string(format!("/proc/{pid}/cgroup")).ok()?;
+    let rel = c.lines().find_map(|l| l.strip_prefix("0::"))?.trim();
+    rel.contains("/nexus-game-").then(|| std::path::Path::new("/sys/fs/cgroup").join(rel.trim_start_matches('/')))
+}
+
+/// Algum processo vivo no cgroup (ou em sub-cgroups)? Ler `cgroup.procs` custa uma leitura; varrer o /proc inteiro
+/// custa centenas a cada checagem.
+fn cgroup_alive(p: &std::path::Path) -> bool {
+    if std::fs::read_to_string(p.join("cgroup.procs")).is_ok_and(|s| !s.trim().is_empty()) {
+        return true;
+    }
+    std::fs::read_dir(p).map(|rd| rd.flatten().any(|e| e.path().is_dir() && cgroup_alive(&e.path()))).unwrap_or(false)
+}
+
+/// gamemode (Feral): com jogo na tela, governador de CPU em "performance", prioridade e E/S do jogo maiores; volta
+/// ao normal quando o Core tira o registro. Só se o gamemoded existir (pacote `gamemode`); sem ele, nada acontece.
+fn gamemode(method: &str, pids: &[u32]) {
+    for pid in pids.iter().take(16) {
+        let _ = Command::new("busctl")
+            .args(["--user", "call", "com.feralinteractive.GameMode", "/com/feralinteractive/GameMode", "com.feralinteractive.GameMode", method, "i", &pid.to_string()])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+}
+
 fn spawn(plan: &LaunchPlan, scope_name: Option<String>, log: std::fs::File) -> std::io::Result<std::process::Child> {
     let mut argv = plan.argv.clone();
     if let Some(unit) = scope_name {
-        let mut pre = vec!["systemd-run".to_string(), "--user".into(), "--scope".into(), "--collect".into(), "--quiet".into(), format!("--unit={unit}"), "--".into()];
+        // peso de CPU alto: havendo disputa, o jogo ganha do Nexus (nexus.slice, peso 30) e do resto (padrão 100)
+        let mut pre = vec!["systemd-run".to_string(), "--user".into(), "--scope".into(), "--collect".into(), "--quiet".into(), format!("--unit={unit}"), "-p".into(), "CPUWeight=1000".into(), "-p".into(), "IOWeight=1000".into(), "--".into()];
         pre.append(&mut argv);
         argv = pre;
     }
@@ -224,8 +253,24 @@ impl Core {
         let sway = self.compositor.name() == "sway";
         let mut win_since: Option<Instant> = None;
         let mut proc_seen: Option<Instant> = None;
+        let mut gm_pids: Vec<u32> = vec![];
+        // escopo do jogo: enquanto tiver processo, está vivo sem varrer o /proc (Flatpak e navegadores podem sair
+        // dele para escopos próprios; aí cai na varredura da sessão)
+        let cg = matches!(tracker, Tracker::Process).then(|| game_cgroup(sid)).flatten();
         loop {
-            tokio::time::sleep(Duration::from_millis(400)).await;
+            // até aparecer (tela "Abrindo…") e ao sumir (confirmar o fim), checa rápido; jogo rodando, a cada 1 s
+            let wait = Duration::from_millis(if seen_at.is_some() && absent == 0 { 1000 } else { 400 });
+            // dorme em fatias curtas e acorda na hora se pediram para fechar ou o processo principal saiu
+            // (só olha duas flags; a checagem cara vem depois)
+            // (acorda só na mudança: se o principal já tinha saído e os filhos seguem, dorme o intervalo inteiro)
+            let (stop0, exited0) = (stop.load(Ordering::SeqCst), exit_code.load(Ordering::SeqCst) != i32::MIN);
+            let t = Instant::now();
+            while t.elapsed() < wait && stop.load(Ordering::SeqCst) == stop0 && (exit_code.load(Ordering::SeqCst) != i32::MIN) == exited0 {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            if stop.load(Ordering::SeqCst) && !stop0 {
+                tokio::time::sleep(Duration::from_millis(100)).await; // o SIGTERM chega aos processos
+            }
             // diálogo de configuração do Unity (só mouse): confirma "Play!" sozinho. Só nos primeiros ~90 s após o
             // processo aparecer, a cada ~1,2 s; uma vez por janela.
             if sway && proc_seen.or(seen_at).is_some_and(|t| t.elapsed() < Duration::from_secs(90)) {
@@ -238,7 +283,7 @@ impl Core {
                     }
                 }
             }
-            let alive = !members(&tracker, sid).is_empty();
+            let alive = cg.as_deref().is_some_and(cgroup_alive) || !members(&tracker, sid).is_empty();
             if alive {
                 absent = 0;
                 // Como num console, a tela "Abrindo…" do Nexus fica na frente até o jogo desenhar: a janela dele
@@ -263,6 +308,11 @@ impl Core {
                         g.info()
                     };
                     self.compositor.show_game();
+                    if self.cfg.systemd_scope {
+                        let pids = members(&tracker, sid);
+                        tokio::task::spawn_blocking(move || gamemode("RegisterGame", &pids));
+                        gm_pids = members(&tracker, sid);
+                    }
                     self.emit("game.started", json!({ "session": info }));
                     self.refresh_library().await;
                 }
@@ -306,6 +356,9 @@ impl Core {
                     }
                 }
             }
+        }
+        if !gm_pids.is_empty() {
+            tokio::task::spawn_blocking(move || gamemode("UnregisterGame", &gm_pids));
         }
         let code = exit_code.load(Ordering::SeqCst);
         let play_sec = seen_at.map(|t| t.elapsed().as_secs()).unwrap_or(0);

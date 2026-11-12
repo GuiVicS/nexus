@@ -72,3 +72,32 @@ mod tests {
         assert!(s.chars().all(|c| c.is_ascii_hexdigit()));
     }
 }
+
+/// Roda um comando e espera no máximo `limit`; passou disso, mata e devolve `false`. Para ferramentas que podem
+/// travar (ex.: `grim` com a tela bloqueada) em caminhos que o usuário espera resposta na hora (menu rápido).
+pub fn run_with_timeout(cmd: &mut std::process::Command, limit: std::time::Duration) -> bool {
+    let Ok(mut child) = cmd.stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn() else { return false };
+    let t = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(st)) => return st.success(),
+            Ok(None) if t.elapsed() < limit => std::thread::sleep(std::time::Duration::from_millis(20)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return false;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod timeout_tests {
+    #[test]
+    fn kills_what_hangs() {
+        let t = std::time::Instant::now();
+        assert!(!super::run_with_timeout(std::process::Command::new("sleep").arg("5"), std::time::Duration::from_millis(200)));
+        assert!(t.elapsed() < std::time::Duration::from_secs(2));
+        assert!(super::run_with_timeout(&mut std::process::Command::new("true"), std::time::Duration::from_secs(2)));
+    }
+}

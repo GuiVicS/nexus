@@ -5,6 +5,7 @@ After=nexus-core.service
 PartOf=nexus-session.target
 
 [Service]
+Slice=nexus.slice
 Type=simple
 ExecStart=/usr/bin/nexus-overlay
 Environment=GDK_BACKEND=wayland

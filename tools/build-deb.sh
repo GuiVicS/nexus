@@ -12,10 +12,10 @@ rm -rf "$OUT" && mkdir -p "$OUT"
 
 . "$HOME/.cargo/env" 2>/dev/null || true
 case "$ARCH" in
-  amd64) TRIPLE=""; BIN=target/release; EARCH=x64; RECS="steam-installer | steam, pipewire" ;;
+  amd64) TRIPLE=""; BIN=target/release; EARCH=x64; RECS="steam-installer | steam, pipewire, gamemode" ;;
   arm64)
     TRIPLE=aarch64-unknown-linux-gnu; BIN=target/$TRIPLE/release; EARCH=arm64
-    RECS="pipewire, chromium | chromium-browser"  # sem Steam no ARM; navegador para o streaming
+    RECS="pipewire, gamemode, chromium | chromium-browser"  # sem Steam no ARM; navegador para o streaming
     export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc
     ;;
   *) echo "arquitetura desconhecida: $ARCH (use amd64 ou arm64)" >&2; exit 1 ;;

@@ -606,6 +606,8 @@ impl SteamProvider {
         if self.cfg.systemd_scope && !self.running() {
             let mut pre: Vec<String> = ["systemd-run", "--user", "--scope", "--collect", "--quiet"].iter().map(|s| s.to_string()).collect();
             pre.push(format!("--unit=nexus-steam-{}", crate::util::random_hex(4)));
+            // os jogos da Steam nascem dentro do escopo dela: peso alto como os outros jogos (game.rs)
+            pre.extend(["-p", "CPUWeight=1000", "-p", "IOWeight=1000"].map(String::from));
             pre.push("--".into());
             pre.append(&mut cmd);
             cmd = pre;

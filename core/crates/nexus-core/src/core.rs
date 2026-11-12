@@ -320,7 +320,15 @@ impl Core {
 pub async fn library_loop(core: Arc<Core>) {
     loop {
         core.refresh_library().await;
-        let ms = if core.any_installing() { 700 } else { 6000 };
+        // com jogo aberto, a biblioteca quase não muda e cada varredura é CPU/disco tirados do jogo: 1 min
+        // (download em andamento continua a cada 0,7 s para o progresso ficar certo)
+        let ms = if core.any_installing() {
+            700
+        } else if core.game_info().is_some() {
+            60_000
+        } else {
+            6000
+        };
         tokio::select! {
             _ = tokio::time::sleep(std::time::Duration::from_millis(ms)) => {}
             _ = core.kick.notified() => {}

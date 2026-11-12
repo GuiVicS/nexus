@@ -327,6 +327,10 @@ pub async fn update_loop(core: Arc<Core>) {
     }
     tokio::time::sleep(Duration::from_secs(90)).await;
     loop {
+        // não procura atualizações (rede + flatpak/apt) com jogo aberto: espera ele fechar
+        while core.game_info().is_some() {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        }
         check_now(&core).await;
         tokio::time::sleep(Duration::from_secs(6 * 3600)).await;
     }

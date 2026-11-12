@@ -8,6 +8,7 @@ pub mod controllers;
 pub mod core;
 pub mod customart;
 pub mod db;
+pub mod freeze;
 pub mod game;
 pub mod guide;
 pub mod hardware;
@@ -32,6 +33,7 @@ pub struct Running {
 pub async fn run(cfg: config::Config) -> anyhow::Result<Running> {
     let guide_watch = cfg.guide_watch;
     let core = core::Core::new(cfg)?;
+    freeze::thaw(); // Core reiniciado com a Shell congelada (jogo aberto): ela volta a responder
     let started = net::start(core.clone()).await?;
     core.adopt_running_game(); // perfil restaurado + jogo aberto antes de reiniciar
     tokio::spawn(core::library_loop(core.clone()));

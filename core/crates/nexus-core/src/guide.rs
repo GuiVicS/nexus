@@ -85,14 +85,8 @@ pub fn pressed(core: &Core) {
     }
     // PNG: o grim do Debian/Ubuntu vem sem suporte a JPEG
     let frame = core.cfg.runtime_dir.join("frame.png");
-    let ok = sway
-        && std::process::Command::new("grim")
-            .args(["-l", "1"])
-            .arg(&frame)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .is_ok_and(|s| s.success());
+    // o grim trava com a tela bloqueada/protetor de tela: no máximo 1,5 s, senão o menu abre sem o quadro do jogo
+    let ok = sway && crate::util::run_with_timeout(std::process::Command::new("grim").args(["-l", "1"]).arg(&frame), std::time::Duration::from_millis(1500));
     core.guide_open.store(true, Ordering::SeqCst);
     core.compositor.show_shell();
     core.emit("input.guide", serde_json::json!({ "frame": if ok { Some(nexus_protocol::now_unix()) } else { None } }));

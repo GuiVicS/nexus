@@ -25,10 +25,12 @@ impl Sway {
 }
 impl Compositor for Sway {
     fn show_shell(&self) {
+        crate::freeze::thaw(); // antes de aparecer: a Shell volta a desenhar já no primeiro quadro
         Self::ws(1)
     }
     fn show_game(&self) {
-        Self::ws(2)
+        Self::ws(2);
+        crate::freeze::freeze_later(crate::freeze::FREEZE_DELAY);
     }
     fn name(&self) -> &'static str {
         "sway"

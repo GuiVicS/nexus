@@ -5,6 +5,7 @@ After=nexus-core.service
 PartOf=nexus-session.target
 
 [Service]
+Slice=nexus.slice
 Type=simple
 ExecStart=/opt/nexus/shell/nexus-shell --ozone-platform=wayland $NEXUS_SHELL_FLAGS
 Environment=NEXUS_KIOSK=1

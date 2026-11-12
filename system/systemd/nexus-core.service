@@ -4,6 +4,7 @@ Description=Nexus Core (biblioteca, provedores e jogos)
 PartOf=nexus-session.target
 
 [Service]
+Slice=nexus.slice
 Type=simple
 ExecStart=/usr/bin/nexus-core
 Restart=always
