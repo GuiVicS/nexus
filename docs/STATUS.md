@@ -373,3 +373,20 @@ Ordem de implementação: A6, A7, B1–B4 → A1–A4, B10, B9 → B6, B7, B11, 
   tela suportarem.
 - **Captura:** `b4-tela`, `b4-confirmar`, `b4-margem` (1080p/720p). **Memória da Shell:** 185 MB com Tela e vídeo
   aberto (188 MB no Início na mesma sessão).
+
+### Navegação por controle nos Ajustes e na Biblioteca (2026-11-12) ✅
+
+Pedido do usuário: "quando chegar no final da página, deve travar; só voltar para o menu lateral com ←".
+- **Zonas no motor de foco** (`packages/focus`, `data-zone` num contêiner):
+  - ↑/↓ não saem da zona e **travam no fim** (com o som de "bump");
+  - só ←/→ trocam de coluna;
+  - voltando à lista lateral, o foco cai na **categoria atual** (não num item qualquer, que trocaria a tela);
+  - voltando ao painel, cai no **último item usado** (ou no primeiro visível);
+  - `data-zone-exit="u"` deixa ↑ sair no topo (Biblioteca → abas).
+- Aplicado em Ajustes (lista + painel) e Biblioteca (filtros + grade).
+- **Bugs corrigidos no caminho:**
+  - um `class={…}` reativo (item que vira `.on`) apagava a marca `.focus`: o item continuava focado sem realce;
+    agora o motor repõe a marca;
+  - andar pela lista lateral a partir de "Voltar ao Início" pulava para a categoria ativa.
+- **Teste:** cenário `navegacao` (fim e topo do painel, ← para a categoria certa, → para o mesmo item, pontas da
+  lista lateral, ↓ item a item).

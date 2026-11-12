@@ -316,10 +316,10 @@ export function Settings() {
   return (
     <>
       <div class="stitle">Ajustes</div>
-      <nav class="setrail">
+      <nav class="setrail" data-zone="rail">
         <For each={list()}>
           {(c) => (
-            <div class={`ri f ${S.setCat === c.id ? 'on' : ''}`} data-k={`sc-${c.id}`} data-rail={`cat:${c.id}`} data-r="22" data-a={`rail:cat:${c.id}`} data-verb="Abrir">
+            <div class={`ri f ${S.setCat === c.id ? 'on' : ''}`} data-k={`sc-${c.id}`} data-group="setcat" data-rail={`cat:${c.id}`} data-r="22" data-a={`rail:cat:${c.id}`} data-verb="Abrir">
               <Icon n={c.icon} /> {c.label}
             </div>
           )}
@@ -328,7 +328,7 @@ export function Settings() {
           <Icon n="home" /> Voltar ao Início
         </div>
       </nav>
-      <div class="setpane" id="setpane">
+      <div class="setpane" id="setpane" data-zone="pane">
         <Show when={S.setCat === 'rede' && !isKid()}><Pane title="Rede"><NetPanel /></Pane></Show>
         <Show when={S.setCat === 'bt' && !isKid()}><Pane title="Bluetooth"><BtPanel /></Pane></Show>
         <Show when={S.setCat === 'audio'}><Pane title="Áudio"><AudioPanel /></Pane></Show>

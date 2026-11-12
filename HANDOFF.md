@@ -149,6 +149,132 @@ Cards 208×312 (2:3, capas da Steam). Ajustes ganhou "Emuladores" e "Controles" 
 
 **Não implementado** (planejado): Nexus Sysd (ações privilegiadas via D-Bus+polkit — só existe a política polkit), atualização dentro da interface, gamescope, SteamGridDB/IGDB, multiusuário avançado.
 
+## 4b. Telas de sistema — fases (o Nexus substitui o desktop)
+
+Pedido completo em `docs/prompts/telas-de-sistema.md`; o detalhe de cada item (o que existia, o que foi feito, o que
+falta, capturas, memória) fica em `docs/STATUS.md`. **Regras do pedido, valem para todo item:**
+1. Uma seção por vez: código → testes → STATUS → próxima. Nada de fazer tudo de uma vez.
+2. Só controle (D-pad, A, B; teclado = setas/Enter/Esc). Texto: teclado na tela **e** teclado do celular (Remote).
+3. Legível a 3 m (texto grande, foco sempre visível). Configurações escondidas em Ajustes (engrenagem / Guia).
+4. Perigoso (formatar, reset, modo técnico, IP fixo, desligar autologin) = PIN dos responsáveis + confirmação explícita.
+5. Leve: sem blur caro, vídeo ou animação pesada; tela de sistema só gasta enquanto aberta.
+6. Toda ação de sistema passa pelo Core (Rust) → serviços do Linux (NetworkManager, BlueZ, PipeWire/wpctl, logind,
+   udisks2, UPower, apt, sway). A Shell nunca roda nada privilegiado. Permissões por polkit, no mínimo
+   (`system/polkit/51-nexus-system.rules`).
+7. Toda tela tem estados carregando / vazio / erro, em português simples, com uma ação ("Tentar de novo", "Voltar").
+
+**Entregáveis por item:**
+- cenário de UI em `tests/e2e/scenarios.mjs`, navegando só por teclas;
+- serviço do Linux simulado em `tests/e2e/fake/` (nmcli, bluetoothctl, wpctl, pw-play, swaymsg, timedatectl);
+- capturas `ui.screens('<item>')` em 1080p e 720p (`NEXUS_SHOTS=<pasta>`);
+- memória da Shell com a tela aberta (`tools/measure.sh`);
+- entrada no STATUS;
+- commit próprio.
+
+Sempre que possível, conferir também na sessão real da VM.
+
+### Feito (2026-11-12)
+| Item | Commit | Resumo |
+|---|---|---|
+| Auditoria | 370b263 | Tabela ✅/🟡/❌ de A1–A7 e B1–B19 no STATUS |
+| A6 Boot e transições | 2b3d73b | Plymouth com a marca, splash no fundo do sway, tela "O Nexus encontrou um problema" (Core fora), página reserva da Shell, target com `Wants=` |
+| A7 Primeiro uso | d76c04f | Assistente: boas-vindas → idioma/fuso/teclado → rede → controle → perfil → PIN → ROMs → celular → Steam (x86_64) → pronto |
+| B1 Rede | d76c04f | `sysnet.rs` (nmcli): Wi-Fi, oculta, esquecer, teste, IP fixo com PIN |
+| B8 Idioma e hora | d76c04f | `locale.rs`: fuso, NTP, teclado (sway + localectl). Falta: outros idiomas, 12/24 h |
+| B2 Bluetooth | b398d4e | `bluetooth.rs`: liga/desliga, tipo, bateria, conectar, parear, esquecer, ajuda por modelo |
+| B3 Áudio | 67285d7 | `audio.rs` (wpctl): volume, mudo, saída lembrada por perfil, teste, microfone; Central rápida com volume real |
+| B4 Tela e vídeo | 6db0878 | `display.rs` (sway): resolução/Hz/escala/rotação com confirmação de 15 s feita pelo Core, VRR, HDR (se houver), margem + assistente |
+| Navegação | (este commit) | Zonas no foco (`data-zone`): ↑/↓ travam no fim da página; só ←/→ trocam de coluna; volta à categoria atual e ao último item |
+| Upload de ROMs | 67285d7 | Página responsiva, com versão de PC (arrastar e soltar) |
+
+### Fase 2 — próxima (nesta ordem)
+1. **A1 Barra de status:**
+   - mostrar hora, Wi-Fi/cabo com sinal (`net.status`), Bluetooth, volume/mudo (`lib/audio.ts`), bateria dos
+     controles (`bluetooth::status` → `battery`) e perfil;
+   - alertas só quando há problema (sem internet, controle com bateria ≤ 20 %, disco com menos de 10 %);
+   - some durante jogo e vídeo;
+   - um evento do Core (`status.changed`) em vez de várias consultas periódicas.
+2. **A2 Central rápida:** já tem Retomar, Início, Fechar, volume real, tema, perfil, reiniciar e desligar. Falta:
+   - saída de áudio (alternar);
+   - Wi-Fi e Bluetooth liga/desliga;
+   - **suspender** (logind);
+   - brilho quando houver backlight (`/sys/class/backlight`, via Core);
+   - medir quanto tempo leva para abrir sobre o jogo.
+3. **A3 Overlay no jogo:**
+   - volume e bateria do controle;
+   - aviso de notificação importante por cima do jogo;
+   - **saída de emergência**: segurar Guia ou Select+Start por 3 s pede confirmação e mata o escopo do jogo.
+4. **A4 Notificações:**
+   - fila curta (no máximo 3 visíveis, sem acumular repetidas);
+   - "silenciar durante jogos" (preferência);
+   - novos avisos: controle desconectado, disco cheio, erro ao abrir jogo.
+5. **B10 Energia:**
+   - suspender, reiniciar e desligar com confirmação;
+   - inatividade para apagar a tela (`swaymsg output * power off` / swayidle) e para suspender;
+   - o que o botão físico de energia faz (logind `HandlePowerKey`, polkit);
+   - "abrir direto no Nexus" (autologin, já existe: mostrar o estado).
+6. **B9 Armazenamento:**
+   - uso por categoria (jogos Steam, ROMs, capas/cache, sistema);
+   - discos USB: listar, montar, **ejetar com segurança** (`udisksctl unmount` + `power-off`), usar como pasta de ROMs;
+   - limpar cache e temporários;
+   - formatar com PIN + confirmação dupla;
+   - alerta de pouco espaço (ligado ao A1/A4).
+
+### Fase 3
+- **B6 Controles:**
+  - teste de botões e analógicos ao vivo;
+  - zona morta;
+  - vibração de teste;
+  - ordem dos jogadores (já existe);
+  - perfil de controle por emulador;
+  - ajuda para controle sem suporte.
+- **B7 Celular:** quase pronto. Revisar o texto "o que o celular pode fazer" e a validade do código (feito no item 8).
+- **B11 Atualizações:**
+  - versão do Nexus e do sistema;
+  - verificar e instalar (apt do Nexus + pacotes do sistema, via Core/polkit);
+  - histórico;
+  - reverter o Nexus para a versão anterior;
+  - nunca durante um jogo;
+  - avisar se vai reiniciar.
+- **B15 Recuperação (atrás do PIN):**
+  - reiniciar a sessão;
+  - modo de recuperação (reparar a Shell, reverter atualização, `force-desktop`, diagnóstico);
+  - SSH liga/desliga com IP;
+  - terminal opcional com aviso;
+  - restaurar padrões;
+  - apagar dados do perfil;
+  - reset de fábrica com confirmação dupla.
+- **B16 Sobre e diagnóstico:**
+  - modelo, versões, CPU, memória, GPU;
+  - temperatura e throttling (Pi: `vcgencmd get_throttled`);
+  - uso atual e tempo ligado;
+  - o que consome recursos;
+  - "Gerar relatório de suporte" (logs + informações em um arquivo; entregar pelo celular).
+
+### Fase 4
+- **A5:** tela de energia única (suspender, reiniciar, desligar, trocar perfil).
+- **B5 CEC:** `cec-client`/libcec, quando houver hardware; ligar/desligar a TV junto e usar o controle remoto da TV.
+- **B12 Perfis/parental:** recuperar o PIN e relatório de uso.
+- **B13 Aparência:** tamanho do texto e fundo.
+- **B14 Acessibilidade:** texto maior; leitor de tela, se viável.
+- **B17 Apps instalados:** tamanho, desinstalar, ocultar, categoria.
+- **B18 ROMs:** escolher pastas, reescanear, emulador padrão por console.
+- **B19 Privacidade:** o que vai pela rede, telemetria (padrão desligada, o Nexus não tem) e limpar histórico/busca.
+
+### Encerramento (depois da fase 4, ou antes, se o usuário pedir)
+1. Remover os ajustes temporários de desenvolvimento da VM:
+   - `~/.config/systemd/user/nexus-shell.service.d/zz-repo-electron.conf`;
+   - a cópia `~/.config/systemd/user/nexus-session.target`.
+2. Zerar o app na VM (dados do Core e perfis) e mostrar ao usuário o assistente de primeiro uso.
+3. Resumo final do "prompt de melhoria" (itens 1–9, no STATUS): ganhos medidos, riscos e próximos passos.
+
+### Decisões e aprovações pendentes do usuário
+- `sudo` na VM para medir o nexus-slim/zram.
+- Chave GPG, segredo no GitHub e Pages para o repositório apt.
+- Gamescope (`docs/decisions/0004`).
+- Modo "encerrar a Shell" em aparelhos com ≤ 2 GB.
+- Suporte a outras distros (hoje só Debian/Ubuntu, por causa do apt).
+
 ## 5. Como rodar (desenvolvimento)
 
 Requisitos: Rust (rustup), Node 24, pnpm, Chromium (para os testes). Para o pacote do Raspberry Pi: `gcc-aarch64-linux-gnu` e o alvo `aarch64-unknown-linux-gnu`. O ambiente onde isto foi feito é headless (sem GPU/Steam).
@@ -229,6 +355,8 @@ Saídas de emergência: Ctrl+Alt+F3 (terminal; na VirtualBox Right-Ctrl+F3), `su
 - Teste de interface: o campo de PIN/texto precisa de uma pausa depois de abrir; setas ◀▶ em seletores alteram valores (navegue na vertical em formulários).
 
 ## 10. Próximos passos sugeridos (prioridade)
+
+0. **Telas de sistema:** seguir as fases da §4b (próxima: fase 2, começando pelo A1).
 
 1. **Fechar o ciclo no aparelho do usuário:** confirmar a sessão (`session.log`), abrir um jogo Steam real, ajustar o que aparecer. Tudo o resto depende disso.
 2. **Testar num Raspberry Pi real** (pacote arm64 só validado com QEMU): sessão, GPU V3D, RAM, emuladores leves, Chromium com DRM.

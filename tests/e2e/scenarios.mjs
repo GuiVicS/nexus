@@ -880,3 +880,55 @@ scenarios.tela = async () => {
     await core.stop();
   }
 };
+
+// Navegação nos Ajustes (pedido do usuário): ↑/↓ travam no fim da página e da lista lateral; só ← volta à lista,
+// caindo na categoria atual; → volta ao mesmo item do painel. Nada de pular para "um item nada a ver".
+scenarios.navegacao = async () => {
+  const core = await startCore({ demo: true });
+  const ui = await openUi(core);
+  const cat = () => ui.ev(`document.querySelector('.setpane h2')?.textContent||''`);
+  const inPane = () => ui.ev(`!!document.querySelector('.setpane .f.focus')`);
+  try {
+    await ui.toProfiles();
+    await ui.pickProfile('Lia');
+    await ui.until(inShell, 'entrou na Shell');
+    await openSettingsCat(ui, 'conta', 'Conta e perfis');
+    await ui.until(`()=>document.querySelector('.setpane h2')?.textContent==='Conta e perfis'`, 'categoria aberta');
+    // painel: ↓ até muito depois do fim
+    await ui.key('ArrowRight');
+    check(await inPane(), '→ entra no painel');
+    const first = (await ui.focusInfo()).k;
+    for (let n = 0; n < 40; n++) await ui.key('ArrowDown', { wait: 40 });
+    const last = await ui.focusInfo();
+    check(await inPane(), '↓ no fim da página trava no painel');
+    check(last.k === (await ui.ev(`[...document.querySelectorAll('.setpane .f')].filter(e=>e.getClientRects().length).pop().dataset.k`)), `foco no último item do painel (${last.k})`);
+    check((await cat()) === 'Conta e perfis', 'categoria não mudou');
+    for (let n = 0; n < 40; n++) await ui.key('ArrowUp', { wait: 40 });
+    check(await inPane(), '↑ no topo da página trava no painel');
+    check((await ui.focusInfo()).k === first, 'foco no primeiro item do painel');
+    // ← volta à lista na categoria atual; → volta ao mesmo item
+    await ui.key('ArrowDown', { wait: 80 });
+    await ui.key('ArrowDown', { wait: 80 });
+    const mid = (await ui.focusInfo()).k;
+    await ui.key('ArrowLeft');
+    check((await ui.focusInfo()).k === 'sc-conta', '← cai na categoria atual da lista');
+    await new Promise((r) => setTimeout(r, 400));
+    check((await cat()) === 'Conta e perfis', 'categoria continua a mesma');
+    await ui.key('ArrowRight');
+    check((await ui.focusInfo()).k === mid, `→ volta ao mesmo item do painel (${mid})`);
+    // lista lateral: trava nas pontas
+    await ui.key('ArrowLeft');
+    for (let n = 0; n < 30; n++) await ui.key('ArrowDown', { wait: 40 });
+    check((await ui.focusInfo()).k === 'sc-home', '↓ na lista trava no último item (Voltar ao Início)');
+    for (let n = 0; n < 30; n++) await ui.key('ArrowUp', { wait: 40 });
+    await new Promise((r) => setTimeout(r, 400));
+    check((await ui.focusInfo())?.k === 'sc-rede', '↑ na lista trava no primeiro item (e o realce do foco continua depois que a categoria abre)');
+    // ↓ na lista anda item a item (não pula para a categoria ativa)
+    await ui.key('ArrowDown');
+    check((await ui.focusInfo())?.k === 'sc-bt', '↓ na lista vai para o item seguinte');
+    check(ui.errors().length === 0, `sem erros de JavaScript${ui.errors().length ? ': ' + ui.errors().join(' | ') : ''}`);
+  } finally {
+    ui.close();
+    await core.stop();
+  }
+};

@@ -180,7 +180,7 @@ export function Library() {
   });
   return (
     <>
-      <nav class="rail">
+      <nav class="rail" data-zone="librail" data-zone-exit="u">
         <h4>Jogos</h4>
         <For each={fl()}>
           {([k, l, fn]) => (
@@ -191,7 +191,7 @@ export function Library() {
         </For>
       </nav>
       <Strip fallbackTitle={label()} fallbackSub={`${list().length} ${list().length === 1 ? 'jogo' : 'jogos'}`} />
-      <div class="sc" id="sc">
+      <div class="sc" id="sc" data-zone="libgrid" data-zone-exit="u">
         <div class="gridt">
           <For each={list()} fallback={<p class="empty">Nada por aqui ainda.{isKid() ? '' : ' Que tal visitar a Loja?'}</p>}>
             {(g) => <Tile it={g} a={`open:${g.id}`} />}

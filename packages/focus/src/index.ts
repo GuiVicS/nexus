@@ -3,6 +3,9 @@
 //   data-r      raio do anel ("p" = pílula)   data-pad  folga do anel em px
 //   data-cyc    cicla valor com ◀ ▶            data-slider  ajusta valor com ◀ ▶
 //   data-group  ao entrar no grupo vindo de fora, o foco vai ao item .on dele
+//   data-zone   (num contêiner) região de navegação: ↑/↓ não saem dela (no fim, o foco trava); só ←/→ saem.
+//               Ao voltar para a zona por ←/→, o foco vai ao último item usado nela (ou ao primeiro visível).
+//   data-zone-exit  direções verticais por onde a zona deixa sair (ex.: "u" = ↑ no topo vai para as abas)
 
 export type Dir = 'u' | 'd' | 'l' | 'r';
 
@@ -30,6 +33,16 @@ export interface SetFocusOptions {
 }
 
 const visible = (e: Element) => e.getClientRects().length > 0;
+
+/** Primeiro focável que aparece na área visível do contêiner (o de cima, se nenhum estiver visível). */
+function firstVisible(z: HTMLElement): HTMLElement | null {
+  const zr = z.getBoundingClientRect();
+  const l = focusables(z);
+  return l.find((e) => {
+    const r = e.getBoundingClientRect();
+    return r.bottom > zr.top + 4 && r.top < zr.bottom - 4;
+  }) ?? l[0] ?? null;
+}
 
 export function focusables(root: ParentNode): HTMLElement[] {
   return [...root.querySelectorAll<HTMLElement>('.f')].filter((e) => !e.hidden && visible(e));
@@ -72,6 +85,10 @@ export class Focus {
   /** Onde estava o item focado (centro, em px de tela): se ele sumir (ex.: item removido da lista), o foco vai para o
    * vizinho mais próximo dali, e não para o primeiro item da tela (que poderia trocar de aba/categoria). */
   private lastAt: { x: number; y: number } | null = null;
+  /** zona onde o foco estava (para reposicionar dentro dela se o item sumir) */
+  private lastZone: HTMLElement | null = null;
+  /** último item focado em cada zona */
+  private zoneMem = new WeakMap<HTMLElement, HTMLElement>();
   private raf = 0;
 
   private o: FocusOptions;
@@ -114,6 +131,8 @@ export class Focus {
       this.cur = null;
       this.o.onLost?.();
     }
+    // `class={...}` reativo (ex.: item vira .on) reescreve a classe inteira e apaga o .focus: repõe
+    if (this.cur && !this.cur.classList.contains('focus')) this.cur.classList.add('focus');
     // o anel fica acima de tudo: se o foco ficou numa camada de baixo (ex.: a linha atrás do teclado na tela,
     // antes de a camada nova receber o foco), não desenha
     const r = this.root();
@@ -146,6 +165,9 @@ export class Focus {
     this.cur = el ?? null;
     if (!el) return;
     el.classList.add('focus');
+    const z = el.closest<HTMLElement>('[data-zone]');
+    this.lastZone = z;
+    if (z) this.zoneMem.set(z, el);
     const ring = this.o.ring;
     ring.style.borderColor = el.classList.contains('pri') ? 'var(--ringpri)' : '';
     const rr = el.dataset.r;
@@ -165,6 +187,7 @@ export class Focus {
 
   /** O focável da raiz mais perto do lugar onde o foco estava (null se não houver lugar guardado). */
   private nearest(r: ParentNode): HTMLElement | null {
+    if (!r) return null;
     const at = this.lastAt;
     if (!at) return null;
     let best: HTMLElement | null = null;
@@ -190,7 +213,8 @@ export class Focus {
     if (this.cur && this.cur.isConnected && r.contains(this.cur) && visible(this.cur)) return false;
     // o item focado sumiu desta mesma camada: vizinho mais próximo; camada nova: o primeiro
     const lost = !this.cur || !this.cur.isConnected;
-    const n = lost && !r.querySelector('.f[data-autofocus]') ? this.nearest(r) : null;
+    const z = this.lastZone && this.lastZone.isConnected && r.contains(this.lastZone) ? this.lastZone : null;
+    const n = lost && !r.querySelector('.f[data-autofocus]') ? ((z && this.nearest(z)) ?? this.nearest(r)) : null;
     if (n) this.set(n, { silent: true, still: true });
     else this.first(r);
     this.lastAt = null;
@@ -208,11 +232,25 @@ export class Focus {
     if ((cur.dataset.cyc || cur.dataset.slider) && (d === 'l' || d === 'r')) {
       if (this.o.onAdjust?.(cur, d === 'r' ? 1 : -1)) return;
     }
-    const cands = focusables(L).map((el) => ({ el, rect: el.getBoundingClientRect() }));
+    const zone = cur.closest<HTMLElement>('[data-zone]');
+    const vert = d === 'u' || d === 'd';
+    // ↑/↓ dentro de uma zona não saem dela: no fim da lista o foco fica onde está
+    const trapped = zone && vert && L.contains(zone) && !(zone.dataset.zoneExit || '').includes(d);
+    let pool = trapped ? focusables(zone) : focusables(L);
+    // saída permitida (ex.: ↑ para as abas): só sai se não houver vizinho dentro da zona
+    if (zone && vert && !trapped && pickNeighbor(d, cur.getBoundingClientRect(), focusables(zone).map((el) => ({ el, rect: el.getBoundingClientRect() })), cur)) pool = focusables(zone);
+    const cands = pool.map((el) => ({ el, rect: el.getBoundingClientRect() }));
     let best = pickNeighbor(d, cur.getBoundingClientRect(), cands, cur);
+    // ←/→ para outra zona: volta ao último item usado nela (ou ao primeiro visível), não a um vizinho qualquer
+    const tz = !vert && best ? best.closest<HTMLElement>('[data-zone]') : null;
+    if (best && tz && tz !== zone && !best.dataset.group) {
+      const mem = this.zoneMem.get(tz);
+      best = mem && mem.isConnected && tz.contains(mem) && visible(mem) ? mem : (firstVisible(tz) ?? best);
+    }
     // grupo (data-group, ex.: as abas em pílula da Loja): quem entra de fora cai no item ativo (.on), não no vizinho geométrico
+    // (dentro da mesma zona não: andar pela lista lateral é andar item a item)
     const g = best?.dataset.group;
-    if (best && g && cur.dataset.group !== g) best = L.querySelector<HTMLElement>(`.f.on[data-group="${g}"]`) ?? best;
+    if (best && g && cur.dataset.group !== g && !(zone && zone.contains(best))) best = L.querySelector<HTMLElement>(`.f.on[data-group="${g}"]`) ?? best;
     if (best) this.set(best);
     else this.o.onBump?.();
   }
