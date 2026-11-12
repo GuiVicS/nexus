@@ -409,3 +409,10 @@ Pedido do usuário: "quando chegar no final da página, deve travar; só voltar 
 - **Não feito:** **perfil de controle por emulador** (exigiria um arquivo de configuração do RetroArch por console, ainda não
   existe na pasta de dados do Nexus) e **zona morta nos emuladores** (hoje o RetroArch usa a dele; a do Nexus vale só para a
   interface). `tests/e2e/lib.mjs` passou a aceitar `NEXUS_CORE_BIN` (binário do Core a testar).
+
+### B7 — celular (revisão) (2026-11-12) ✅
+
+- Ajustes → Controle no celular: nova seção **"O que o celular pode fazer"** (ser o controle, mouse/teclado, enviar jogos
+  pela página de ROMs) e **"Validade do código"** (vence com 7 dias sem uso; usar renova; "Gerar novo código" desconecta
+  todos). Nada mudou no Core (a validade já existia, item 8).
+- **Testes:** cenários `celular` e `adulto_demo` passam (o primeiro precisa de `apps/remote/dist` construído).

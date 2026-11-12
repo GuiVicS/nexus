@@ -123,6 +123,11 @@ function PaneRemote() {
                 <small>{p().uinput ? 'Aparece como um controle Xbox 360 para os jogos e funciona como mouse e teclado do sistema.' : 'Modo compatível: o celular controla o Nexus. Para usar nos jogos, o sistema precisa liberar /dev/uinput.'}</small>
               </div>
             </div>
+            <h3 class="sh2">O que o celular pode fazer</h3>
+            <Info label="Ser o controle" desc="Botões, direcional e analógicos na tela. Os jogos enxergam um controle de Xbox." />
+            <Info label="Ser mouse e teclado" desc="Para digitar senhas, buscas e endereços sem o teclado da TV." />
+            <Info label="Enviar jogos" desc="Na Loja, em “Tem jogos de console antigos?”, abre outro QR para mandar ROMs do celular ou do computador." />
+            <Info label="Validade do código" desc="O QR vence se o celular ficar 7 dias sem usar (usar renova). Perdeu o celular? Use “Gerar novo código” abaixo: ele desconecta todos." />
             <h3 class="sh2">Aparelhos conectados</h3>
             <For each={p().devices} fallback={<Info label="Nenhum aparelho conectado" desc="Ele aparece aqui assim que você abrir o link" />}>
               {(d) => (
