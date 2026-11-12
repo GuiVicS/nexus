@@ -4,6 +4,7 @@ mod autologin;
 #[path = "../../core/crates/nexus-core/src/glibc_compat.rs"]
 mod glibc_compat;
 mod detect;
+mod gpu;
 mod plan;
 
 use std::process::ExitCode;
@@ -12,6 +13,17 @@ fn usage() {
     println!(
         "nexus-installer <comando>\n\n  detect                 mostra o que foi detectado (JSON com --json)\n  check                  valida os requisitos e sai com erro se faltar algo\n  plan [--steam] [--emulation]   mostra o que seria feito (não altera nada)\n  install [--steam] [--emulation] [--slim] [--autologin USUARIO] --yes   executa o plano\n  revert-autologin       desfaz o autologin configurado pelo Nexus\n  doctor                 diagnostica a instalação"
     );
+}
+
+/// Avisos de vídeo: não bloqueiam a instalação, mas dizem o que corrigir (docs/GPU.md).
+fn print_gpu(sys: &detect::System) {
+    let a = sys.gpu_advice();
+    for n in &a.notes {
+        eprintln!("! {n}");
+    }
+    if a.level == gpu::Level::NeedsDriver {
+        eprintln!("! Corrija o driver de vídeo antes de jogar; a instalação continua.");
+    }
 }
 
 fn main() -> ExitCode {
@@ -24,11 +36,13 @@ fn main() -> ExitCode {
                 println!("{}", serde_json::to_string_pretty(&sys).unwrap());
             } else {
                 println!("{}", sys.describe());
+                print_gpu(&sys);
             }
             ExitCode::SUCCESS
         }
         Some("check") => {
             let problems = sys.requirement_problems();
+            print_gpu(&sys);
             if problems.is_empty() {
                 println!("Requisitos ok.");
                 ExitCode::SUCCESS
@@ -48,6 +62,7 @@ fn main() -> ExitCode {
                 }
                 return ExitCode::FAILURE;
             }
+            print_gpu(&sys);
             let steps = plan::build(&sys, &opts);
             for (i, s) in steps.iter().enumerate() {
                 println!("{}. {}\n     $ {}", i + 1, s.title, s.display());

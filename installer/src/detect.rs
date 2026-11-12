@@ -11,6 +11,8 @@ pub struct System {
     pub family: Family,
     pub supported: Support,
     pub gpu_vendor: String,
+    #[serde(default)]
+    pub gpu: crate::gpu::Gpu,
     pub memory_mb: u64,
     pub disk_free_mb: u64,
     pub has_steam: bool,
@@ -88,26 +90,6 @@ fn meminfo_mb(t: &str) -> u64 {
     t.lines().find(|l| l.starts_with("MemTotal:")).and_then(|l| l.split_whitespace().nth(1)).and_then(|v| v.parse::<u64>().ok()).map(|k| k / 1024).unwrap_or(0)
 }
 
-fn gpu() -> String {
-    std::fs::read_dir("/sys/class/drm")
-        .ok()
-        .and_then(|rd| rd.flatten().filter(|e| { let n = e.file_name().to_string_lossy().to_string(); n.starts_with("card") && !n.contains('-') }).find_map(|e| std::fs::read_to_string(e.path().join("device/vendor")).ok()))
-        .map(|v| match v.trim().to_lowercase().as_str() { "0x1002" => "amd", "0x8086" => "intel", "0x10de" => "nvidia", _ => "unknown" })
-        .filter(|g| *g != "unknown")
-        .or_else(|| {
-            // placas ARM não têm ID PCI: reconhece pelo driver (vc4/v3d = Raspberry Pi)
-            std::fs::read_dir("/sys/class/drm").ok()?.flatten().find_map(|e| {
-                let d = std::fs::read_link(e.path().join("device/driver")).ok()?;
-                match d.file_name()?.to_str()? {
-                    "vc4" | "v3d" => Some("broadcom"),
-                    "panfrost" | "panthor" | "lima" => Some("mali"),
-                    _ => None,
-                }
-            })
-        })
-        .unwrap_or("unknown")
-        .to_string()
-}
 
 fn free_mb(path: &str) -> u64 {
     let Ok(c) = std::ffi::CString::new(path) else { return 0 };
@@ -137,7 +119,8 @@ impl System {
         System {
             family: family_of(&id, &id_like),
             supported: support_of(&id, &version_id, &arch),
-            gpu_vendor: gpu(),
+            gpu_vendor: String::new(),
+            gpu: crate::gpu::probe(),
             memory_mb: meminfo_mb(&std::fs::read_to_string("/proc/meminfo").unwrap_or_default()),
             disk_free_mb: free_mb("/opt").max(free_mb("/")),
             has_steam: which("steam") || Path::new("/var/lib/flatpak/app/com.valvesoftware.Steam").exists(),
@@ -148,6 +131,7 @@ impl System {
             display_manager: display_manager(),
             id, id_like, version_id, pretty, arch,
         }
+        .with_gpu_vendor()
     }
 
     pub fn requirement_problems(&self) -> Vec<String> {
@@ -167,17 +151,25 @@ impl System {
         if self.disk_free_mb < min_disk {
             p.push(format!("Pouco espaço livre: {} MB (mínimo {} GB).", self.disk_free_mb, min_disk / 1000));
         }
-        if self.gpu_vendor == "nvidia" {
-            p.push("GPU NVIDIA ainda não validada com a sessão do Nexus (planejado para a V2).".into());
-        }
         p
+    }
+
+    fn with_gpu_vendor(mut self) -> System {
+        self.gpu_vendor = self.gpu.vendor.clone();
+        self
+    }
+
+    /// Avisos de vídeo (não impedem a instalação): driver errado, NVIDIA, VM… — ver docs/GPU.md.
+    pub fn gpu_advice(&self) -> crate::gpu::Advice {
+        let debian_like = self.family == Family::Debian;
+        crate::gpu::advice(&self.gpu, debian_like, self.id == "ubuntu" || self.id_like.iter().any(|l| l == "ubuntu"))
     }
 
     pub fn describe(&self) -> String {
         let sup = match self.supported { Support::Supported => "suportado", Support::Experimental => "experimental", Support::No => "não suportado" };
         format!(
-            "Sistema:   {} ({}), {} — {}\nGPU:       {}\nMemória:   {} MB\nEspaço:    {} MB livres\nSteam:     {}\nFlatpak:   {}\nLogin:     {}",
-            self.pretty, self.arch, self.version_id, sup, self.gpu_vendor, self.memory_mb, self.disk_free_mb,
+            "Sistema:   {} ({}), {} — {}\nGPU:       {} ({})\nMemória:   {} MB\nEspaço:    {} MB livres\nSteam:     {}\nFlatpak:   {}\nLogin:     {}",
+            self.pretty, self.arch, self.version_id, sup, self.gpu_vendor, if self.gpu.driver.is_empty() { "sem driver" } else { &self.gpu.driver }, self.memory_mb, self.disk_free_mb,
             if self.has_steam { "instalada" } else { "não encontrada" },
             if self.has_flatpak { "sim" } else { "não" },
             self.display_manager.as_deref().unwrap_or("não detectado")
@@ -214,7 +206,7 @@ mod tests {
     }
 
     fn sys(mem: u64, disk: u64, gpu: &str) -> System {
-        System { id: "ubuntu".into(), id_like: vec![], version_id: "24.04".into(), pretty: "Ubuntu".into(), arch: "x86_64".into(), family: Family::Debian, supported: Support::Supported, gpu_vendor: gpu.into(), memory_mb: mem, disk_free_mb: disk, has_steam: false, has_flatpak: false, has_browser: true, display_manager: None }
+        System { id: "ubuntu".into(), id_like: vec![], version_id: "24.04".into(), pretty: "Ubuntu".into(), arch: "x86_64".into(), family: Family::Debian, supported: Support::Supported, gpu_vendor: gpu.into(), gpu: Default::default(), memory_mb: mem, disk_free_mb: disk, has_steam: false, has_flatpak: false, has_browser: true, display_manager: None }
     }
 
     #[test]
@@ -222,6 +214,7 @@ mod tests {
         assert!(sys(8000, 50000, "amd").requirement_problems().is_empty());
         assert_eq!(sys(2000, 50000, "amd").requirement_problems().len(), 1);
         assert_eq!(sys(8000, 1000, "amd").requirement_problems().len(), 1);
-        assert!(sys(8000, 50000, "nvidia").requirement_problems()[0].contains("NVIDIA"));
+        // NVIDIA não bloqueia mais: vira aviso com instruções (gpu.rs)
+        assert!(sys(8000, 50000, "nvidia").requirement_problems().is_empty());
     }
 }

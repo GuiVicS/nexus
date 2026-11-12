@@ -181,7 +181,7 @@ mod tests {
     use crate::detect::Support;
 
     fn sys(f: Family, dm: Option<&str>) -> System {
-        System { id: "x".into(), id_like: vec![], version_id: "1".into(), pretty: "X".into(), arch: "x86_64".into(), family: f, supported: Support::Supported, gpu_vendor: "amd".into(), memory_mb: 8000, disk_free_mb: 50000, has_steam: false, has_flatpak: true, has_browser: true, display_manager: dm.map(String::from) }
+        System { id: "x".into(), id_like: vec![], version_id: "1".into(), pretty: "X".into(), arch: "x86_64".into(), family: f, supported: Support::Supported, gpu_vendor: "amd".into(), gpu: Default::default(), memory_mb: 8000, disk_free_mb: 50000, has_steam: false, has_flatpak: true, has_browser: true, display_manager: dm.map(String::from) }
     }
 
     #[test]

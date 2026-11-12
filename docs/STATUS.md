@@ -149,3 +149,14 @@ atualizar só com apt numa máquina limpa"), que depende do repositório publica
 - Ubuntu: já ligava `multiverse` + i386 (sem mudança). A licença da Steam continua interativa (não é pré-aceita).
 - **Não testado aqui:** instalação real em VM Debian 12/13 e Ubuntu limpos (esta máquina é Ubuntu com a Steam já
   instalada). Fica como teste de aceite manual.
+
+### Item 7 — matriz de GPU e detecção (2026-11-12)
+
+- `docs/GPU.md`: matriz por fabricante/driver (recomendada, limitada, experimental, precisa de driver) e passo a passo
+  da NVIDIA (driver, `nvidia-drm.modeset=1`, saída de emergência).
+- `installer/src/gpu.rs`: detecta fabricante **e driver em uso** pelo /sys (nouveau × proprietário, versão e modeset
+  da NVIDIA, VM, ARM), prefere a GPU dedicada em notebook híbrido e imprime avisos com o comando certo para Debian ou
+  Ubuntu. Testes: `matrix`, `hybrid_laptop_prefers_the_dedicated_gpu`, `arm_board_by_driver`.
+- **Mudança de comportamento:** NVIDIA deixou de bloquear a instalação (antes: "não validada"); agora é aviso. A
+  sessão já usava `sway --unsupported-gpu` e cai para pixman se o sway falhar.
+- **Validado só na VM** (detectou `virtual (vmwgfx)`). AMD, Intel e NVIDIA reais: a validar em hardware.
