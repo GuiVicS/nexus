@@ -15,7 +15,7 @@ export const SYS_ABBR: Record<string, string> = {
 
 /** Consoles com logomarca em `public/systems/<pasta>.svg` (Wikimedia Commons, domínio público/CC0/GPL; créditos em
  * `public/systems/CREDITOS.md`). Sem logo, o card mostra a sigla. */
-export const SYS_LOGO = new Set<string>(["3do", "doom", "dreamcast", "gamecube", "gb", "gba", "gbc", "megadrive", "n64", "nds", "neogeo", "nes", "pokemini", "psx", "snes", "virtualboy", "wii"]);
+export const SYS_LOGO = new Set<string>(["3do", "amiga", "atari2600", "atari5200", "atari7800", "c64", "colecovision", "doom", "dos", "dreamcast", "gamecube", "gamegear", "gb", "gba", "gbc", "intellivision", "jaguar", "lynx", "mastersystem", "megadrive", "msx", "n64", "nds", "neogeo", "nes", "ngp", "pcengine", "pokemini", "psp", "psx", "scummvm", "sega32x", "segacd", "snes", "vectrex", "virtualboy", "wii", "wonderswan"]);
 /** Logos com fundo próprio: ficam nas cores originais sobre um selo claro (o filtro branco viraria um retângulo). */
 export const SYS_LOGO_COLOR = new Set<string>(['gba', 'megadrive']);
 export const sysLogo = (dir: string) => (SYS_LOGO.has(dir) ? `systems/${dir}.svg` : null);

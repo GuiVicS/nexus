@@ -22,3 +22,24 @@ aparecem só para identificar o console. Licença indicada pelo Commons na data 
 | neogeo.svg | Neo Geo logo.svg | Domínio público |
 | 3do.svg | 3DO Logo.svg | Domínio público |
 | doom.svg | Doom – Game’s logo.svg | Domínio público |
+| mastersystem.svg | Master System Logo.svg | Domínio público |
+| gamegear.svg | Game gear us-jp logo.svg | Domínio público |
+| segacd.svg | Sega CD Logo.svg | Domínio público |
+| sega32x.svg | Sega 32X logo.svg | Domínio público |
+| psp.svg | PSP Logo.svg | Domínio público |
+| atari2600.svg | Atari 2600 logo.svg | Domínio público |
+| atari5200.svg | Atari 5200 logo.svg | Domínio público |
+| atari7800.svg | Atari 7800 logo.svg | Domínio público |
+| lynx.svg | Atari Lynx logo.svg | Domínio público |
+| jaguar.svg | Atari Jaguar logo.svg | Domínio público |
+| pcengine.svg | PC engine logo red.svg | Domínio público |
+| ngp.svg | Neo Geo Pocket logo.svg | CC0 |
+| wonderswan.svg | WonderSwan logo.svg | Domínio público |
+| colecovision.svg | COLECO VISION LOGO (SINGLE LINE).svg | Domínio público |
+| intellivision.svg | Intellivision-logo.svg | Domínio público |
+| vectrex.svg | Vectrex logo (rest of the world).svg | Domínio público |
+| msx.svg | MSX-Logo.svg | Domínio público |
+| c64.svg | Commodore 64 logo-5.svg | Domínio público |
+| amiga.svg | Amiga Logo 1985.svg | Domínio público |
+| dos.svg | MS-DOS logo.svg | Domínio público |
+| scummvm.svg | Scummvm logo.svg | GPLv2 (com crédito ao autor) |
