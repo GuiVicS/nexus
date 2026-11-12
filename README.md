@@ -3,7 +3,7 @@
 Interface de console (TV + controle) para jogos no Linux. **Não é uma distro**: é um software instalável que
 traz uma sessão própria, uma Shell em tela cheia, um Core que cuida de jogos, apps e do sistema, e o celular como controle.
 
-Versão atual: **0.5.0** (em preparação; a última publicada é a 0.4.1).
+Versão atual: **0.5.0**.
 
 ```
 Shell (Electron + SolidJS) ⇄ Core (Rust) ⇄ Providers (Steam · Apps Linux · Streaming · Emuladores · Google Drive) ⇄ Steam / .desktop / navegador / RetroArch / rclone

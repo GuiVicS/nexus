@@ -5,7 +5,7 @@ members = ["core/crates/nexus-protocol", "core/crates/nexus-core", "installer"]
 [workspace.package]
 edition = "2021"
 license = "GPL-3.0-or-later"
-version = "0.4.1"
+version = "0.5.0"
 
 [profile.release]
 lto = "thin"
