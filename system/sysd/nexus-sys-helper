@@ -1,0 +1,61 @@
+#!/bin/sh
+# Ajudante root do Nexus para as telas de sistema: atualizar o Nexus (ou voltar a uma versão), atualizar o sistema e
+# ligar/desligar o servidor SSH. Só roda pelo systemd (nexus-sys@<ação>.service), liberado pelo polkit para quem está
+# na frente da TV (system/polkit/52-nexus-sys.rules); o Core só pede depois de exigir um perfil adulto e o PIN dos
+# responsáveis. Ações (sem argumentos livres):
+#   update-nexus:<latest|X.Y.Z>   upgrade-system   ssh-on   ssh-off
+# Resultado em $OUT/<ação>: "ok <detalhe>" ou "err <mensagem>"; o andamento em $OUT/<ação>.log.
+set -u
+OUT=${NEXUS_SYS_OUT:-/run/nexus-sys}
+export LC_ALL=C LANG=C DEBIAN_FRONTEND=noninteractive
+act=${1:-}
+verb=${act%%:*}
+arg=""
+case "$act" in *:*) arg=${act#*:} ;; esac
+case "$verb" in update-nexus|upgrade-system|ssh-on|ssh-off) ;; *) echo "ação inválida" >&2; exit 2 ;; esac
+mkdir -p "$OUT"
+res="$OUT/$verb"
+log="$OUT/$verb.log"
+: > "$log"
+ok() { echo "ok $1" > "$res"; exit 0; }
+err() { echo "err $1" > "$res"; echo "$1" >&2; exit 1; }
+last() { grep -v '^[[:space:]]*$' "$log" | tail -n 1 | cut -c1-160; }
+rm -f "$res"
+
+ssh_unit() {
+  for u in ssh sshd; do
+    if systemctl list-unit-files "$u.service" --no-legend 2>/dev/null | grep -q "^$u.service"; then echo "$u"; return 0; fi
+  done
+  return 1
+}
+
+case "$verb" in
+update-nexus)
+  UPD=${NEXUS_UPDATE_BIN:-/usr/lib/nexus/nexus-update}
+  [ -x "$UPD" ] || err "O atualizador do Nexus não está instalado (reinstale o pacote)"
+  if [ "$arg" = latest ] || [ -z "$arg" ]; then
+    "$UPD" >"$log" 2>&1 || err "$(last)"
+  else
+    printf '%s' "$arg" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || err "Versão inválida"
+    "$UPD" --versao "$arg" >"$log" 2>&1 || err "$(last)"
+  fi
+  ok "$(dpkg-query -W -f='${Version}' nexus 2>/dev/null)"
+  ;;
+upgrade-system)
+  { apt-get update && apt-get -y -o Dpkg::Options::=--force-confold upgrade; } >"$log" 2>&1 || err "$(last)"
+  ok "atualizado"
+  ;;
+ssh-on)
+  u=$(ssh_unit) || err "O servidor SSH não está instalado (sudo apt install openssh-server)"
+  systemctl enable --now "$u" >"$log" 2>&1 || err "$(last)"
+  # em sistemas com ssh.socket (Ubuntu 22.10+) o enable --now do serviço já liga a porta; garante também o socket
+  systemctl list-unit-files ssh.socket --no-legend 2>/dev/null | grep -q '^ssh.socket' && systemctl enable --now ssh.socket >>"$log" 2>&1
+  ok "$u ligado"
+  ;;
+ssh-off)
+  u=$(ssh_unit) || err "O servidor SSH não está instalado"
+  systemctl list-unit-files ssh.socket --no-legend 2>/dev/null | grep -q '^ssh.socket' && systemctl disable --now ssh.socket >"$log" 2>&1
+  systemctl disable --now "$u" >>"$log" 2>&1 || err "$(last)"
+  ok "$u desligado"
+  ;;
+esac

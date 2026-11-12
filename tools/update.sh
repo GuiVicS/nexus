@@ -2,6 +2,7 @@
 # Instala ou atualiza o Nexus a partir das releases do GitHub (PC x86_64 ou Raspberry Pi arm64).
 #   curl -fsSL https://raw.githubusercontent.com/GuiVicS/nexus/main/tools/update.sh | sh
 #   ... | sh -s -- --force                       reinstala mesmo se já estiver atualizado
+#   ... | sh -s -- --versao 0.4.2                instala uma versão específica (voltar para uma anterior)
 #   ... | sh -s -- --autologin SEU_USUARIO       (1ª instalação) entra direto no Nexus ao ligar
 #   ... | sh -s -- --sem-steam / --sem-emuladores (1ª instalação) deixa de fora a Steam / o RetroArch
 # Sem o Nexus instalado, roda o instalador completo (Nexus + Steam + RetroArch + navegador + dependências).
@@ -9,10 +10,12 @@
 set -eu
 REPO="${NEXUS_REPO:-GuiVicS/nexus}"
 FORCE=0
+WANT=""
 ARGS=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --force) FORCE=1 ;;
+    --versao) WANT="$2"; shift ;;
     --autologin) ARGS="$ARGS --autologin $2"; shift ;;
     --sem-steam|--sem-emuladores|--sem-otimizar) ARGS="$ARGS $1" ;;
     *) echo "opção desconhecida: $1" >&2; exit 1 ;;
@@ -38,6 +41,12 @@ esac
 # versão mais recente: o GitHub redireciona /releases/latest para /releases/tag/vX.Y.Z (sem usar a API, que tem limite).
 # Repositório privado: o link aberto dá 404; aí usa o GitHub CLI já logado (gh auth login).
 GH=0
+if [ -n "$WANT" ]; then
+  case "$WANT" in [0-9]*.[0-9]*.[0-9]*) ;; *) echo "Versão inválida: $WANT" >&2; exit 1 ;; esac
+  VER=$WANT
+  # repositório privado: sem acesso direto à release, usa o GitHub CLI já logado
+  if ! curl -fsSLI -o /dev/null "https://github.com/$REPO/releases/tag/v$VER" 2>/dev/null && command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then GH=1; fi
+else
 URL=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest" 2>/dev/null || true)
 VER=${URL##*/v}
 case "$VER" in
@@ -53,6 +62,7 @@ case "$VER" in
     fi ;;
 esac
 case "$VER" in [0-9]*.[0-9]*.[0-9]*) ;; *) echo "Não consegui descobrir a versão mais recente em github.com/$REPO." >&2; exit 1 ;; esac
+fi
 CUR=$(dpkg-query -W -f='${Version}' nexus 2>/dev/null || echo "nenhuma")
 echo "Instalada: $CUR · Mais recente: $VER ($ARCH)"
 if [ "$CUR" = "$VER" ] && [ "$FORCE" -eq 0 ]; then
@@ -107,7 +117,7 @@ if [ "$CUR" = "nenhuma" ]; then
   $SUDO ./install.sh $ARGS
 else
   echo "→ Atualizando…"
-  $SUDO apt-get install -y "./nexus-$VER/nexus_${VER}_${ARCH}.deb"
+  $SUDO apt-get install -y --allow-downgrades "./nexus-$VER/nexus_${VER}_${ARCH}.deb"
   echo
   echo "Pronto: Nexus $VER instalado. Saia da sessão e entre de novo em \"Nexus\" para usar a nova versão."
 fi

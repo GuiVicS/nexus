@@ -60,6 +60,27 @@ export interface LocaleStatus {
   timezones: { id: string; name: string }[]; keyboards: { id: string; name: string }[];
 }
 
+// Fase 3: atualizações (updates.rs), SSH (sshd.rs), Sobre e diagnóstico (about.rs), Recuperação (recovery.rs)
+export interface UpdateHistory { ts: number; kind: 'nexus' | 'system'; from: string; to: string; ok: boolean; message: string }
+export interface UpdateStatus {
+  nexus: { version: string; packaged: boolean; running: string; latest: string | null; hasUpdate: boolean; needsRestart: boolean; revertTo: string | null };
+  system: { os: string; kernel: string; upgradable: number; packages: string[]; needsReboot: boolean };
+  checkedAt: number | null; checkError: string | null; history: UpdateHistory[]; gameRunning: boolean;
+  job: { running: boolean; kind: string; progress: string; startedAt: number; done: { ok: boolean; message: string } | null };
+}
+export interface SshStatus {
+  installed: boolean; active: boolean; enabled: boolean; user: string; host: string; ips: string[]; port: number;
+  fingerprint: string | null; installCmd: string; enableCmd: string;
+}
+export interface AboutStatus {
+  model: string; cpu: string; cores: number; arch: string; memoryMb: number; memoryUsedMb: number; gpu: string; tier: string;
+  os: string; kernel: string; nexus: string; diskFreeBytes: number; diskTotalBytes: number; tempC: number | null;
+  throttle: { now: string[]; past: string[] } | null; cpuPct: number; load: string[]; uptimeSecs: number;
+  top: { name: string; cpu: number; memMb: number }[];
+}
+export interface SupportReport { name: string; size: number; dir: string; url: string; qrSvg: string }
+export type RecoveryAction = 'restart_session' | 'repair_shell' | 'desktop_on' | 'desktop_off' | 'restore_defaults' | 'erase_profile' | 'factory_reset';
+
 /** Métodos tipados do Core. Cada um corresponde a uma rota em rpc.rs. */
 export function createApi(c: RpcClient) {
   const call = c.call.bind(c);
@@ -102,6 +123,16 @@ export function createApi(c: RpcClient) {
     audioStatus: () => call<AudioStatus>('audio.status'),
     audioSet: (p: { id?: number; source?: boolean; volume?: number; muted?: boolean; default?: number }) => call<AudioStatus>('audio.set', p),
     audioTest: (id?: number) => call<{ ok: true }>('audio.test', id === undefined ? {} : { id }, 10000),
+    updateStatus: () => call<UpdateStatus>('update.status'),
+    updateCheck: (a: Auth = {}) => call<UpdateStatus>('update.check', a, 90000),
+    updateInstall: (p: { kind: 'nexus' | 'system'; version?: string } & Auth) => call<{ started: true }>('update.install', p),
+    updateRevert: (a: Auth = {}) => call<{ started: true }>('update.revert', a),
+    sshStatus: () => call<SshStatus>('ssh.status', {}, 15000),
+    sshSet: (on: boolean, a: Auth = {}) => call<SshStatus>('ssh.set', { on, ...a }, 90000),
+    aboutStatus: () => call<AboutStatus>('about.status', {}, 20000),
+    aboutReport: (a: Auth = {}) => call<SupportReport>('about.report', a, 60000),
+    recoveryStatus: (a: Auth = {}) => call<{ desktopMode: boolean; gameRunning: boolean }>('recovery.status', a),
+    recoveryRun: (p: { action: RecoveryAction; id?: string } & Auth) => call<{ ok: true; desktopMode: boolean }>('recovery.run', p, 30000),
     displayStatus: () => call<DisplayStatus>('display.status'),
     displaySet: (p: { output: string; mode?: string; scale?: number; transform?: string; hdr?: boolean } & Auth) => call<{ token: number; secs: number }>('display.set', p, 15000),
     displayConfirm: (token: number) => call<{ ok: boolean }>('display.confirm', { token }),

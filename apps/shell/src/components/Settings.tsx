@@ -6,6 +6,8 @@ import { askConfirm, askPin, effectsLevel, fail, guarded, isKid, me, prefs, S, s
 import { fmtBytes, ratingLabel } from '../lib/format';
 import { Avatar, Icon, Switch } from './ui';
 import { PadsSection } from './Pads';
+import { ControlsExtras } from './Controls';
+import { AboutPanel, RecoveryPanel, SshPanel, UpdatesPanel } from './SysAdmin';
 import { AudioPanel, BtPanel, DisplayPanel, LocalePanel, NetPanel } from './System';
 import { DrivePanel } from './Drive';
 import { sfx } from '@nexus/ui';
@@ -28,6 +30,10 @@ const CATS: Cat[] = [
   { id: 'steam', label: 'Steam', icon: 'download', adult: true },
   { id: 'hora', label: 'Idioma e hora', icon: 'clock', adult: true },
   { id: 'sis', label: 'Sistema', icon: 'gear', adult: true },
+  { id: 'upd', label: 'Atualizações', icon: 'download', adult: true },
+  { id: 'sobre', label: 'Sobre e diagnóstico', icon: 'info', adult: true },
+  { id: 'ssh', label: 'Acesso por SSH', icon: 'list', adult: true },
+  { id: 'recup', label: 'Recuperação', icon: 'lock', adult: true },
 ];
 
 const cats = () => CATS.filter((c) => !c.adult || !isKid());
@@ -96,6 +102,7 @@ function PaneCtrl() {
       <SwRow k="invy" label="Inverter eixo Y" desc="Para câmeras em terceira pessoa" />
       <Info label="Mapa de botões" desc="A selecionar · B voltar · Y busca · ≡ opções · LB/RB seções · LT/RT página · Guia central" />
       <Show when={!isKid()}><ActRow a="remote" icon="tv" label="Usar o celular como controle" desc="Gamepad, mouse e teclado no celular" k="s-remote" /></Show>
+      <ControlsExtras />
       <Show when={!isKid()}><PadsSection /></Show>
     </Pane>
   );
@@ -123,6 +130,11 @@ function PaneRemote() {
                 <small>{p().uinput ? 'Aparece como um controle Xbox 360 para os jogos e funciona como mouse e teclado do sistema.' : 'Modo compatível: o celular controla o Nexus. Para usar nos jogos, o sistema precisa liberar /dev/uinput.'}</small>
               </div>
             </div>
+            <h3 class="sh2">O que o celular pode fazer</h3>
+            <Info label="Ser o controle" desc="Botões, direcional e analógicos na tela. Os jogos enxergam um controle de Xbox." />
+            <Info label="Ser mouse e teclado" desc="Para digitar senhas, buscas e endereços sem o teclado da TV." />
+            <Info label="Enviar jogos" desc="Na Loja, em “Tem jogos de console antigos?”, abre outro QR para mandar ROMs do celular ou do computador." />
+            <Info label="Validade do código" desc="O QR vence se o celular ficar 7 dias sem usar (usar renova). Perdeu o celular? Use “Gerar novo código” abaixo: ele desconecta todos." />
             <h3 class="sh2">Aparelhos conectados</h3>
             <For each={p().devices} fallback={<Info label="Nenhum aparelho conectado" desc="Ele aparece aqui assim que você abrir o link" />}>
               {(d) => (
@@ -347,6 +359,10 @@ export function Settings() {
         <Show when={S.setCat === 'parental' && !isKid()}><PaneParental /></Show>
         <Show when={S.setCat === 'steam' && !isKid()}><PaneSteam /></Show>
         <Show when={S.setCat === 'sis' && !isKid()}><PaneSis /></Show>
+        <Show when={S.setCat === 'upd' && !isKid()}><Pane title="Atualizações"><UpdatesPanel /></Pane></Show>
+        <Show when={S.setCat === 'sobre' && !isKid()}><Pane title="Sobre e diagnóstico"><AboutPanel /></Pane></Show>
+        <Show when={S.setCat === 'ssh' && !isKid()}><Pane title="Acesso por SSH"><SshPanel /></Pane></Show>
+        <Show when={S.setCat === 'recup' && !isKid()}><Pane title="Recuperação"><RecoveryPanel /></Pane></Show>
       </div>
     </>
   );

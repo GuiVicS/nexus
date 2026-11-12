@@ -1,0 +1,13 @@
+# Nexus: ação de sistema (instância = update-nexus:<latest|X.Y.Z>, upgrade-system, ssh-on, ssh-off).
+# Iniciada pelo nexus-core com `systemctl start`; o polkit (52-nexus-sys.rules) libera só esta unidade.
+[Unit]
+Description=Nexus: sistema %i
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/nexus/nexus-sys-helper %i
+TimeoutStartSec=60min
+UMask=0022
+RuntimeDirectory=nexus-sys
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes

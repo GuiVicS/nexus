@@ -1,3 +1,4 @@
+import { withDeadzone } from "./controls";
 import { createSignal } from 'solid-js';
 import { audioInit, sfx } from '@nexus/ui';
 import { ACT, activate, back, hubStep, optionsFor, tabStep, textSink, toggleFS } from './actions';
@@ -233,7 +234,7 @@ export function installInput(stage: HTMLElement): () => void {
     const p = [...(navigator.getGamepads ? navigator.getGamepads() : [])].find(Boolean);
     if (p && !S.capturing) {
       const b = (i: number) => !!p.buttons[i]?.pressed;
-      const ax = p.axes;
+      const ax = [withDeadzone(p.axes[0] ?? 0), withDeadzone(p.axes[1] ?? 0)];
       const s: Record<string, boolean> = {
         u: b(12) || ax[1] < -0.55, d: b(13) || ax[1] > 0.55, l: b(14) || ax[0] < -0.55, r: b(15) || ax[0] > 0.55,
         A: b(0), B: b(1), OPT: b(2) || b(9), Y: b(3), LB: b(4), RB: b(5), LT: b(6), RT: b(7), G: b(8) || b(16),

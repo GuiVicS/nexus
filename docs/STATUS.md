@@ -425,3 +425,107 @@ Pedido: rclone instalado com o app, login na instalação ou depois, pasta próp
 - **Pacote:** `mpv` em `Depends` (`tools/build-deb.sh`).
 - **Testes:** Rust (listagem, dedupe local-vence, ordem natural, argv do mpv): 91 + e2e 17 + drive (rclone real) ok. UI: cenários `midia` (TV + nuvem real com rclone/FUSE, conecta pelos Ajustes, série → episódios → Voltar, abre filme no mpv falso `tests/e2e/fake/mpv` conferindo argv, fecha) e `midia_vazio`; capturas 1080p/720p em `$NEXUS_SHOTS` (`midia`, `midia-serie`, `midia-tocando`, `midia-vazio`). `drive`, `adulto_demo`, `apps` continuam ok.
 - **Falta / limites:** não testado com o mpv de verdade (não instalado aqui) nem com conta Google real; sem capas/posters (cartões com degradê e glifo); sem fila/playlist de séries (próximo episódio) e sem tela de controle de reprodução da Nexus (usa a do mpv, o menu rápido fecha); login do Drive por QR no celular continua pendente.
+### B6 — controles (2026-11-12) ✅ (parcial: sem perfil por emulador)
+
+- Ajustes → **Controles** ganhou:
+  - **Testar botões e analógicos:** tela cheia que mostra ao vivo A/B/X/Y, LB/RB, LT/RT (com %), Select/Start/Guia, L3/R3,
+    direcional e os dois analógicos (com a zona morta desenhada). Lê a Gamepad API do próprio navegador, então não passa pelo
+    Core. Durante o teste o controle **não navega** nos menus: segure **B por 1 s** para sair; **Select** faz vibrar. A
+    navegação só volta quando todos os botões forem soltos (senão o botão segurado abriria algo nos Ajustes).
+  - **Vibração de teste** (`vibrationActuator`; avisa, sem erro, se o controle/conexão não vibra).
+  - **Zona morta** dos analógicos (0–40 %, de 2 em 2, padrão 10 %): guardada neste aparelho (`localStorage`) e aplicada à
+    navegação por controle da Shell (`input.ts`).
+  - **Ajuda para controle sem suporte** (cinco situações comuns, em português simples).
+- Já existia e foi mantido: lista, apelido, ordem dos jogadores, mapeamento e exportação para o RetroArch.
+- **Teste:** cenário `controles` (controle falso injetado em `navigator.getGamepads`): zona morta, vibração, botões,
+  gatilho, analógicos, zona morta, "sem navegar durante o teste", sair com B. Capturas `b6-controles-teste` e
+  `b6-controles` (1080p/720p).
+- **Não feito:** **perfil de controle por emulador** (exigiria um arquivo de configuração do RetroArch por console, ainda não
+  existe na pasta de dados do Nexus) e **zona morta nos emuladores** (hoje o RetroArch usa a dele; a do Nexus vale só para a
+  interface). `tests/e2e/lib.mjs` passou a aceitar `NEXUS_CORE_BIN` (binário do Core a testar).
+
+### B7 — celular (revisão) (2026-11-12) ✅
+
+- Ajustes → Controle no celular: nova seção **"O que o celular pode fazer"** (ser o controle, mouse/teclado, enviar jogos
+  pela página de ROMs) e **"Validade do código"** (vence com 7 dias sem uso; usar renova; "Gerar novo código" desconecta
+  todos). Nada mudou no Core (a validade já existia, item 8).
+- **Testes:** cenários `celular` e `adulto_demo` passam (o primeiro precisa de `apps/remote/dist` construído).
+
+### B11 — atualizações (2026-11-12) ✅ (testado só com programas falsos)
+
+- Ajustes → **Atualizações** (nova categoria):
+  - versão do **Nexus** instalada (dpkg) e a mais nova da release do GitHub (redirecionamento de `/releases/latest`, o mesmo
+    do `tools/update.sh`, sem a API); versão do **sistema** (SO, kernel) e quantos pacotes têm atualização (`apt list --upgradable`);
+  - **Procurar atualizações**, **Instalar o Nexus X**, **Atualizar o sistema (N)**, tudo em segundo plano, com o andamento (última
+    linha do log do ajudante) e aviso ao terminar; falha vira mensagem em português ("Sem espaço em disco") e entra no histórico;
+  - **histórico** (últimas 10: data, de → para, resultado) e **Voltar para o Nexus X** (a versão de antes da última atualização;
+    reinstala essa versão exata); aviso "reinicie a sessão" quando a versão instalada difere da que está rodando;
+  - **nunca durante um jogo**: a Shell desliga os botões e o **Core recusa** (`update.install` → "Feche o jogo antes de atualizar").
+    Instalar e voltar pedem o PIN dos responsáveis (se houver) e confirmação.
+- **Privilégio (mesmo modelo dos apps):** o Core inicia `nexus-sys@<ação>.service` com `systemctl start`; o polkit
+  (`system/polkit/52-nexus-sys.rules`) libera só essa unidade, e o ajudante root `system/sysd/nexus-sys-helper` valida a ação
+  (`update-nexus:<latest|X.Y.Z>`, `upgrade-system`, `ssh-on`, `ssh-off`). O ajudante roda o `tools/update.sh` (agora instalado
+  como `/usr/lib/nexus/nexus-update`; ganhou `--versao X` e `--allow-downgrades`). `tools/build-deb.sh` instala os quatro arquivos novos.
+- Core: `sysops.rs` (chamada ao ajudante, lista fixa de ações), `updates.rs`. RPC: `update.status/check/install/revert`.
+  Programas trocáveis: `NEXUS_SYSTEMCTL`, `NEXUS_DPKGQ`, `NEXUS_APT`, `NEXUS_CURL`, `NEXUS_SYS_OUT`, `NEXUS_UPDATE_REPO`.
+- **Testes:** unidade (versões, ação permitida, parser do apt, versão para reverter, histórico limitado); cenário `atualizacoes`
+  (verificar → instalar → histórico → reverter → atualizar o sistema → falha → recusa com jogo aberto) com `systemctl`, `dpkg-query`,
+  `apt` e `curl` falsos em `tests/e2e/fake/`. **Não testado de verdade:** o ajudante root, o polkit e o `update.sh` com `--versao`
+  contra o GitHub (não há sudo aqui; o `sh -n` do ajudante e do `update.sh` passa). Capturas `b11-atualizacoes` (1080p/720p).
+
+### B16 — sobre e diagnóstico (2026-11-12) ✅
+
+- Ajustes → **Sobre e diagnóstico**: modelo (device tree no Pi, DMI no PC), processador e núcleos, memória usada/total, GPU, SO e
+  kernel, versão do Nexus, disco; **agora**: uso da CPU (amostra de 250 ms), carga, temperatura (maior zona térmica), **throttling**
+  do Raspberry Pi (`vcgencmd get_throttled` decodificado: tensão baixa, frequência limitada…; "não se aplica" fora do Pi),
+  tempo ligado; **o que mais consome** (6 maiores por CPU, com memória). A tela atualiza a cada 5 s.
+- **Gerar relatório de suporte:** arquivo de texto `nexus-relatorio-AAAAMMDD-HHMMSS.txt` em `<dados>/reports/` (guarda os 5 últimos)
+  com as informações acima, registro do Core/Shell (`journalctl --user`), `session.log` e kernel, **sem** códigos de pareamento,
+  chaves ou PIN (`redact`). A tela mostra um **QR** para baixar pelo celular (rota `/report?t=<código>` do servidor do celular, mesma
+  rede e mesmo código/validade do controle; sem o código certo dá 403).
+- Core: `about.rs`. RPC: `about.status`, `about.report`. Programas: `NEXUS_PS`, `NEXUS_VCGENCMD`, `NEXUS_JOURNALCTL`.
+- **Testes:** unidade (CPU x86/ARM, memória, throttling, ps, data UTC, redação, relatório gravado e limitado a 5); cenário `sobre`
+  (campos da tela, gerar relatório, baixar como "celular", sem o código do celular no arquivo, 403 com código errado).
+  **Não testado:** Raspberry Pi de verdade (throttling só com texto de exemplo). Capturas `b16-sobre`, `b16-relatorio`.
+
+### B15 — recuperação (2026-11-12) ✅ (sem terminal embutido)
+
+- Ajustes → **Recuperação**, atrás do **PIN dos responsáveis** (pedido ao abrir a categoria; sem PIN definido, abre direto; cada ação
+  ainda passa por confirmação e pelo `sys_access` do Core): **reiniciar a sessão** (`systemctl --user restart --no-block
+  nexus-session.target`), **reparar a interface** (reinicia só `nexus-shell.service`), **voltar ao desktop no próximo login**
+  (marca `~/.config/nexus/force-desktop`, a mesma que `nexus-session` já lê; liga e desliga), atalhos para **reverter atualização**,
+  **diagnóstico** e **SSH**, **restaurar padrões** (preferências de todos os perfis, margem da tela, teclado, saída de som lembrada;
+  não apaga perfis, jogos nem PIN), **apagar os dados de um perfil** (tempo de jogo, uso, favoritos, preferências; o perfil fica) e
+  **reset de fábrica** com confirmação dupla (apaga perfis, PIN, apps adicionados, históricos; jogos, ROMs e Steam ficam; a Shell
+  recarrega e cai no primeiro uso). Reiniciar sessão, reparar e reset são recusados com jogo aberto.
+- Core: `recovery.rs`. RPC: `recovery.status`, `recovery.run`. `NEXUS_SYSTEMCTL` e `NEXUS_FORCE_DESKTOP` trocam o programa e a marca.
+- **Testes:** unidade (restaurar padrões nunca apaga o PIN; apagar dados mantém o perfil; reset zera tudo); cenário `recuperacao`
+  (PIN para entrar, reparar, sessão, desktop liga/desliga, padrões, apagar dados, cancelar na 2ª confirmação não apaga, reset).
+  **Não feito:** terminal opcional dentro da interface (a tela indica o acesso por SSH, mais seguro que um terminal na TV);
+  "reparar a Shell" só reinicia o serviço (não reinstala arquivos). Captura `b15-recuperacao`.
+
+### Acesso por SSH — passo a passo na TV e liga/desliga (pedido direto do usuário) (2026-11-12) ✅ (liga/desliga só com programa falso)
+
+- Ajustes → **Acesso por SSH**, com os valores **reais** do aparelho vindos do Core (`ssh.status`):
+  - se o servidor está **instalado** (`systemctl list-unit-files ssh/sshd`) e **ligado** (inclui `ssh.socket`); se não estiver
+    instalado, a tela diz isso e mostra `sudo apt install openssh-server`;
+  - **usuário** da sessão, **IPs** (`ip -4 -o addr show scope global`), **porta** (`Port` do `sshd_config`, padrão 22), nome do aparelho
+    e a **impressão digital** da chave do aparelho (`ssh-keygen -lf` da chave ed25519) para conferir no primeiro acesso;
+  - passos: 1 instalar, 2 ligar (`sudo systemctl enable --now ssh` ou a chave da própria tela), 3 usuário/IP/porta, 4 comando pronto
+    `ssh usuario@IP` (com `-p` se a porta não for 22), 5 primeiro acesso (pergunta yes/no, confere o fingerprint, senha do usuário),
+    dica `ssh-keygen -t ed25519` + `ssh-copy-id`, como sair (`exit`; a interface continua aberta) e como desligar
+    (`sudo systemctl disable --now ssh`), mais um aviso de segurança. Cada passo é uma linha focável: dá para ler tudo com ↑/↓.
+  - **liga/desliga** pela própria tela (PIN dos responsáveis + aviso de segurança ao ligar): o Core pede `ssh-on`/`ssh-off` ao
+    ajudante root (`nexus-sys-helper`, `systemctl enable --now ssh` / `disable --now`; com `ssh.socket` mexe nos dois).
+- Core: `sshd.rs`. RPC: `ssh.status`, `ssh.set`. Programas: `NEXUS_SYSTEMCTL`, `NEXUS_IP`, `NEXUS_SSHKEYGEN`, `NEXUS_HOSTNAME`,
+  `NEXUS_SSHD_CONFIG`, `NEXUS_SSH_HOSTKEY`.
+- **Testes:** unidade (unidade ssh/sshd, IPs, porta, fingerprint) e cenário `ssh` (não instalado → comando de instalação; usuário, IP,
+  porta e fingerprint reais nos passos; ligar e desligar chamam o ajudante falso; `systemctl` falso guarda o estado).
+  **Sem `sudo` aqui, o liga/desliga real não foi exercitado** (nem o ssh foi ligado nesta máquina): só o programa falso. Capturas
+  `ssh-nao-instalado`, `ssh-ligado`.
+- **Observação:** sem PIN dos responsáveis definido, qualquer perfil adulto liga o SSH (o PIN é opcional no Nexus). Vale decidir
+  se ligar SSH/reset deve exigir que exista um PIN.
+
+**Suíte da Fase 3 (B), 2026-11-12:** `cargo test -p nexus-core` 98 unitários + 17 e2e do Core ok; `tsc` da Shell e do protocolo limpos;
+todos os 19 cenários de UI (`node tests/e2e/run.mjs`), incluindo os novos `controles`, `atualizacoes`, `ssh`, `sobre`, `recuperacao`, 0 falhas.
+Sobre a memória da Shell com as telas abertas: não medida nesta rodada (sem a sessão real à disposição).
